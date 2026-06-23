@@ -1,0 +1,217 @@
+package com.company.approvalbot.workflow;
+
+import com.company.approvalbot.config.ProjectApprovalConfig;
+import com.company.approvalbot.domain.Identity;
+import com.company.approvalbot.domain.PatchOperation;
+import com.company.approvalbot.domain.WorkflowDecision;
+import com.company.approvalbot.domain.WorkflowInput;
+import com.company.approvalbot.identity.EmailNormalizer;
+import com.company.approvalbot.identity.IdentityClassification;
+import com.company.approvalbot.identity.IdentityClassifier;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+public class WorkflowEngine {
+
+    public static final String STATE_DESIGN = "Design";
+    public static final String STATE_IN_REVIEW = "In Review";
+    public static final String STATE_APPROVED = "Approved";
+    public static final String WORK_ITEM_TYPE_TEST_CASE = "Test Case";
+    public static final String SYSTEM_STATE = "System.State";
+
+    private final ChangeAnalyzer changeAnalyzer;
+    private final ApprovalValidator approvalValidator;
+    private final IdentityClassifier identityClassifier;
+    private final EmailNormalizer emailNormalizer;
+
+    public WorkflowEngine() {
+        this.emailNormalizer = new EmailNormalizer();
+        var valueComparator = new ValueComparator();
+        this.changeAnalyzer = new ChangeAnalyzer(valueComparator);
+        var approvalValueParser = new ApprovalValueParser(emailNormalizer);
+        this.approvalValidator = new ApprovalValidator(approvalValueParser, emailNormalizer);
+        this.identityClassifier = new IdentityClassifier(emailNormalizer);
+    }
+
+    public WorkflowDecision decide(WorkflowInput input) {
+        var config = input.projectConfig();
+        if (config == null || !config.enabled()) {
+            return WorkflowDecision.skipped("Project is disabled.");
+        }
+        if (!config.supportedWorkItemTypes().contains(input.workItemType())) {
+            return WorkflowDecision.skipped("Work item type is unsupported.");
+        }
+        if (!isKnownState(input.currentState())) {
+            return WorkflowDecision.skipped("Current state is out of scope.");
+        }
+
+        if (STATE_DESIGN.equals(input.previousState()) && STATE_APPROVED.equals(input.currentState())) {
+            return designToApprovedCorrection(config);
+        }
+        if (STATE_DESIGN.equals(input.currentState())) {
+            return handleDesign(input, config);
+        }
+        if (STATE_IN_REVIEW.equals(input.currentState())) {
+            return handleInReview(input, config);
+        }
+        if (STATE_APPROVED.equals(input.currentState())) {
+            return handleApproved(input, config);
+        }
+
+        return WorkflowDecision.skipped("No workflow action required.");
+    }
+
+    private WorkflowDecision handleDesign(WorkflowInput input, ProjectApprovalConfig config) {
+        var operations = clearApprovalsIfPresent(input.currentFields(), config);
+        if (operations.isEmpty()) {
+            return WorkflowDecision.skipped("Design state has no approval fields to clear.");
+        }
+        return WorkflowDecision.completed(operations, null, "Design state clears approval fields.");
+    }
+
+    private WorkflowDecision designToApprovedCorrection(ProjectApprovalConfig config) {
+        var operations = new ArrayList<PatchOperation>();
+        operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_IN_REVIEW));
+        operations.add(PatchOperation.replaceField(config.approvedBySmeField(), null));
+        operations.add(PatchOperation.replaceField(config.approvedBySqaField(), null));
+        return WorkflowDecision.completed(operations, """
+                The Test Case was returned to In Review because it cannot move directly from Design to Approved.
+
+                Approval requires review by valid SME and SQA approvers.""", "Design cannot move directly to Approved.");
+    }
+
+    private WorkflowDecision handleInReview(WorkflowInput input, ProjectApprovalConfig config) {
+        var changedReversibleFields = changeAnalyzer.changedReversibleFields(input.previousFields(), input.currentFields(), config);
+        var classification = identityClassifier.classify(input.changedBy(), config);
+
+        if (!changedReversibleFields.isEmpty() && !classification.authorizedApprover()) {
+            var operations = changedReversibleFields.stream()
+                    .map(field -> PatchOperation.replaceField(field, input.previousFields().get(field)))
+                    .toList();
+            return WorkflowDecision.completed(operations, proposedChangesComment(input.changedBy()), "Unauthorized reversible content changes were reverted.");
+        }
+
+        if (!changedReversibleFields.isEmpty()) {
+            var operations = new ArrayList<PatchOperation>();
+            operations.add(PatchOperation.replaceField(config.approvedBySmeField(), null));
+            operations.add(PatchOperation.replaceField(config.approvedBySqaField(), null));
+            operations.addAll(currentUserApprovalOperations(input.changedBy(), classification, config, Map.of()));
+            return WorkflowDecision.completed(operations, null, "Authorized content change resets approvals and records current reviewer.");
+        }
+
+        if (classification.authorizedApprover()) {
+            return handleApproverSaveWithoutContentChange(input, config, classification);
+        }
+
+        return WorkflowDecision.skipped("No reversible content change or approval action required.");
+    }
+
+    private WorkflowDecision handleApproverSaveWithoutContentChange(WorkflowInput input, ProjectApprovalConfig config, IdentityClassification classification) {
+        var projectedFields = new LinkedHashMap<>(input.currentFields());
+        var operations = new ArrayList<PatchOperation>();
+        for (PatchOperation operation : currentUserApprovalOperations(input.changedBy(), classification, config, projectedFields)) {
+            operations.add(operation);
+            projectedFields.put(operation.path().replace("/fields/", ""), operation.value());
+        }
+
+        var validation = approvalValidator.validate(projectedFields, config);
+        if (validation.fullyApprovedByDifferentUsers()) {
+            operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_APPROVED));
+            return WorkflowDecision.completed(operations, approvedComment(projectedFields, config), "Approvals are valid and complete.");
+        }
+
+        if (operations.isEmpty()) {
+            return WorkflowDecision.skipped("Approval already reflects current reviewer.");
+        }
+        return WorkflowDecision.completed(operations, null, "Current reviewer approval was recorded.");
+    }
+
+    private WorkflowDecision handleApproved(WorkflowInput input, ProjectApprovalConfig config) {
+        var validation = approvalValidator.validate(input.currentFields(), config);
+        if (validation.fullyApprovedByDifferentUsers()) {
+            return WorkflowDecision.skipped("Approved state already has valid approvals.");
+        }
+
+        var operations = new ArrayList<PatchOperation>();
+        operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_IN_REVIEW));
+        if (!validation.validSme() || validation.smeEmail().equals(validation.sqaEmail())) {
+            operations.add(PatchOperation.replaceField(config.approvedBySmeField(), null));
+        }
+        if (!validation.validSqa() || validation.smeEmail().equals(validation.sqaEmail())) {
+            operations.add(PatchOperation.replaceField(config.approvedBySqaField(), null));
+        }
+        return WorkflowDecision.completed(operations,
+                "The Test Case was returned to In Review because it does not have valid SME and SQA approvals from different users.",
+                "Approved state has invalid approvals.");
+    }
+
+    private List<PatchOperation> clearApprovalsIfPresent(Map<String, Object> fields, ProjectApprovalConfig config) {
+        var operations = new ArrayList<PatchOperation>();
+        if (hasValue(fields.get(config.approvedBySmeField()))) {
+            operations.add(PatchOperation.replaceField(config.approvedBySmeField(), null));
+        }
+        if (hasValue(fields.get(config.approvedBySqaField()))) {
+            operations.add(PatchOperation.replaceField(config.approvedBySqaField(), null));
+        }
+        return operations;
+    }
+
+    private List<PatchOperation> currentUserApprovalOperations(
+            Identity changedBy,
+            IdentityClassification classification,
+            ProjectApprovalConfig config,
+            Map<String, Object> projectedFields
+    ) {
+        var approvalValue = approvalValue(changedBy);
+        if (approvalValue == null) {
+            return List.of();
+        }
+        if (classification.sme()) {
+            return List.of(PatchOperation.replaceField(config.approvedBySmeField(), approvalValue));
+        }
+        if (classification.sqa()) {
+            return List.of(PatchOperation.replaceField(config.approvedBySqaField(), approvalValue));
+        }
+        return List.of();
+    }
+
+    private String approvalValue(Identity identity) {
+        if (identity == null) {
+            return null;
+        }
+        return emailNormalizer.normalize(identity.email())
+                .map(email -> (identity.displayName() == null || identity.displayName().isBlank() ? email : identity.displayName().trim()) + " <" + email + ">")
+                .orElse(null);
+    }
+
+    private String approvedComment(Map<String, Object> fields, ProjectApprovalConfig config) {
+        return """
+                Test Case approved automatically.
+
+                Approved by SME:
+                %s
+
+                Approved by SQA:
+                %s""".formatted(fields.get(config.approvedBySmeField()), fields.get(config.approvedBySqaField()));
+    }
+
+    private String proposedChangesComment(Identity changedBy) {
+        var identity = changedBy == null || changedBy.displayName() == null || changedBy.displayName().isBlank()
+                ? "Unknown user"
+                : changedBy.displayName().trim();
+        return """
+                Proposed changes by %s.
+
+                The original Test Case field values were automatically restored because this user is not an SME/SQA approver.""".formatted(identity);
+    }
+
+    private boolean hasValue(Object value) {
+        return value != null && !value.toString().trim().isEmpty();
+    }
+
+    private boolean isKnownState(String state) {
+        return STATE_DESIGN.equals(state) || STATE_IN_REVIEW.equals(state) || STATE_APPROVED.equals(state);
+    }
+}
