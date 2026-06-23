@@ -1,4 +1,4 @@
-package com.company.approvalbot.config;
+package com.dentalwings.approvalbot.config;
 
 import java.util.Set;
 

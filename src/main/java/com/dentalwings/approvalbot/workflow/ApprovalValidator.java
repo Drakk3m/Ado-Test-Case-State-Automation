@@ -1,7 +1,7 @@
-package com.company.approvalbot.workflow;
+package com.dentalwings.approvalbot.workflow;
 
-import com.company.approvalbot.config.ProjectApprovalConfig;
-import com.company.approvalbot.identity.EmailNormalizer;
+import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.identity.EmailNormalizer;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;

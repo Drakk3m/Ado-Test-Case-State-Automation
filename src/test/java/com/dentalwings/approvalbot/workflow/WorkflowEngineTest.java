@@ -1,10 +1,10 @@
-package com.company.approvalbot.workflow;
+package com.dentalwings.approvalbot.workflow;
 
-import com.company.approvalbot.config.ProjectApprovalConfig;
-import com.company.approvalbot.domain.Identity;
-import com.company.approvalbot.domain.PatchOperation;
-import com.company.approvalbot.domain.ProcessingResult;
-import com.company.approvalbot.domain.WorkflowInput;
+import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.domain.Identity;
+import com.dentalwings.approvalbot.domain.PatchOperation;
+import com.dentalwings.approvalbot.domain.ProcessingResult;
+import com.dentalwings.approvalbot.domain.WorkflowInput;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;

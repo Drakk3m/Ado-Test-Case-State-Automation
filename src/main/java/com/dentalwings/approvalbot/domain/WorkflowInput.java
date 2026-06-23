@@ -1,6 +1,6 @@
-package com.company.approvalbot.domain;
+package com.dentalwings.approvalbot.domain;
 
-import com.company.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
 import java.util.Map;
 
 public record WorkflowInput(

@@ -1,4 +1,4 @@
-package com.company.approvalbot.domain;
+package com.dentalwings.approvalbot.domain;
 
 import java.util.List;
 

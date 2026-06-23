@@ -1,4 +1,4 @@
-package com.company.approvalbot;
+package com.dentalwings.approvalbot;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

@@ -1,6 +1,6 @@
-package com.company.approvalbot.workflow;
+package com.dentalwings.approvalbot.workflow;
 
-import com.company.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;

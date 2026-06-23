@@ -1,6 +1,6 @@
-package com.company.approvalbot.workflow;
+package com.dentalwings.approvalbot.workflow;
 
-import com.company.approvalbot.identity.EmailNormalizer;
+import com.dentalwings.approvalbot.identity.EmailNormalizer;
 import java.util.Optional;
 import java.util.regex.Pattern;
 

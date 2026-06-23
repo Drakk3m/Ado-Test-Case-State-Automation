@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.company</groupId>
+    <groupId>com.dentalwings</groupId>
     <artifactId>approvalbot</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>approvalbot</name>

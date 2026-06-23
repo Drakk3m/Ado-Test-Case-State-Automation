@@ -1,4 +1,4 @@
-package com.company.approvalbot.identity;
+package com.dentalwings.approvalbot.identity;
 
 import java.util.Locale;
 import java.util.Optional;

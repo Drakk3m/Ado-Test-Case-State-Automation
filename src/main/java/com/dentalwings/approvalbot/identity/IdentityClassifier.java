@@ -1,7 +1,7 @@
-package com.company.approvalbot.identity;
+package com.dentalwings.approvalbot.identity;
 
-import com.company.approvalbot.config.ProjectApprovalConfig;
-import com.company.approvalbot.domain.Identity;
+import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.domain.Identity;
 import java.util.Set;
 import java.util.stream.Collectors;
 

@@ -1,13 +1,13 @@
-package com.company.approvalbot.workflow;
+package com.dentalwings.approvalbot.workflow;
 
-import com.company.approvalbot.config.ProjectApprovalConfig;
-import com.company.approvalbot.domain.Identity;
-import com.company.approvalbot.domain.PatchOperation;
-import com.company.approvalbot.domain.WorkflowDecision;
-import com.company.approvalbot.domain.WorkflowInput;
-import com.company.approvalbot.identity.EmailNormalizer;
-import com.company.approvalbot.identity.IdentityClassification;
-import com.company.approvalbot.identity.IdentityClassifier;
+import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.domain.Identity;
+import com.dentalwings.approvalbot.domain.PatchOperation;
+import com.dentalwings.approvalbot.domain.WorkflowDecision;
+import com.dentalwings.approvalbot.domain.WorkflowInput;
+import com.dentalwings.approvalbot.identity.EmailNormalizer;
+import com.dentalwings.approvalbot.identity.IdentityClassification;
+import com.dentalwings.approvalbot.identity.IdentityClassifier;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

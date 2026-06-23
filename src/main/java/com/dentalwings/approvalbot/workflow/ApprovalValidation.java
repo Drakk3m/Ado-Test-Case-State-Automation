@@ -1,4 +1,4 @@
-package com.company.approvalbot.workflow;
+package com.dentalwings.approvalbot.workflow;
 
 import java.util.Optional;
 
