@@ -1,0 +1,35 @@
+ado:
+  organization: my-org
+  personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
+  projects:
+    ProjectA:
+      enabled: true
+      supported-work-item-types:
+        - Test Case
+      fields:
+        approved-by-sme: Custom.ApprovedBySME
+        approved-by-sqa: Custom.ApprovedBySQA
+        reversible-business-fields:
+          - System.Title
+          - System.Description
+          - Microsoft.VSTS.TCM.Steps
+          - Microsoft.VSTS.TCM.LocalDataSource
+      approvals:
+        sme-users:
+          - ana.perez@company.com
+        sqa-users:
+          - carlos.gomez@company.com
+
+bot:
+  identity-email: ado-approval-bot@company.com
+
+retry:
+  max-attempts: 3
+  default-backoff-seconds: 30
+  respect-retry-after: true
+
+idempotency:
+  type: sqlite
+  sqlite-path: ./data/approval-bot.sqlite
+  ttl-hours: 24
+  max-records: 10000
