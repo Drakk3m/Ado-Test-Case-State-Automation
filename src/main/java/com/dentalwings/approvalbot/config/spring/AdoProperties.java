@@ -8,6 +8,7 @@ public class AdoProperties {
     private String organization;
     private String personalAccessToken;
     private boolean httpClientEnabled;
+    private boolean dryRun = true;
     private Map<String, ProjectApprovalProperties> projects = new LinkedHashMap<>();
 
     public String getOrganization() {
@@ -32,6 +33,14 @@ public class AdoProperties {
 
     public void setHttpClientEnabled(boolean httpClientEnabled) {
         this.httpClientEnabled = httpClientEnabled;
+    }
+
+    public boolean isDryRun() {
+        return dryRun;
+    }
+
+    public void setDryRun(boolean dryRun) {
+        this.dryRun = dryRun;
     }
 
     public Map<String, ProjectApprovalProperties> getProjects() {

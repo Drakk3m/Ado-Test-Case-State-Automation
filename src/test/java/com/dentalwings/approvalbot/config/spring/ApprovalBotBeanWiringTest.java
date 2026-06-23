@@ -3,6 +3,7 @@ package com.dentalwings.approvalbot.config.spring;
 import com.dentalwings.approvalbot.ApprovalBotApplication;
 import com.dentalwings.approvalbot.ado.AdoClient;
 import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
+import com.dentalwings.approvalbot.ado.DryRunAdoClient;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
 import com.dentalwings.approvalbot.idempotency.IdempotentWorkItemProcessor;
 import com.dentalwings.approvalbot.idempotency.InMemoryProcessedEventStore;
@@ -140,11 +141,34 @@ class ApprovalBotBeanWiringTest {
     }
 
     @Test
-    void azureDevOpsHttpClientIsUsedWhenEnabled() {
+    void dryRunAdoClientWrapsAzureDevOpsHttpClientWhenHttpEnabledAndDryRunDefaultsToTrue() {
         contextRunner("in-memory", null)
                 .withPropertyValues("ado.http-client-enabled=true")
+                .run(context -> {
+                    var adoClient = context.getBean(AdoClient.class);
+
+                    assertThat(adoClient).isInstanceOf(DryRunAdoClient.class);
+                    assertThat(((DryRunAdoClient) adoClient).delegate()).isInstanceOf(AzureDevOpsHttpClient.class);
+                });
+    }
+
+    @Test
+    void azureDevOpsHttpClientIsUsedWhenHttpEnabledAndDryRunDisabled() {
+        contextRunner("in-memory", null)
+                .withPropertyValues(
+                        "ado.http-client-enabled=true",
+                        "ado.dry-run=false"
+                )
                 .run(context -> assertThat(context.getBean(AdoClient.class))
                         .isInstanceOf(AzureDevOpsHttpClient.class));
+    }
+
+    @Test
+    void unsupportedAdoClientIsStillUsedWhenHttpClientIsDisabledEvenIfDryRunIsTrue() {
+        contextRunner("in-memory", null)
+                .withPropertyValues("ado.dry-run=true")
+                .run(context -> assertThat(context.getBean(AdoClient.class))
+                        .isInstanceOf(UnsupportedAdoClient.class));
     }
 
     @Test

@@ -22,6 +22,7 @@ class ApprovalBotSpringConfigurationTest {
 
         assertThat(properties.getAdo().getOrganization()).isEqualTo("my-org");
         assertThat(properties.getAdo().getPersonalAccessToken()).isEqualTo("test-token");
+        assertThat(properties.getAdo().isDryRun()).isTrue();
         assertThat(properties.getAdo().getProjects()).containsKey("ProjectA");
         assertThat(properties.getAdo().getProjects().get("ProjectA").getSupportedWorkItemTypes())
                 .containsExactly("Test Case");

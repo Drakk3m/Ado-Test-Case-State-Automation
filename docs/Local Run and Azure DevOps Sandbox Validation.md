@@ -76,6 +76,7 @@ ado:
   organization: sandbox-org
   personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
   http-client-enabled: false
+  dry-run: true
   projects:
     SandboxProject:
       enabled: true
@@ -105,6 +106,18 @@ idempotency:
 ```
 
 Keep `ado.http-client-enabled=false` until you are ready for sandbox HTTP validation. Enable it only after configuration, custom fields, service hook, and PAT scope have been checked.
+
+Dry-run mode is enabled by default through `ado.dry-run=true`. When the HTTP client is enabled, dry-run still fetches Work Items and revisions from Azure DevOps, still computes workflow decisions, and still builds patch operations and comment text internally. It suppresses ADO PATCH requests and Work Item comment creation.
+
+For the first HTTP sandbox validation step, use:
+
+```yaml
+ado:
+  http-client-enabled: true
+  dry-run: true
+```
+
+Only set `ado.dry-run=false` after the dry-run logs match the expected behavior for your sandbox Test Cases.
 
 ## Local Run Commands
 
@@ -159,6 +172,8 @@ Before enabling real HTTP validation:
 * Point the service hook only to a local tunnel or sandbox-hosted service.
 * Confirm no production project is enabled in `ado.projects`.
 * Verify `ado.http-client-enabled` is still `false` until final sandbox readiness checks pass.
+* Use `ado.http-client-enabled=true` with `ado.dry-run=true` as the first ADO HTTP validation mode.
+* Set `ado.dry-run=false` only after dry-run logs show the expected PATCH and comment actions.
 
 ## Manual Validation Scenarios
 
@@ -180,6 +195,7 @@ Run these with sandbox Test Cases only:
 
 * Never enable this first against a production Azure DevOps project.
 * Keep `ado.http-client-enabled=false` until ready for sandbox HTTP validation.
+* Keep `ado.dry-run=true` for the first sandbox HTTP validation pass.
 * Use a dedicated sandbox PAT.
 * Use a dedicated sandbox project.
 * Verify configured reversible fields carefully because those fields may be reverted.
@@ -196,6 +212,7 @@ Logs are intended to make sandbox validation debuggable without exposing sensiti
 * Project, Work Item id, and revision.
 * Idempotency duplicate detection for repeated webhook revisions.
 * ADO operation type, such as fetch, revision fetch, PATCH, or comment creation.
+* Dry-run suppressed write logs, such as `would PATCH`/suppressed PATCH and `would create comment`/suppressed comment creation.
 * PATCH result, including retryable versus non-retryable failure mapping.
 * Comment result after a successful PATCH.
 * `COMPLETED_WITH_WARNING` when PATCH succeeds but comment creation fails.
@@ -207,6 +224,8 @@ The logs should not contain:
 * Full webhook payloads.
 * Full comment text.
 * Full raw field values.
+
+When `ado.http-client-enabled=true` and `ado.dry-run=true`, expect ADO fetch logs plus suppressed write logs. You should see operation counts and patch paths, but not patch values or comment bodies.
 
 ## Troubleshooting
 
@@ -262,5 +281,6 @@ Before asking for review or running against sandbox:
 * Config samples use placeholders only.
 * Only a sandbox project is enabled.
 * `ado.http-client-enabled=false` by default unless explicitly testing sandbox HTTP.
+* `ado.dry-run=true` for the first HTTP sandbox validation run.
 * Manual scenarios were tested in sandbox.
 * Logs were reviewed for no PAT leakage.
