@@ -1,5 +1,7 @@
 package com.dentalwings.approvalbot.ado;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -12,7 +14,7 @@ public record AdoWorkItemRevision(
 ) {
 
     public AdoWorkItemRevision {
-        fields = Map.copyOf(fields);
-        changedFieldNames = Set.copyOf(changedFieldNames);
+        fields = fields == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(fields));
+        changedFieldNames = changedFieldNames == null ? Set.of() : Set.copyOf(changedFieldNames);
     }
 }
