@@ -9,6 +9,8 @@ import com.dentalwings.approvalbot.ado.AdoWorkItemRevision;
 import com.dentalwings.approvalbot.config.spring.AdoProperties;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatusCode;
@@ -19,6 +21,7 @@ import reactor.core.publisher.Mono;
 
 public class AzureDevOpsHttpClient implements AdoClient {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AzureDevOpsHttpClient.class);
     private static final MediaType JSON_PATCH = MediaType.parseMediaType("application/json-patch+json");
 
     private final WebClient webClient;
@@ -58,13 +61,21 @@ public class AzureDevOpsHttpClient implements AdoClient {
 
     @Override
     public AdoWorkItem fetchWorkItem(AdoWorkItemKey key) {
+        LOGGER.info("ADO HTTP operation started operation=fetchWorkItem organization={} project={} workItemId={}",
+                key.organization(), key.project(), key.workItemId());
         var response = get(urlBuilder.workItemUrl(key), AdoRestWorkItemResponse.class);
+        LOGGER.info("ADO HTTP operation completed operation=fetchWorkItem organization={} project={} workItemId={} revision={}",
+                key.organization(), key.project(), key.workItemId(), response.rev());
         return responseMapper.toWorkItem(key, response);
     }
 
     @Override
     public AdoWorkItemRevision fetchWorkItemRevision(AdoWorkItemKey key, int revision) {
+        LOGGER.info("ADO HTTP operation started operation=fetchWorkItemRevision organization={} project={} workItemId={} revision={}",
+                key.organization(), key.project(), key.workItemId(), revision);
         var response = get(urlBuilder.workItemRevisionUrl(key, revision), AdoRestRevisionResponse.class);
+        LOGGER.info("ADO HTTP operation completed operation=fetchWorkItemRevision organization={} project={} workItemId={} revision={}",
+                key.organization(), key.project(), key.workItemId(), response.rev());
         return responseMapper.toRevision(key, response);
     }
 
@@ -72,34 +83,52 @@ public class AzureDevOpsHttpClient implements AdoClient {
     public AdoPatchResult patchWorkItem(AdoWorkItemKey key, List<PatchOperation> patchOperations) {
         var validationResult = validatePatchOperations(patchOperations);
         if (validationResult != null) {
+            LOGGER.warn("ADO HTTP operation rejected operation=patchWorkItem organization={} project={} workItemId={} retryable={} message={}",
+                    key.organization(), key.project(), key.workItemId(), validationResult.retryable(), validationResult.message());
             return validationResult;
         }
 
+        LOGGER.info("ADO HTTP operation started operation=patchWorkItem organization={} project={} workItemId={} operationCount={}",
+                key.organization(), key.project(), key.workItemId(), patchOperations.size());
         return webClient.patch()
                 .uri(urlBuilder.workItemPatchUrl(key))
                 .contentType(JSON_PATCH)
                 .bodyValue(patchOperations)
-                .exchangeToMono(this::handlePatchResponse)
-                .onErrorResume(error -> Mono.just(AdoPatchResult.retryableFailure(
-                        "Azure DevOps PATCH request failed with retryable transport error."
-                )))
+                .exchangeToMono(response -> handlePatchResponse(key, response))
+                .onErrorResume(error -> {
+                    LOGGER.warn("ADO HTTP operation failed operation=patchWorkItem organization={} project={} workItemId={} retryable={} message={}",
+                            key.organization(), key.project(), key.workItemId(), true,
+                            "Azure DevOps PATCH request failed with retryable transport error.");
+                    return Mono.just(AdoPatchResult.retryableFailure(
+                            "Azure DevOps PATCH request failed with retryable transport error."
+                    ));
+                })
                 .block();
     }
 
     @Override
     public AdoCommentResult createWorkItemComment(AdoWorkItemKey key, String commentText) {
         if (commentText == null || commentText.isBlank()) {
+            LOGGER.warn("ADO HTTP operation rejected operation=createWorkItemComment organization={} project={} workItemId={} message={}",
+                    key.organization(), key.project(), key.workItemId(), "Azure DevOps comment text must not be blank.");
             return AdoCommentResult.failure("Azure DevOps comment text must not be blank.");
         }
 
+        LOGGER.info("ADO HTTP operation started operation=createWorkItemComment organization={} project={} workItemId={}",
+                key.organization(), key.project(), key.workItemId());
         return webClient.post()
                 .uri(urlBuilder.workItemCommentsUrl(key))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new AdoRestCommentRequest(commentText))
-                .exchangeToMono(this::handleCommentResponse)
-                .onErrorResume(error -> Mono.just(AdoCommentResult.failure(
-                        "Azure DevOps comment request failed with transport error."
-                )))
+                .exchangeToMono(response -> handleCommentResponse(key, response))
+                .onErrorResume(error -> {
+                    LOGGER.warn("ADO HTTP operation failed operation=createWorkItemComment organization={} project={} workItemId={} message={}",
+                            key.organization(), key.project(), key.workItemId(),
+                            "Azure DevOps comment request failed with transport error.");
+                    return Mono.just(AdoCommentResult.failure(
+                            "Azure DevOps comment request failed with transport error."
+                    ));
+                })
                 .block();
     }
 
@@ -156,19 +185,35 @@ public class AzureDevOpsHttpClient implements AdoClient {
         return null;
     }
 
-    private Mono<AdoPatchResult> handlePatchResponse(ClientResponse response) {
+    private Mono<AdoPatchResult> handlePatchResponse(AdoWorkItemKey key, ClientResponse response) {
         var status = response.statusCode().value();
         if (status == 200 || status == 201) {
             return response.bodyToMono(AdoRestWorkItemResponse.class)
-                    .map(result -> AdoPatchResult.success(result.rev()))
-                    .defaultIfEmpty(AdoPatchResult.success(-1));
+                    .map(result -> {
+                        LOGGER.info("ADO HTTP operation completed operation=patchWorkItem organization={} project={} workItemId={} httpStatus={} success={} retryable={} resultingRevision={}",
+                                key.organization(), key.project(), key.workItemId(), status, true, false, result.rev());
+                        return AdoPatchResult.success(result.rev());
+                    })
+                    .defaultIfEmpty(AdoPatchResult.success(-1))
+                    .doOnNext(result -> {
+                        if (result.revision() == -1) {
+                            LOGGER.info("ADO HTTP operation completed operation=patchWorkItem organization={} project={} workItemId={} httpStatus={} success={} retryable={}",
+                                    key.organization(), key.project(), key.workItemId(), status, true, false);
+                        }
+                    });
         }
         if (status == 204) {
+            LOGGER.info("ADO HTTP operation completed operation=patchWorkItem organization={} project={} workItemId={} httpStatus={} success={} retryable={}",
+                    key.organization(), key.project(), key.workItemId(), status, true, false);
             return Mono.just(AdoPatchResult.success(-1));
         }
         if (status == 409 || status == 412 || status == 429 || status >= 500) {
+            LOGGER.warn("ADO HTTP operation failed operation=patchWorkItem organization={} project={} workItemId={} httpStatus={} retryable={} message={}",
+                    key.organization(), key.project(), key.workItemId(), status, true, patchFailureMessage(status));
             return Mono.just(AdoPatchResult.retryableFailure(patchFailureMessage(status)));
         }
+        LOGGER.warn("ADO HTTP operation failed operation=patchWorkItem organization={} project={} workItemId={} httpStatus={} retryable={} message={}",
+                key.organization(), key.project(), key.workItemId(), status, false, patchFailureMessage(status));
         return Mono.just(AdoPatchResult.nonRetryableFailure(patchFailureMessage(status)));
     }
 
@@ -176,13 +221,25 @@ public class AzureDevOpsHttpClient implements AdoClient {
         return "Azure DevOps PATCH request failed with status " + status + ".";
     }
 
-    private Mono<AdoCommentResult> handleCommentResponse(ClientResponse response) {
+    private Mono<AdoCommentResult> handleCommentResponse(AdoWorkItemKey key, ClientResponse response) {
         var status = response.statusCode().value();
         if (status == 200 || status == 201) {
             return response.bodyToMono(AdoRestCommentResponse.class)
-                    .map(result -> AdoCommentResult.success(result.id()))
-                    .defaultIfEmpty(AdoCommentResult.success(null));
+                    .map(result -> {
+                        LOGGER.info("ADO HTTP operation completed operation=createWorkItemComment organization={} project={} workItemId={} httpStatus={} success={} commentId={}",
+                                key.organization(), key.project(), key.workItemId(), status, true, result.id());
+                        return AdoCommentResult.success(result.id());
+                    })
+                    .defaultIfEmpty(AdoCommentResult.success(null))
+                    .doOnNext(result -> {
+                        if (result.commentId() == null) {
+                            LOGGER.info("ADO HTTP operation completed operation=createWorkItemComment organization={} project={} workItemId={} httpStatus={} success={}",
+                                    key.organization(), key.project(), key.workItemId(), status, true);
+                        }
+                    });
         }
+        LOGGER.warn("ADO HTTP operation failed operation=createWorkItemComment organization={} project={} workItemId={} httpStatus={} message={}",
+                key.organization(), key.project(), key.workItemId(), status, commentFailureMessage(status));
         return Mono.just(AdoCommentResult.failure(commentFailureMessage(status)));
     }
 

@@ -5,8 +5,12 @@ import com.dentalwings.approvalbot.processing.ProcessWorkItemCommand;
 import com.dentalwings.approvalbot.processing.WorkItemProcessingResult;
 import com.dentalwings.approvalbot.processing.WorkItemProcessingService;
 import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class QueuedWorkItemProcessor {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(QueuedWorkItemProcessor.class);
 
     private final WorkItemQueue queue;
     private final Function<ProcessWorkItemCommand, WorkItemProcessingResult> delegate;
@@ -28,6 +32,17 @@ public class QueuedWorkItemProcessor {
     }
 
     public WorkItemProcessingResult process(QueuedWorkItemEvent event) {
-        return queue.process(event, queuedEvent -> delegate.apply(queuedEvent.command()));
+        var command = event.command();
+        LOGGER.debug("Processing queued work item event project={} workItemId={} revision={}",
+                command.workItemKey().project(),
+                command.workItemKey().workItemId(),
+                command.revision());
+        var result = queue.process(event, queuedEvent -> delegate.apply(queuedEvent.command()));
+        LOGGER.debug("Queued work item event completed project={} workItemId={} revision={} result={}",
+                command.workItemKey().project(),
+                command.workItemKey().workItemId(),
+                command.revision(),
+                result.result());
+        return result;
     }
 }
