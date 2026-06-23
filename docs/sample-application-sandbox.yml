@@ -2,6 +2,7 @@ ado:
   organization: sandbox-org
   personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
   http-client-enabled: false
+  dry-run: true
   projects:
     SandboxProject:
       enabled: true

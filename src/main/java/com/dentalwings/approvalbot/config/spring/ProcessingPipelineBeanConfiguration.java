@@ -1,6 +1,7 @@
 package com.dentalwings.approvalbot.config.spring;
 
 import com.dentalwings.approvalbot.ado.AdoClient;
+import com.dentalwings.approvalbot.ado.DryRunAdoClient;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
 import com.dentalwings.approvalbot.idempotency.IdempotentWorkItemProcessor;
 import com.dentalwings.approvalbot.idempotency.ProcessedEventStore;
@@ -17,15 +18,26 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Configuration
 public class ProcessingPipelineBeanConfiguration {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProcessingPipelineBeanConfiguration.class);
 
     @Bean
     @ConditionalOnProperty(name = "ado.http-client-enabled", havingValue = "true")
     @ConditionalOnMissingBean
     public AdoClient azureDevOpsHttpClient(ApprovalBotProperties properties) {
-        return AzureDevOpsHttpClient.fromProperties(properties.getAdo());
+        var httpClient = AzureDevOpsHttpClient.fromProperties(properties.getAdo());
+        if (!properties.getAdo().isDryRun()) {
+            LOGGER.info("Azure DevOps HTTP client enabled with dry-run disabled; write operations will be sent to ADO.");
+            return httpClient;
+        }
+
+        LOGGER.info("Azure DevOps dry-run mode is enabled; write operations will be suppressed.");
+        return new DryRunAdoClient(httpClient);
     }
 
     @Bean
