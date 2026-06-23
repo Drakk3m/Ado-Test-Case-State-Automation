@@ -9,8 +9,12 @@ import com.dentalwings.approvalbot.webhook.EventClassificationStatus;
 import com.dentalwings.approvalbot.webhook.EventClassifier;
 import java.time.Clock;
 import java.time.Instant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WebhookEventProcessingPipeline {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(WebhookEventProcessingPipeline.class);
 
     private final EventClassifier eventClassifier;
     private final QueuedWorkItemProcessor queuedWorkItemProcessor;
@@ -35,6 +39,13 @@ public class WebhookEventProcessingPipeline {
 
     public WebhookProcessingResult process(AdoWebhookEvent event, ProjectApprovalConfig projectConfig) {
         var classification = eventClassifier.classify(event, projectConfig);
+        var resource = event == null ? null : event.resource();
+        LOGGER.info("Webhook event classified status={} project={} workItemId={} revision={} reason={}",
+                classification.status(),
+                resource == null ? null : resource.project(),
+                resource == null ? null : resource.workItemId(),
+                resource == null ? null : resource.revision(),
+                classification.reason());
         if (classification.status() == EventClassificationStatus.FAILED_MALFORMED_EVENT) {
             return WebhookProcessingResult.malformed(classification.reason(), classification);
         }
@@ -44,7 +55,17 @@ public class WebhookEventProcessingPipeline {
 
         var command = ProcessWorkItemCommand.from(classification, projectConfig);
         var queuedEvent = QueuedWorkItemEvent.from(command, Instant.now(clock));
+        LOGGER.debug("Submitting work item event to queue project={} workItemId={} revision={}",
+                command.workItemKey().project(),
+                command.workItemKey().workItemId(),
+                command.revision());
         var result = queuedWorkItemProcessor.process(queuedEvent);
+        LOGGER.info("Webhook event processing result project={} workItemId={} revision={} result={} reason={}",
+                command.workItemKey().project(),
+                command.workItemKey().workItemId(),
+                command.revision(),
+                result.result(),
+                result.reason());
         return WebhookProcessingResult.fromWorkItemResult(result, classification);
     }
 }

@@ -187,6 +187,27 @@ Run these with sandbox Test Cases only:
 * Do not include production projects in enabled config.
 * Do not commit real secrets, real PAT values, private URLs, or credentials.
 
+## What To Look For In Logs During Sandbox Validation
+
+Logs are intended to make sandbox validation debuggable without exposing sensitive content. Look for:
+
+* Webhook classification result, such as processable, skipped, or malformed.
+* Skip or malformed reason.
+* Project, Work Item id, and revision.
+* Idempotency duplicate detection for repeated webhook revisions.
+* ADO operation type, such as fetch, revision fetch, PATCH, or comment creation.
+* PATCH result, including retryable versus non-retryable failure mapping.
+* Comment result after a successful PATCH.
+* `COMPLETED_WITH_WARNING` when PATCH succeeds but comment creation fails.
+
+The logs should not contain:
+
+* PAT values.
+* `Authorization` headers.
+* Full webhook payloads.
+* Full comment text.
+* Full raw field values.
+
 ## Troubleshooting
 
 Startup fails due to missing PAT:
