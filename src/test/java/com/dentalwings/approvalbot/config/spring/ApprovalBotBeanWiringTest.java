@@ -3,6 +3,7 @@ package com.dentalwings.approvalbot.config.spring;
 import com.dentalwings.approvalbot.ApprovalBotApplication;
 import com.dentalwings.approvalbot.ado.AdoClient;
 import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
+import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
 import com.dentalwings.approvalbot.idempotency.IdempotentWorkItemProcessor;
 import com.dentalwings.approvalbot.idempotency.InMemoryProcessedEventStore;
 import com.dentalwings.approvalbot.idempotency.ProcessedEventStore;
@@ -136,6 +137,14 @@ class ApprovalBotBeanWiringTest {
                             .isInstanceOf(UnsupportedOperationException.class)
                             .hasMessage("Real Azure DevOps client is not implemented yet.");
                 });
+    }
+
+    @Test
+    void azureDevOpsHttpClientIsUsedWhenEnabled() {
+        contextRunner("in-memory", null)
+                .withPropertyValues("ado.http-client-enabled=true")
+                .run(context -> assertThat(context.getBean(AdoClient.class))
+                        .isInstanceOf(AzureDevOpsHttpClient.class));
     }
 
     @Test
