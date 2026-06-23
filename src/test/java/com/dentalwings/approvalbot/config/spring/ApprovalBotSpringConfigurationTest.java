@@ -45,7 +45,8 @@ class ApprovalBotSpringConfigurationTest {
                         "ado.projects.ProjectA.fields.reversible-business-fields[0]=System.Title",
                         "ado.projects.ProjectA.approvals.sme-users[0]=ana.perez@company.com",
                         "ado.projects.ProjectA.approvals.sqa-users[0]=carlos.gomez@company.com",
-                        "bot.identity-email=ado-approval-bot@company.com"
+                        "bot.identity-email=ado-approval-bot@company.com",
+                        "idempotency.type=in-memory"
                 )
                 .run(context -> {
                     assertThat(context).hasSingleBean(ApprovalBotProperties.class);

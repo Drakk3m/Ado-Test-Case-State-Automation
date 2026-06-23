@@ -1,5 +1,7 @@
 package com.dentalwings.approvalbot.webhook;
 
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 public record AdoWebhookResource(
@@ -13,6 +15,6 @@ public record AdoWebhookResource(
 ) {
 
     public AdoWebhookResource {
-        changedFieldNames = changedFieldNames == null ? Set.of() : Set.copyOf(changedFieldNames);
+        changedFieldNames = changedFieldNames == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(changedFieldNames));
     }
 }
