@@ -1,6 +1,7 @@
 package com.dentalwings.approvalbot.config.spring;
 
 import com.dentalwings.approvalbot.ado.AdoClient;
+import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
 import com.dentalwings.approvalbot.idempotency.IdempotentWorkItemProcessor;
 import com.dentalwings.approvalbot.idempotency.ProcessedEventStore;
 import com.dentalwings.approvalbot.processing.WorkItemProcessingService;
@@ -13,6 +14,7 @@ import com.dentalwings.approvalbot.workflow.WorkflowEngine;
 import com.dentalwings.approvalbot.workflow.comment.CommentBuilder;
 import com.dentalwings.approvalbot.workflow.patch.PatchBuilder;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -20,8 +22,15 @@ import org.springframework.context.annotation.Configuration;
 public class ProcessingPipelineBeanConfiguration {
 
     @Bean
+    @ConditionalOnProperty(name = "ado.http-client-enabled", havingValue = "true")
     @ConditionalOnMissingBean
-    public AdoClient adoClient() {
+    public AdoClient azureDevOpsHttpClient(ApprovalBotProperties properties) {
+        return AzureDevOpsHttpClient.fromProperties(properties.getAdo());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public AdoClient unsupportedAdoClient() {
         return new UnsupportedAdoClient();
     }
 

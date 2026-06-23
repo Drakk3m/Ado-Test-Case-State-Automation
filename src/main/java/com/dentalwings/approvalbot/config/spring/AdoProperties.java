@@ -7,6 +7,7 @@ public class AdoProperties {
 
     private String organization;
     private String personalAccessToken;
+    private boolean httpClientEnabled;
     private Map<String, ProjectApprovalProperties> projects = new LinkedHashMap<>();
 
     public String getOrganization() {
@@ -23,6 +24,14 @@ public class AdoProperties {
 
     public void setPersonalAccessToken(String personalAccessToken) {
         this.personalAccessToken = personalAccessToken;
+    }
+
+    public boolean isHttpClientEnabled() {
+        return httpClientEnabled;
+    }
+
+    public void setHttpClientEnabled(boolean httpClientEnabled) {
+        this.httpClientEnabled = httpClientEnabled;
     }
 
     public Map<String, ProjectApprovalProperties> getProjects() {
