@@ -1,0 +1,35 @@
+ado:
+  organization: sandbox-org
+  personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
+  http-client-enabled: false
+  projects:
+    SandboxProject:
+      enabled: true
+      supported-work-item-types:
+        - Test Case
+      fields:
+        approved-by-sme: Custom.ApprovedBySME
+        approved-by-sqa: Custom.ApprovedBySQA
+        reversible-business-fields:
+          - System.Title
+          - System.Description
+          - Microsoft.VSTS.TCM.Steps
+      approvals:
+        sme-users:
+          - sme.user@example.test
+        sqa-users:
+          - sqa.user@example.test
+
+bot:
+  identity-email: approval-bot@example.test
+
+retry:
+  max-attempts: 3
+  default-backoff-seconds: 30
+  respect-retry-after: true
+
+idempotency:
+  type: sqlite
+  sqlite-path: ./data/sandbox-approval-bot.sqlite
+  ttl-hours: 24
+  max-records: 10000
