@@ -9,7 +9,11 @@ import java.util.Base64;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.http.client.reactive.MockClientHttpRequest;
+import org.springframework.web.reactive.function.BodyInserter;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.ExchangeFunction;
@@ -34,6 +38,13 @@ class AzureDevOpsHttpClientTest {
         var url = new AzureDevOpsUrlBuilder().workItemRevisionUrl(KEY, 27);
 
         assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workItems/123/revisions/27?api-version=7.1");
+    }
+
+    @Test
+    void urlBuilderCreatesCorrectPatchUrl() {
+        var url = new AzureDevOpsUrlBuilder().workItemPatchUrl(KEY);
+
+        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workitems/123?api-version=7.1");
     }
 
     @Test
@@ -169,12 +180,209 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
-    void patchWorkItemThrowsUnsupportedOperation() {
-        var client = clientReturning(workItemJson());
+    void patchRequestUsesPatchMethod() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
 
-        assertThatThrownBy(() -> client.patchWorkItem(KEY, List.of(new PatchOperation("test", "/rev", 1))))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Azure DevOps PATCH is not implemented yet.");
+        client.patchWorkItem(KEY, validPatchOperations());
+
+        assertThat(exchange.requests.getFirst().method()).isEqualTo(HttpMethod.PATCH);
+    }
+
+    @Test
+    void patchRequestUsesJsonPatchContentType() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        client.patchWorkItem(KEY, validPatchOperations());
+
+        assertThat(exchange.requests.getFirst().headers().getContentType().toString())
+                .isEqualTo("application/json-patch+json");
+    }
+
+    @Test
+    void patchRequestUsesBasicAuth() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        client.patchWorkItem(KEY, validPatchOperations());
+
+        assertThat(exchange.requests.getFirst().headers().getFirst(HttpHeaders.AUTHORIZATION))
+                .isEqualTo(new AzureDevOpsAuth().basicAuthHeader("secret-pat"));
+        assertThat(exchange.requests.getFirst().url().toString()).doesNotContain("secret-pat");
+    }
+
+    @Test
+    void patchRequestBodyPreservesOperationOrderAndRevisionTestFirst() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        client.patchWorkItem(KEY, validPatchOperations());
+
+        assertThat(exchange.requestBodies.getFirst())
+                .containsSubsequence(
+                        "\"op\":\"test\"",
+                        "\"path\":\"/rev\"",
+                        "\"value\":27",
+                        "\"op\":\"replace\"",
+                        "\"path\":\"/fields/System.State\"",
+                        "\"value\":\"In Review\"",
+                        "\"op\":\"replace\"",
+                        "\"path\":\"/fields/Custom.ApprovedBySME\"",
+                        "\"value\":null"
+                );
+    }
+
+    @Test
+    void patchRequestBodyPreservesReplaceWithNullValue() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        client.patchWorkItem(KEY, validPatchOperations());
+
+        assertThat(exchange.requestBodies.getFirst())
+                .contains("{\"op\":\"replace\",\"path\":\"/fields/Custom.ApprovedBySME\",\"value\":null}");
+    }
+
+    @Test
+    void removePatchOperationIsRejectedAndNotSent() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        var result = client.patchWorkItem(KEY, List.of(
+                PatchOperation.testRevision(27),
+                new PatchOperation("remove", "/fields/System.State", null)
+        ));
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isFalse();
+        assertThat(result.message()).isEqualTo("Azure DevOps PATCH remove operations are not supported.");
+        assertThat(exchange.requests).isEmpty();
+    }
+
+    @Test
+    void emptyPatchOperationListIsRejected() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        var result = client.patchWorkItem(KEY, List.of());
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isFalse();
+        assertThat(result.message()).isEqualTo("Azure DevOps PATCH requires at least one operation.");
+        assertThat(exchange.requests).isEmpty();
+    }
+
+    @Test
+    void missingRevisionTestFirstOperationIsRejected() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        var result = client.patchWorkItem(KEY, List.of(PatchOperation.replaceField("System.State", "In Review")));
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isFalse();
+        assertThat(result.message()).isEqualTo("Azure DevOps PATCH must start with a /rev test operation.");
+        assertThat(exchange.requests).isEmpty();
+    }
+
+    @Test
+    void blankPatchOperationPathIsRejected() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        var result = client.patchWorkItem(KEY, List.of(PatchOperation.testRevision(27), new PatchOperation("replace", " ", "x")));
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isFalse();
+        assertThat(result.message()).isEqualTo("Azure DevOps PATCH operation path must not be blank.");
+        assertThat(exchange.requests).isEmpty();
+    }
+
+    @Test
+    void okCreatedAndNoContentPatchResponsesMapToSuccess() {
+        assertThat(patchResultFor(HttpStatus.OK).successful()).isTrue();
+        assertThat(patchResultFor(HttpStatus.CREATED).successful()).isTrue();
+        assertThat(patchResultFor(HttpStatus.NO_CONTENT).successful()).isTrue();
+    }
+
+    @Test
+    void successfulPatchResponseUsesReturnedRevisionWhenPresent() {
+        var result = patchResultFor(HttpStatus.OK);
+
+        assertThat(result.revision()).isEqualTo(27);
+    }
+
+    @Test
+    void badRequestPatchResponseMapsToNonRetryableFailure() {
+        var result = patchResultFor(HttpStatus.BAD_REQUEST);
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isFalse();
+        assertThat(result.message()).isEqualTo("Azure DevOps PATCH request failed with status 400.");
+    }
+
+    @Test
+    void authorizationPatchResponsesMapToNonRetryableFailure() {
+        assertThat(patchResultFor(HttpStatus.UNAUTHORIZED).retryable()).isFalse();
+        assertThat(patchResultFor(HttpStatus.FORBIDDEN).retryable()).isFalse();
+    }
+
+    @Test
+    void notFoundPatchResponseMapsToNonRetryableFailure() {
+        var result = patchResultFor(HttpStatus.NOT_FOUND);
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isFalse();
+    }
+
+    @Test
+    void conflictPatchResponsesMapToRetryableFailure() {
+        assertThat(patchResultFor(HttpStatus.CONFLICT).retryable()).isTrue();
+        assertThat(patchResultFor(HttpStatus.PRECONDITION_FAILED).retryable()).isTrue();
+    }
+
+    @Test
+    void rateLimitedPatchResponseMapsToRetryableFailure() {
+        var result = patchResultFor(HttpStatus.TOO_MANY_REQUESTS);
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isTrue();
+    }
+
+    @Test
+    void serverErrorPatchResponsesMapToRetryableFailure() {
+        assertThat(patchResultFor(HttpStatus.INTERNAL_SERVER_ERROR).retryable()).isTrue();
+        assertThat(patchResultFor(HttpStatus.BAD_GATEWAY).retryable()).isTrue();
+        assertThat(patchResultFor(HttpStatus.SERVICE_UNAVAILABLE).retryable()).isTrue();
+        assertThat(patchResultFor(HttpStatus.GATEWAY_TIMEOUT).retryable()).isTrue();
+    }
+
+    @Test
+    void transportPatchErrorMapsToRetryableFailure() {
+        var client = AzureDevOpsHttpClient.forExchangeFunction(
+                request -> Mono.error(new RuntimeException("timeout secret-pat Custom.ApprovedBySME")),
+                "secret-pat"
+        );
+
+        var result = client.patchWorkItem(KEY, validPatchOperations());
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isTrue();
+        assertThat(result.message())
+                .isEqualTo("Azure DevOps PATCH request failed with retryable transport error.")
+                .doesNotContain("secret-pat")
+                .doesNotContain("Custom.ApprovedBySME");
+    }
+
+    @Test
+    void retryablePatchFailureMessageDoesNotExposePatOrPayload() {
+        var result = patchResultFor(HttpStatus.CONFLICT);
+
+        assertThat(result.message())
+                .doesNotContain("secret-pat")
+                .doesNotContain("Custom.ApprovedBySME")
+                .doesNotContain("In Review");
     }
 
     @Test
@@ -205,6 +413,20 @@ class AzureDevOpsHttpClientTest {
 
     private AzureDevOpsHttpClient clientReturning(String body, HttpStatus status) {
         return AzureDevOpsHttpClient.forExchangeFunction(new RecordingExchangeFunction(body, status), "secret-pat");
+    }
+
+    private List<PatchOperation> validPatchOperations() {
+        return List.of(
+                PatchOperation.testRevision(27),
+                PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField("Custom.ApprovedBySME", null)
+        );
+    }
+
+    private com.dentalwings.approvalbot.ado.AdoPatchResult patchResultFor(HttpStatus status) {
+        var client = clientReturning(workItemJson(), status);
+
+        return client.patchWorkItem(KEY, validPatchOperations());
     }
 
     private String workItemJson() {
@@ -258,6 +480,7 @@ class AzureDevOpsHttpClientTest {
         private final String body;
         private final HttpStatus status;
         private final ArrayList<ClientRequest> requests = new ArrayList<>();
+        private final ArrayList<String> requestBodies = new ArrayList<>();
 
         private RecordingExchangeFunction(String body, HttpStatus status) {
             this.body = body;
@@ -267,10 +490,36 @@ class AzureDevOpsHttpClientTest {
         @Override
         public Mono<ClientResponse> exchange(ClientRequest request) {
             requests.add(request);
+            requestBodies.add(captureBody(request));
             return Mono.just(ClientResponse.create(status)
                     .header(HttpHeaders.CONTENT_TYPE, "application/json")
                     .body(body)
                     .build());
+        }
+
+        private String captureBody(ClientRequest request) {
+            var mockRequest = new MockClientHttpRequest(request.method(), request.url());
+            mockRequest.getHeaders().putAll(request.headers());
+            request.body().insert(mockRequest, new BodyInserterContext()).block();
+            return mockRequest.getBodyAsString().block();
+        }
+    }
+
+    private static class BodyInserterContext implements BodyInserter.Context {
+
+        @Override
+        public List<org.springframework.http.codec.HttpMessageWriter<?>> messageWriters() {
+            return ExchangeStrategies.withDefaults().messageWriters();
+        }
+
+        @Override
+        public java.util.Optional<org.springframework.http.server.reactive.ServerHttpRequest> serverRequest() {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Map<String, Object> hints() {
+            return java.util.Map.of();
         }
     }
 }
