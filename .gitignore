@@ -3,3 +3,9 @@ target/
 *.log
 .idea/
 *.iml
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*-journal
+data/*-wal
+data/*-shm
