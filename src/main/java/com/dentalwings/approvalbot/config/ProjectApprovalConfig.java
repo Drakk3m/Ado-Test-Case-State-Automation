@@ -10,6 +10,7 @@ public record ProjectApprovalConfig(
         String approvedBySqaField,
         Set<String> reversibleBusinessFields,
         Set<String> smeUsers,
-        Set<String> sqaUsers
+        Set<String> sqaUsers,
+        String botIdentityEmail
 ) {
 }
