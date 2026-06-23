@@ -162,9 +162,177 @@ class WorkflowEngineTest {
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(
                 PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, null),
                 PatchOperation.replaceField(SQA_FIELD, null)
         );
+    }
+
+    @Test
+    void manualApprovalFieldEditByNonApproverIsRestoredAndNotTreatedAsContent() {
+        var previous = fields(SME_FIELD, "Ana Perez <ana@example.com>");
+        var current = fields(SME_FIELD, "Nora User <nora@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
+    }
+
+    @Test
+    void manualApprovalFieldEditByApproverWithoutContentChangeCountsAsReview() {
+        var current = fields(SME_FIELD, "Manual Value <other@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
+    }
+
+    @Test
+    void approverChangingContentAndApprovalFieldsClearsPreviousApprovalsAndSetsCurrentUser() {
+        var previous = fields(TITLE_FIELD, "Old", SME_FIELD, "Old SME <old-sme@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
+        var current = fields(TITLE_FIELD, "New", SME_FIELD, "Manual SME <manual@example.com>", SQA_FIELD, "Manual SQA <manual@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), previous, current));
+
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField(SME_FIELD, null),
+                PatchOperation.replaceField(SQA_FIELD, null),
+                PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>")
+        );
+    }
+
+    @Test
+    void nonApproverChangingContentAndApprovalFieldsRevertsContentAndRestoresApprovals() {
+        var previous = fields(TITLE_FIELD, "Old", SME_FIELD, "Ana Perez <ana@example.com>");
+        var current = fields(TITLE_FIELD, "New", SME_FIELD, "Nora User <nora@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
+
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField(TITLE_FIELD, "Old"),
+                PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>")
+        );
+    }
+
+    @Test
+    void dualRoleUserWithNoApprovalsIsRecordedAsSmeFirst() {
+        var config = config(true, Set.of("dual@example.com"), Set.of("dual@example.com"));
+
+        var decision = workflowEngine.decide(input("In Review", config, dualRole(), Map.of(), Map.of()));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "Dual Role <dual@example.com>"));
+    }
+
+    @Test
+    void dualRoleUserAlreadyInSmeMustNotFillSqaForSameVersion() {
+        var config = config(true, Set.of("dual@example.com"), Set.of("dual@example.com"));
+        var current = fields(SME_FIELD, "Dual Role <dual@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config, dualRole(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
+        assertThat(decision.patchRequired()).isFalse();
+    }
+
+    @Test
+    void existingValidApprovalsFromDifferentUsersMakeApprovedValid() {
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
+        assertThat(decision.patchRequired()).isFalse();
+    }
+
+    @Test
+    void approvalValueWithoutExtractableEmailIsRejected() {
+        var current = fields(SME_FIELD, "Ana Perez", SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SME_FIELD, null)
+        );
+    }
+
+    @Test
+    void approvalEmailOutsideRoleListIsRejected() {
+        var current = fields(SME_FIELD, "Other <other@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SME_FIELD, null)
+        );
+    }
+
+    @Test
+    void botGeneratedEventIsSkippedWhenChangedByEmailMatchesConfiguredBotEmail() {
+        var previous = fields(TITLE_FIELD, "Old");
+        var current = fields(TITLE_FIELD, "New");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), new Identity("Approval Bot", "bot@example.com"), previous, current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
+        assertThat(decision.patchRequired()).isFalse();
+    }
+
+    @Test
+    void botIdentityDoesNotMatchByDisplayNameWhenEmailIsMissing() {
+        var previous = fields(TITLE_FIELD, "Old");
+        var current = fields(TITLE_FIELD, "New");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), new Identity("Approval Bot", null), previous, current));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "Old"));
+    }
+
+    @Test
+    void previousRawValueWithLeadingAndTrailingSpacesIsPreservedWhenReverting() {
+        var previous = fields(TITLE_FIELD, "  Old title  ");
+        var current = fields(TITLE_FIELD, "New title");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "  Old title  "));
+    }
+
+    @Test
+    void missingPreviousFieldAndCurrentNonEmptyFieldRevertsToNull() {
+        var current = fields(TITLE_FIELD, "New title");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), Map.of(), current));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, null));
+    }
+
+    @Test
+    void previousNonEmptyFieldAndCurrentEmptyFieldIsDetectedAsRealChange() {
+        var previous = fields(TITLE_FIELD, "Old title");
+        var current = fields(TITLE_FIELD, "");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "Old title"));
+    }
+
+    @Test
+    void systemStateChangeAloneIsNotTreatedAsContentChange() {
+        var previous = fields("System.State", "In Review");
+        var current = fields("System.State", "Approved");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
+    }
+
+    @Test
+    void approvalFieldChangeAloneIsNotTreatedAsContentChange() {
+        var previous = fields(SME_FIELD, "Ana Perez <ana@example.com>");
+        var current = fields(SME_FIELD, "Nora User <nora@example.com>");
+
+        assertThat(new ChangeAnalyzer(new ValueComparator()).changedReversibleFields(previous, current, config(true))).isEmpty();
     }
 
     @Test
@@ -213,7 +381,8 @@ class WorkflowEngineTest {
                 SQA_FIELD,
                 Set.of(TITLE_FIELD, DESCRIPTION_FIELD),
                 smeUsers,
-                sqaUsers
+                sqaUsers,
+                "bot@example.com"
         );
     }
 
@@ -227,6 +396,10 @@ class WorkflowEngineTest {
 
     private Identity nonApprover() {
         return new Identity("Nora User", "nora@example.com");
+    }
+
+    private Identity dualRole() {
+        return new Identity("Dual Role", "dual@example.com");
     }
 
     private Map<String, Object> fields(Object... entries) {
