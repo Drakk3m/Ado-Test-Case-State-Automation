@@ -19,7 +19,6 @@ import reactor.core.publisher.Mono;
 
 public class AzureDevOpsHttpClient implements AdoClient {
 
-    private static final String COMMENTS_UNSUPPORTED = "Azure DevOps comments API is not implemented yet.";
     private static final MediaType JSON_PATCH = MediaType.parseMediaType("application/json-patch+json");
 
     private final WebClient webClient;
@@ -89,7 +88,19 @@ public class AzureDevOpsHttpClient implements AdoClient {
 
     @Override
     public AdoCommentResult createWorkItemComment(AdoWorkItemKey key, String commentText) {
-        throw new UnsupportedOperationException(COMMENTS_UNSUPPORTED);
+        if (commentText == null || commentText.isBlank()) {
+            return AdoCommentResult.failure("Azure DevOps comment text must not be blank.");
+        }
+
+        return webClient.post()
+                .uri(urlBuilder.workItemCommentsUrl(key))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new AdoRestCommentRequest(commentText))
+                .exchangeToMono(this::handleCommentResponse)
+                .onErrorResume(error -> Mono.just(AdoCommentResult.failure(
+                        "Azure DevOps comment request failed with transport error."
+                )))
+                .block();
     }
 
     private <T> T get(String url, Class<T> responseType) {
@@ -163,5 +174,19 @@ public class AzureDevOpsHttpClient implements AdoClient {
 
     private String patchFailureMessage(int status) {
         return "Azure DevOps PATCH request failed with status " + status + ".";
+    }
+
+    private Mono<AdoCommentResult> handleCommentResponse(ClientResponse response) {
+        var status = response.statusCode().value();
+        if (status == 200 || status == 201) {
+            return response.bodyToMono(AdoRestCommentResponse.class)
+                    .map(result -> AdoCommentResult.success(result.id()))
+                    .defaultIfEmpty(AdoCommentResult.success(null));
+        }
+        return Mono.just(AdoCommentResult.failure(commentFailureMessage(status)));
+    }
+
+    private String commentFailureMessage(int status) {
+        return "Azure DevOps comment request failed with status " + status + ".";
     }
 }

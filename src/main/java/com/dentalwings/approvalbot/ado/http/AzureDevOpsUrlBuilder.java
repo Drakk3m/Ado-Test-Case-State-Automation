@@ -36,6 +36,17 @@ public class AzureDevOpsUrlBuilder {
         return workItemUrl(key);
     }
 
+    public String workItemCommentsUrl(AdoWorkItemKey key) {
+        return "https://dev.azure.com/"
+                + encode(key.organization())
+                + "/"
+                + encode(key.project())
+                + "/_apis/wit/workItems/"
+                + key.workItemId()
+                + "/comments?api-version="
+                + API_VERSION;
+    }
+
     private String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }

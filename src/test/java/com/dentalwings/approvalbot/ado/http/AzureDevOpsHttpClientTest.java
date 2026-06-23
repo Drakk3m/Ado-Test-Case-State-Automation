@@ -48,6 +48,13 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
+    void urlBuilderCreatesCorrectCommentUrl() {
+        var url = new AzureDevOpsUrlBuilder().workItemCommentsUrl(KEY);
+
+        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workItems/123/comments?api-version=7.1");
+    }
+
+    @Test
     void basicAuthHeaderIsBuiltFromPatUsingBlankUsername() {
         var header = new AzureDevOpsAuth().basicAuthHeader("secret-pat");
 
@@ -386,12 +393,173 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
-    void createWorkItemCommentThrowsUnsupportedOperation() {
-        var client = clientReturning(workItemJson());
+    void commentRequestUsesPostMethod() {
+        var exchange = new RecordingExchangeFunction(commentJson("42"), HttpStatus.CREATED);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
 
-        assertThatThrownBy(() -> client.createWorkItemComment(KEY, "comment"))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessage("Azure DevOps comments API is not implemented yet.");
+        client.createWorkItemComment(KEY, "comment");
+
+        assertThat(exchange.requests.getFirst().method()).isEqualTo(HttpMethod.POST);
+    }
+
+    @Test
+    void commentRequestUsesJsonContentType() {
+        var exchange = new RecordingExchangeFunction(commentJson("42"), HttpStatus.CREATED);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        client.createWorkItemComment(KEY, "comment");
+
+        assertThat(exchange.requests.getFirst().headers().getContentType()).isEqualTo(org.springframework.http.MediaType.APPLICATION_JSON);
+    }
+
+    @Test
+    void commentRequestUsesBasicAuth() {
+        var exchange = new RecordingExchangeFunction(commentJson("42"), HttpStatus.CREATED);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        client.createWorkItemComment(KEY, "comment");
+
+        assertThat(exchange.requests.getFirst().headers().getFirst(HttpHeaders.AUTHORIZATION))
+                .isEqualTo(new AzureDevOpsAuth().basicAuthHeader("secret-pat"));
+        assertThat(exchange.requests.getFirst().url().toString()).doesNotContain("secret-pat");
+    }
+
+    @Test
+    void commentRequestBodyUsesCommentsApiTextPayload() {
+        var exchange = new RecordingExchangeFunction(commentJson("42"), HttpStatus.CREATED);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        client.createWorkItemComment(KEY, "comment body");
+
+        assertThat(exchange.requestBodies.getFirst()).isEqualTo("{\"text\":\"comment body\"}");
+    }
+
+    @Test
+    void commentRequestBodyPreservesMultilineTextExactly() {
+        var exchange = new RecordingExchangeFunction(commentJson("42"), HttpStatus.CREATED);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+        var comment = "Line one\n\nLine two with /commands and [links](https://example.com)";
+
+        client.createWorkItemComment(KEY, comment);
+
+        assertThat(exchange.requestBodies.getFirst())
+                .isEqualTo("{\"text\":\"Line one\\n\\nLine two with /commands and [links](https://example.com)\"}");
+    }
+
+    @Test
+    void nullCommentTextIsRejectedBeforeSending() {
+        var exchange = new RecordingExchangeFunction(commentJson("42"), HttpStatus.CREATED);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        var result = client.createWorkItemComment(KEY, null);
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.message()).isEqualTo("Azure DevOps comment text must not be blank.");
+        assertThat(exchange.requests).isEmpty();
+    }
+
+    @Test
+    void blankCommentTextIsRejectedBeforeSending() {
+        var exchange = new RecordingExchangeFunction(commentJson("42"), HttpStatus.CREATED);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        var result = client.createWorkItemComment(KEY, " \n\t ");
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.message()).isEqualTo("Azure DevOps comment text must not be blank.");
+        assertThat(exchange.requests).isEmpty();
+    }
+
+    @Test
+    void commentRequestDoesNotUseJsonPatchOrSystemHistory() {
+        var exchange = new RecordingExchangeFunction(commentJson("42"), HttpStatus.CREATED);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+
+        client.createWorkItemComment(KEY, "comment");
+
+        assertThat(exchange.requests.getFirst().method()).isEqualTo(HttpMethod.POST);
+        assertThat(exchange.requests.getFirst().headers().getContentType()).isEqualTo(org.springframework.http.MediaType.APPLICATION_JSON);
+        assertThat(exchange.requests.getFirst().url().toString()).doesNotContain("System.History");
+        assertThat(exchange.requestBodies.getFirst())
+                .doesNotContain("\"op\"")
+                .doesNotContain("/fields/System.History")
+                .doesNotContain("System.History");
+    }
+
+    @Test
+    void okAndCreatedCommentResponsesMapToSuccess() {
+        assertThat(commentResultFor(HttpStatus.OK).successful()).isTrue();
+        assertThat(commentResultFor(HttpStatus.CREATED).successful()).isTrue();
+    }
+
+    @Test
+    void successfulCommentResponseUsesReturnedCommentId() {
+        var result = commentResultFor(HttpStatus.CREATED);
+
+        assertThat(result.commentId()).isEqualTo("42");
+    }
+
+    @Test
+    void badRequestCommentResponseMapsToFailure() {
+        var result = commentResultFor(HttpStatus.BAD_REQUEST);
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.message()).isEqualTo("Azure DevOps comment request failed with status 400.");
+    }
+
+    @Test
+    void authorizationCommentResponsesMapToFailure() {
+        assertThat(commentResultFor(HttpStatus.UNAUTHORIZED).successful()).isFalse();
+        assertThat(commentResultFor(HttpStatus.FORBIDDEN).successful()).isFalse();
+    }
+
+    @Test
+    void notFoundCommentResponseMapsToFailure() {
+        assertThat(commentResultFor(HttpStatus.NOT_FOUND).successful()).isFalse();
+    }
+
+    @Test
+    void conflictCommentResponsesMapToFailure() {
+        assertThat(commentResultFor(HttpStatus.CONFLICT).successful()).isFalse();
+        assertThat(commentResultFor(HttpStatus.PRECONDITION_FAILED).successful()).isFalse();
+    }
+
+    @Test
+    void rateLimitedCommentResponseMapsToFailure() {
+        assertThat(commentResultFor(HttpStatus.TOO_MANY_REQUESTS).successful()).isFalse();
+    }
+
+    @Test
+    void serverErrorCommentResponsesMapToFailure() {
+        assertThat(commentResultFor(HttpStatus.INTERNAL_SERVER_ERROR).successful()).isFalse();
+        assertThat(commentResultFor(HttpStatus.BAD_GATEWAY).successful()).isFalse();
+        assertThat(commentResultFor(HttpStatus.SERVICE_UNAVAILABLE).successful()).isFalse();
+        assertThat(commentResultFor(HttpStatus.GATEWAY_TIMEOUT).successful()).isFalse();
+    }
+
+    @Test
+    void transportCommentErrorMapsToFailureWithoutExposingPatOrText() {
+        var client = AzureDevOpsHttpClient.forExchangeFunction(
+                request -> Mono.error(new RuntimeException("timeout secret-pat private comment")),
+                "secret-pat"
+        );
+
+        var result = client.createWorkItemComment(KEY, "private comment");
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.message())
+                .isEqualTo("Azure DevOps comment request failed with transport error.")
+                .doesNotContain("secret-pat")
+                .doesNotContain("private comment");
+    }
+
+    @Test
+    void commentFailureMessageDoesNotExposePatOrText() {
+        var result = commentResultFor(HttpStatus.INTERNAL_SERVER_ERROR);
+
+        assertThat(result.message())
+                .doesNotContain("secret-pat")
+                .doesNotContain("comment body");
     }
 
     @Test
@@ -429,6 +597,12 @@ class AzureDevOpsHttpClientTest {
         return client.patchWorkItem(KEY, validPatchOperations());
     }
 
+    private com.dentalwings.approvalbot.ado.AdoCommentResult commentResultFor(HttpStatus status) {
+        var client = clientReturning(commentJson("42"), status);
+
+        return client.createWorkItemComment(KEY, "comment body");
+    }
+
     private String workItemJson() {
         return """
                 {
@@ -458,6 +632,14 @@ class AzureDevOpsHttpClientTest {
                   }
                 }
                 """.formatted(emailProperty);
+    }
+
+    private String commentJson(String id) {
+        return """
+                {
+                  "id": "%s"
+                }
+                """.formatted(id);
     }
 
     private void assertNoForbiddenTypeReferences(String forbiddenText, Class<?>... classes) {
