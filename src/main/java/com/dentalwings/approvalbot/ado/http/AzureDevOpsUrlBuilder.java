@@ -32,6 +32,10 @@ public class AzureDevOpsUrlBuilder {
                 + API_VERSION;
     }
 
+    public String workItemPatchUrl(AdoWorkItemKey key) {
+        return workItemUrl(key);
+    }
+
     private String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }

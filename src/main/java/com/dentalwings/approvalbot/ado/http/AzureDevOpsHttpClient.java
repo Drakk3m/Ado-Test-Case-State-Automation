@@ -10,6 +10,7 @@ import com.dentalwings.approvalbot.config.spring.AdoProperties;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.ExchangeFunction;
@@ -18,8 +19,8 @@ import reactor.core.publisher.Mono;
 
 public class AzureDevOpsHttpClient implements AdoClient {
 
-    private static final String PATCH_UNSUPPORTED = "Azure DevOps PATCH is not implemented yet.";
     private static final String COMMENTS_UNSUPPORTED = "Azure DevOps comments API is not implemented yet.";
+    private static final MediaType JSON_PATCH = MediaType.parseMediaType("application/json-patch+json");
 
     private final WebClient webClient;
     private final AzureDevOpsUrlBuilder urlBuilder;
@@ -70,7 +71,20 @@ public class AzureDevOpsHttpClient implements AdoClient {
 
     @Override
     public AdoPatchResult patchWorkItem(AdoWorkItemKey key, List<PatchOperation> patchOperations) {
-        throw new UnsupportedOperationException(PATCH_UNSUPPORTED);
+        var validationResult = validatePatchOperations(patchOperations);
+        if (validationResult != null) {
+            return validationResult;
+        }
+
+        return webClient.patch()
+                .uri(urlBuilder.workItemPatchUrl(key))
+                .contentType(JSON_PATCH)
+                .bodyValue(patchOperations)
+                .exchangeToMono(this::handlePatchResponse)
+                .onErrorResume(error -> Mono.just(AdoPatchResult.retryableFailure(
+                        "Azure DevOps PATCH request failed with retryable transport error."
+                )))
+                .block();
     }
 
     @Override
@@ -105,5 +119,49 @@ public class AzureDevOpsHttpClient implements AdoClient {
             return new AdoClientRetryableException("Azure DevOps read request failed with retryable status " + status + ".", cause);
         }
         return new AdoClientNonRetryableException("Azure DevOps read request failed with status " + status + ".", cause);
+    }
+
+    private AdoPatchResult validatePatchOperations(List<PatchOperation> patchOperations) {
+        if (patchOperations == null || patchOperations.isEmpty()) {
+            return AdoPatchResult.nonRetryableFailure("Azure DevOps PATCH requires at least one operation.");
+        }
+        for (var operation : patchOperations) {
+            if (operation == null) {
+                return AdoPatchResult.nonRetryableFailure("Azure DevOps PATCH operation must not be null.");
+            }
+            if (operation.path() == null || operation.path().isBlank()) {
+                return AdoPatchResult.nonRetryableFailure("Azure DevOps PATCH operation path must not be blank.");
+            }
+            if ("remove".equalsIgnoreCase(operation.op())) {
+                return AdoPatchResult.nonRetryableFailure("Azure DevOps PATCH remove operations are not supported.");
+            }
+        }
+
+        var first = patchOperations.getFirst();
+        if (!"test".equalsIgnoreCase(first.op()) || !"/rev".equals(first.path())) {
+            return AdoPatchResult.nonRetryableFailure("Azure DevOps PATCH must start with a /rev test operation.");
+        }
+
+        return null;
+    }
+
+    private Mono<AdoPatchResult> handlePatchResponse(ClientResponse response) {
+        var status = response.statusCode().value();
+        if (status == 200 || status == 201) {
+            return response.bodyToMono(AdoRestWorkItemResponse.class)
+                    .map(result -> AdoPatchResult.success(result.rev()))
+                    .defaultIfEmpty(AdoPatchResult.success(-1));
+        }
+        if (status == 204) {
+            return Mono.just(AdoPatchResult.success(-1));
+        }
+        if (status == 409 || status == 412 || status == 429 || status >= 500) {
+            return Mono.just(AdoPatchResult.retryableFailure(patchFailureMessage(status)));
+        }
+        return Mono.just(AdoPatchResult.nonRetryableFailure(patchFailureMessage(status)));
+    }
+
+    private String patchFailureMessage(int status) {
+        return "Azure DevOps PATCH request failed with status " + status + ".";
     }
 }
