@@ -4,7 +4,7 @@ This project is sandbox validation ready. It is not production ready.
 
 Use this guide to run the service locally and validate it only against an Azure DevOps sandbox organization or non-production project. Do not enable the HTTP client against a production Azure DevOps project first.
 
-For the first real dry-run validation and the later controlled write-enabled sandbox test, follow the focused [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md). A concise checkbox version is available in [Sandbox Validation Checklist](sandbox-validation-checklist.md).
+For the first real dry-run validation, follow the focused [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md). For the first controlled `ado.dry-run=false` test, use [Azure DevOps Write Enabled Sandbox Validation](Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md). A concise checkbox version is available in [Sandbox Validation Checklist](sandbox-validation-checklist.md).
 
 ## Current Project Status
 
@@ -143,7 +143,7 @@ ado:
   dry-run: true
 ```
 
-Only set `ado.dry-run=false` after the dry-run logs match the expected behavior for your sandbox Test Cases.
+Only set `ado.dry-run=false` after the dry-run logs match the expected behavior for your sandbox Test Cases. Use the dedicated [Azure DevOps Write Enabled Sandbox Validation](Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md) playbook for that first write-enabled run.
 
 ## Local Run Commands
 
@@ -342,5 +342,6 @@ Before asking for review or running against sandbox:
 * Only a sandbox project is enabled.
 * `ado.http-client-enabled=false` by default unless explicitly testing sandbox HTTP.
 * `ado.dry-run=true` for the first HTTP sandbox validation run.
+* The write-enabled sandbox playbook was followed before setting `ado.dry-run=false`.
 * Manual scenarios were tested in sandbox.
 * Logs were reviewed for no PAT leakage.

@@ -216,6 +216,8 @@ No-go if:
 
 Proceed only after dry-run passes.
 
+Use the dedicated [Azure DevOps Write Enabled Sandbox Validation](Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md) playbook for the first controlled `ado.dry-run=false` run.
+
 Keep the same sandbox organization, project, users, service hook, and local database unless there is a deliberate reason to reset idempotency. Change only:
 
 ```yaml
