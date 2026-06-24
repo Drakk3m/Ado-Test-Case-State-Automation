@@ -58,7 +58,7 @@ public class ProjectApprovalConfigStartupValidator implements ApplicationRunner 
     }
 
     private void validateAdoBoundary(ArrayList<String> fatalMessages) {
-        if (isBlank(properties.getAdo().getPersonalAccessToken())) {
+        if (properties.getAdo().isHttpClientEnabled() && isBlank(properties.getAdo().getPersonalAccessToken())) {
             fatalMessages.add("ado.personal-access-token is missing.");
         }
         if (properties.getAdo().getProjects().isEmpty()) {
