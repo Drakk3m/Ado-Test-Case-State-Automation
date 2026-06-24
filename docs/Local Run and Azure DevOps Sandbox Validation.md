@@ -4,6 +4,8 @@ This project is sandbox validation ready. It is not production ready.
 
 Use this guide to run the service locally and validate it only against an Azure DevOps sandbox organization or non-production project. Do not enable the HTTP client against a production Azure DevOps project first.
 
+For the first real dry-run validation and the later controlled write-enabled sandbox test, follow the focused [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md). A concise checkbox version is available in [Sandbox Validation Checklist](sandbox-validation-checklist.md).
+
 ## Current Project Status
 
 V1 currently supports:
