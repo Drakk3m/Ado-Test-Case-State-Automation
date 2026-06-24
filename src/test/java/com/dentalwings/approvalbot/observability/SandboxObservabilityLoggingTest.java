@@ -64,9 +64,11 @@ class SandboxObservabilityLoggingTest {
                 .contains("operation=patchWorkItem")
                 .contains("httpStatus=409")
                 .contains("retryable=true")
+                .contains("operationPaths=[/rev, /fields/System.State]")
                 .doesNotContain("SECRET_PAT_VALUE")
                 .doesNotContain("Authorization")
-                .doesNotContain("Basic ");
+                .doesNotContain("Basic ")
+                .doesNotContain("In Review");
     }
 
     @Test
