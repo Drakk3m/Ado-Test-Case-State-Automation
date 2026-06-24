@@ -7,6 +7,8 @@ import com.dentalwings.approvalbot.ado.AdoPatchResult;
 import com.dentalwings.approvalbot.ado.AdoWorkItem;
 import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
 import com.dentalwings.approvalbot.ado.AdoWorkItemRevision;
+import com.dentalwings.approvalbot.ado.http.AdoClientNonRetryableException;
+import com.dentalwings.approvalbot.ado.http.AdoClientRetryableException;
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import com.dentalwings.approvalbot.domain.ProcessingResult;
@@ -177,6 +179,54 @@ class WorkItemProcessingServiceTest {
     }
 
     @Test
+    void fetchWorkItemRetryableFailureReturnsFailedRetryableWithoutPatchOrComment() {
+        var client = fakeClient(
+                workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review"))
+        );
+        client.fetchWorkItemException = new AdoClientRetryableException("Azure DevOps read request failed with retryable status 503.");
+
+        var result = service(client).process(command(30));
+
+        assertThat(result.result()).isEqualTo(ProcessingResult.FAILED_RETRYABLE);
+        assertThat(result.reason()).isEqualTo("ADO read failed with retryable error.");
+        assertThat(client.patchCalls).isZero();
+        assertThat(client.commentCalls).isZero();
+    }
+
+    @Test
+    void fetchWorkItemNonRetryableFailureReturnsFailedNonRetryableWithoutPatchOrComment() {
+        var client = fakeClient(
+                workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review"))
+        );
+        client.fetchWorkItemException = new AdoClientNonRetryableException("Azure DevOps resource was not found.");
+
+        var result = service(client).process(command(30));
+
+        assertThat(result.result()).isEqualTo(ProcessingResult.FAILED_NON_RETRYABLE);
+        assertThat(result.reason()).isEqualTo("ADO read failed with non-retryable error.");
+        assertThat(client.patchCalls).isZero();
+        assertThat(client.commentCalls).isZero();
+    }
+
+    @Test
+    void fetchWorkItemRevisionRetryableFailureReturnsFailedRetryableWithoutPatchOrComment() {
+        var client = fakeClient(
+                workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review"))
+        );
+        client.fetchRevisionException = new AdoClientRetryableException("Azure DevOps read request failed with retryable status 429.");
+
+        var result = service(client).process(command(30));
+
+        assertThat(result.result()).isEqualTo(ProcessingResult.FAILED_RETRYABLE);
+        assertThat(result.reason()).isEqualTo("ADO read failed with retryable error.");
+        assertThat(client.patchCalls).isZero();
+        assertThat(client.commentCalls).isZero();
+    }
+
+    @Test
     void processingUsesFetchedAdoDataNotWebhookChangedFields() {
         var client = fakeClient(
                 workItem(10, 30, "In Review", fields(TITLE_FIELD, "New title")),
@@ -293,6 +343,8 @@ class WorkItemProcessingServiceTest {
         private final AdoWorkItemRevision previousRevision;
         private AdoPatchResult patchResult = AdoPatchResult.success(31);
         private AdoCommentResult commentResult = AdoCommentResult.success("1");
+        private RuntimeException fetchWorkItemException;
+        private RuntimeException fetchRevisionException;
         private int patchCalls;
         private int commentCalls;
         private List<PatchOperation> patchOperations = List.of();
@@ -305,11 +357,17 @@ class WorkItemProcessingServiceTest {
 
         @Override
         public AdoWorkItem fetchWorkItem(AdoWorkItemKey key) {
+            if (fetchWorkItemException != null) {
+                throw fetchWorkItemException;
+            }
             return currentWorkItem;
         }
 
         @Override
         public AdoWorkItemRevision fetchWorkItemRevision(AdoWorkItemKey key, int revision) {
+            if (fetchRevisionException != null) {
+                throw fetchRevisionException;
+            }
             return previousRevision;
         }
 
