@@ -122,13 +122,16 @@ public class WorkflowEngine {
 
     private WorkflowDecision handleApproverSaveWithoutContentChange(WorkflowInput input, ProjectApprovalConfig config, IdentityClassification classification) {
         var projectedFields = new LinkedHashMap<>(input.currentFields());
+        var validationFields = new LinkedHashMap<>(input.currentFields());
         var operations = new ArrayList<PatchOperation>();
         for (PatchOperation operation : currentUserApprovalOperations(input.changedBy(), classification, config, projectedFields)) {
             operations.add(operation);
-            projectedFields.put(operation.path().replace("/fields/", ""), operation.value());
+            var field = operation.path().replace("/fields/", "");
+            projectedFields.put(field, operation.value());
+            validationFields.put(field, logicalApprovalValueForValidation(field, operation.value(), input.changedBy(), config));
         }
 
-        var validation = approvalValidator.validate(projectedFields, config);
+        var validation = approvalValidator.validate(validationFields, config);
         if (validation.fullyApprovedByDifferentUsers()) {
             operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_APPROVED));
             return WorkflowDecision.completed(operations, approvedComment(projectedFields, config), "Approvals are valid and complete.");
@@ -171,13 +174,23 @@ public class WorkflowEngine {
         return operations;
     }
 
+    private Object logicalApprovalValueForValidation(String field, Object value, Identity changedBy, ProjectApprovalConfig config) {
+        if (value == null) {
+            return null;
+        }
+        if (field.equals(config.approvedBySmeField()) || field.equals(config.approvedBySqaField())) {
+            return emailNormalizer.normalize(changedBy.email()).orElse(value.toString());
+        }
+        return value;
+    }
+
     private List<PatchOperation> currentUserApprovalOperations(
             Identity changedBy,
             IdentityClassification classification,
             ProjectApprovalConfig config,
             Map<String, Object> projectedFields
     ) {
-        var approvalValue = approvalValue(changedBy);
+        var approvalValue = approvalIdentityWriteValue(changedBy);
         if (approvalValue == null) {
             return List.of();
         }
@@ -221,9 +234,12 @@ public class WorkflowEngine {
         return botEmail.isPresent() && botEmail.equals(changedByEmail);
     }
 
-    private String approvalValue(Identity identity) {
+    private String approvalIdentityWriteValue(Identity identity) {
         if (identity == null) {
             return null;
+        }
+        if (identity.displayName() != null && !identity.displayName().isBlank()) {
+            return identity.displayName().trim();
         }
         return emailNormalizer.normalize(identity.email())
                 .orElse(null);
