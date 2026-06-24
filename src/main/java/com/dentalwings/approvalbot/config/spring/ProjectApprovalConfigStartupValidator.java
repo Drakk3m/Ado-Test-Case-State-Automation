@@ -58,8 +58,13 @@ public class ProjectApprovalConfigStartupValidator implements ApplicationRunner 
     }
 
     private void validateAdoBoundary(ArrayList<String> fatalMessages) {
-        if (properties.getAdo().isHttpClientEnabled() && isBlank(properties.getAdo().getPersonalAccessToken())) {
-            fatalMessages.add("ado.personal-access-token is missing.");
+        if (properties.getAdo().isHttpClientEnabled()) {
+            if (isBlank(properties.getAdo().getOrganization())) {
+                fatalMessages.add("ado.organization is missing while ado.http-client-enabled=true.");
+            }
+            if (isBlank(properties.getAdo().getPersonalAccessToken())) {
+                fatalMessages.add("ado.personal-access-token is missing.");
+            }
         }
         if (properties.getAdo().getProjects().isEmpty()) {
             fatalMessages.add("ado.projects must contain at least one project configuration.");

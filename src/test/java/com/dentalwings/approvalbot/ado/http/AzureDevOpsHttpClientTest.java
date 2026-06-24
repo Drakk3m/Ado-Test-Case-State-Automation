@@ -55,6 +55,49 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
+    void urlBuilderRejectsNullWorkItemKeyWithClearMessage() {
+        assertThatThrownBy(() -> new AzureDevOpsUrlBuilder().workItemUrl(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Azure DevOps Work Item key must not be null.");
+    }
+
+    @Test
+    void urlBuilderRejectsNullOrganizationWithClearMessage() {
+        var key = new AdoWorkItemKey(null, "Project A", 123);
+
+        assertThatThrownBy(() -> new AzureDevOpsUrlBuilder().workItemUrl(key))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Azure DevOps organization must not be blank.");
+    }
+
+    @Test
+    void urlBuilderRejectsBlankOrganizationWithClearMessage() {
+        var key = new AdoWorkItemKey(" ", "Project A", 123);
+
+        assertThatThrownBy(() -> new AzureDevOpsUrlBuilder().workItemUrl(key))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Azure DevOps organization must not be blank.");
+    }
+
+    @Test
+    void urlBuilderRejectsNullProjectWithClearMessage() {
+        var key = new AdoWorkItemKey("my org", null, 123);
+
+        assertThatThrownBy(() -> new AzureDevOpsUrlBuilder().workItemUrl(key))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Azure DevOps project must not be blank.");
+    }
+
+    @Test
+    void urlBuilderRejectsBlankProjectWithClearMessage() {
+        var key = new AdoWorkItemKey("my org", " ", 123);
+
+        assertThatThrownBy(() -> new AzureDevOpsUrlBuilder().workItemUrl(key))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Azure DevOps project must not be blank.");
+    }
+
+    @Test
     void basicAuthHeaderIsBuiltFromPatUsingBlankUsername() {
         var header = new AzureDevOpsAuth().basicAuthHeader("secret-pat");
 

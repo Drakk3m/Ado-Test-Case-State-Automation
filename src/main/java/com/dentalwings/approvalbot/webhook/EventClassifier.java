@@ -7,6 +7,11 @@ import com.dentalwings.approvalbot.identity.EmailNormalizer;
 public class EventClassifier {
 
     private final EmailNormalizer emailNormalizer = new EmailNormalizer();
+    private final String organization;
+
+    public EventClassifier(String organization) {
+        this.organization = organization;
+    }
 
     public EventClassification classify(AdoWebhookEvent event, ProjectApprovalConfig projectConfig) {
         if (event == null || event.resource() == null) {
@@ -40,7 +45,7 @@ public class EventClassifier {
         }
 
         return EventClassification.processable(
-                new AdoWorkItemKey(event.organization(), resource.project(), resource.workItemId()),
+                new AdoWorkItemKey(organization, resource.project(), resource.workItemId()),
                 resource.revision()
         );
     }
