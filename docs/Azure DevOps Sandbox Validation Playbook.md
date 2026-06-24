@@ -8,11 +8,12 @@ Use it to validate the current V1 behavior against a sandbox project before any 
 
 ```yaml
 ado:
+  organization: sandbox-org
   http-client-enabled: true
   dry-run: true
 ```
 
-Dry-run mode allows real webhook processing and real Azure DevOps reads. It suppresses Work Item PATCH requests and Work Item comment creation.
+`ado.organization` is required when the HTTP client is enabled. Dry-run mode allows real webhook processing and real Azure DevOps reads. It suppresses Work Item PATCH requests and Work Item comment creation.
 
 ## B. Pre-flight Safety Checklist
 
@@ -21,7 +22,10 @@ Complete every item before starting the app against Azure DevOps:
 * Working tree is clean.
 * `mvn test` passes locally.
 * Application config uses only a sandbox organization and sandbox project.
+* `ado.organization` is populated when `ado.http-client-enabled=true`.
 * No production project is enabled in `ado.projects`.
+* The `ado.projects` key matches the webhook project name exactly.
+* Project names with spaces, dots, or special characters use Spring Boot YAML bracket notation.
 * `ado.http-client-enabled=true`.
 * `ado.dry-run=true`.
 * PAT is sandbox-only.
@@ -58,6 +62,14 @@ Prepare a disposable sandbox project with:
 
 Use fake names in committed examples and real sandbox values only in local, uncommitted config.
 
+The `ado.projects` key must match the Azure DevOps project name exactly. Use Spring Boot YAML bracket notation for project names with spaces, dots, or special characters:
+
+```yaml
+projects:
+  "[Project Name With Spaces]":
+    enabled: true
+```
+
 ```yaml
 ado:
   organization: sandbox-org
@@ -65,7 +77,7 @@ ado:
   http-client-enabled: true
   dry-run: true
   projects:
-    SandboxProject:
+    "[Example Sandbox Project 2.0]":
       enabled: true
       supported-work-item-types:
         - Test Case
@@ -76,6 +88,7 @@ ado:
           - System.Title
           - System.Description
           - Microsoft.VSTS.TCM.Steps
+          - Microsoft.VSTS.TCM.LocalDataSource
       approvals:
         sme-users:
           - sme.user@example.test
@@ -163,6 +176,7 @@ Dry-run would create comment; suppressed ADO write ...
 | 10 | SME/SQA content change clears prior approvals and records current reviewer | Have an SME or SQA change a configured reversible business field after prior approvals exist. | Workflow decision indicates prior approvals are cleared and current reviewer is recorded. `would PATCH` appears with approval field paths and relevant reversible field handling. | No PATCH. No comment. |
 | 11 | Invalid Approved state would return to In Review | Create an Approved Test Case with missing or invalid SME/SQA approval values, then trigger an update. | Workflow decision indicates invalid Approved state. `would PATCH` appears with `/fields/System.State` and approval field correction paths. Comment suppression appears if a comment would be created. | No PATCH. No comment. |
 | 12 | Duplicate same project/workItemId/revision is idempotently skipped | Send the same webhook event twice for the same project, Work Item id, and revision. | First event processes normally. Second event logs duplicate detection with result `SKIPPED` and reason `Event was already processed.` | No extra PATCH. No extra comment. |
+| 13 | Retryable ADO read failure is controlled | Temporarily trigger a sandbox read failure such as ADO 429, 5xx, or transport outage. | Processing result is `FAILED_RETRYABLE`; the event can be retried if it was not marked processed. | No PATCH. No comment. |
 
 For every scenario, inspect:
 
@@ -173,6 +187,7 @@ For every scenario, inspect:
 * Dry-run `would create comment` only when a comment is expected.
 * Absence of PAT values, `Authorization` headers, full webhook payloads, full comment text, and raw field values.
 * Absence of webhook shared-secret values.
+* ADO paths show encoded spaces as `%20`, never double-encoded `%2520`.
 
 ## G. Dry-run Go/No-go Criteria
 
@@ -227,7 +242,11 @@ If anything unexpected happens:
 * Manually restore the sandbox Test Case if needed.
 * Do not retry blindly.
 
-## J. Known Limitations
+## J. Idempotency Notes
+
+The idempotency key is `project + workItemId + revision`. After an event reaches `COMPLETED` or `SKIPPED`, repeating the same project, Work Item id, and revision is skipped. To retest locally, create a new Azure DevOps revision or remove the local SQLite file configured by `idempotency.sqlite-path`.
+
+## K. Known Limitations
 
 V1 sandbox validation still has these limitations:
 
