@@ -9,6 +9,7 @@ public class AzureDevOpsUrlBuilder {
     public static final String API_VERSION = "7.1";
 
     public String workItemUrl(AdoWorkItemKey key) {
+        validateKey(key);
         return "https://dev.azure.com/"
                 + encode(key.organization())
                 + "/"
@@ -20,6 +21,7 @@ public class AzureDevOpsUrlBuilder {
     }
 
     public String workItemRevisionUrl(AdoWorkItemKey key, int revision) {
+        validateKey(key);
         return "https://dev.azure.com/"
                 + encode(key.organization())
                 + "/"
@@ -37,6 +39,7 @@ public class AzureDevOpsUrlBuilder {
     }
 
     public String workItemCommentsUrl(AdoWorkItemKey key) {
+        validateKey(key);
         return "https://dev.azure.com/"
                 + encode(key.organization())
                 + "/"
@@ -45,6 +48,20 @@ public class AzureDevOpsUrlBuilder {
                 + key.workItemId()
                 + "/comments?api-version="
                 + API_VERSION;
+    }
+
+    private void validateKey(AdoWorkItemKey key) {
+        if (key == null) {
+            throw new IllegalArgumentException("Azure DevOps Work Item key must not be null.");
+        }
+        requireComponent("organization", key.organization());
+        requireComponent("project", key.project());
+    }
+
+    private void requireComponent(String name, String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Azure DevOps " + name + " must not be blank.");
+        }
     }
 
     private String encode(String value) {

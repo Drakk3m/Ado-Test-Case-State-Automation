@@ -13,8 +13,8 @@ public class ApprovalBotBeanConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public EventClassifier eventClassifier() {
-        return new EventClassifier();
+    public EventClassifier eventClassifier(ApprovalBotProperties properties) {
+        return new EventClassifier(properties.getAdo().getOrganization());
     }
 
     @Bean

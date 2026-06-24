@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WebhookEventProcessingPipelineTest {
 
     private static final Instant NOW = Instant.parse("2026-06-23T00:00:00Z");
+    private static final String CONFIGURED_ORGANIZATION = "configured-org";
 
     @Test
     void processableEventIsSentThroughQueueProcessor() {
@@ -38,6 +39,23 @@ class WebhookEventProcessingPipelineTest {
         assertThat(queueProcessor.calls).isOne();
         assertThat(queueProcessor.lastEvent).isNotNull();
         assertThat(queueProcessor.lastEvent.revision()).isEqualTo(27);
+    }
+
+    @Test
+    void processableEventUsesConfiguredOrganizationWhenWebhookOrganizationIsMissing() {
+        var queueProcessor = new RecordingQueueProcessor(completed());
+        var event = new AdoWebhookEvent(
+                "workitem.updated",
+                null,
+                validEvent().resource(),
+                null
+        );
+
+        pipeline(queueProcessor).process(event, config(true, "Test Case"));
+
+        assertThat(queueProcessor.lastEvent.command().workItemKey()).isEqualTo(
+                new AdoWorkItemKey(CONFIGURED_ORGANIZATION, "ProjectA", 123L)
+        );
     }
 
     @Test
@@ -193,7 +211,7 @@ class WebhookEventProcessingPipelineTest {
     }
 
     private WebhookEventProcessingPipeline pipeline(QueuedWorkItemProcessor queueProcessor) {
-        return new WebhookEventProcessingPipeline(new EventClassifier(), queueProcessor, new FixedClock(NOW));
+        return new WebhookEventProcessingPipeline(new EventClassifier(CONFIGURED_ORGANIZATION), queueProcessor, new FixedClock(NOW));
     }
 
     private AdoWebhookEvent validEvent() {

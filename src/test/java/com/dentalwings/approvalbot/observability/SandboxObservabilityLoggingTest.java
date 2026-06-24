@@ -155,7 +155,7 @@ class SandboxObservabilityLoggingTest {
                 new InMemoryWorkItemQueue(),
                 command -> WorkItemProcessingResult.completed("done", null)
         );
-        return new WebhookEventProcessingPipeline(new EventClassifier(), queueProcessor);
+        return new WebhookEventProcessingPipeline(new EventClassifier("org"), queueProcessor);
     }
 
     private AdoWebhookEvent event(String project, String workItemType, String changedByEmail) {

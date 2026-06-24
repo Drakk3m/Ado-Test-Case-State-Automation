@@ -117,6 +117,27 @@ class ApprovalBotSpringConfigurationTest {
     }
 
     @Test
+    void missingAdoOrganizationFailsStartupValidationWhenHttpClientIsEnabled() {
+        var validator = startupValidator(bind(validYaml()
+                .replace("organization: my-org", "organization: \"\"")
+                .replace("http-client-enabled: false", "http-client-enabled: true")));
+
+        assertThatThrownBy(validator::validate)
+                .isInstanceOf(ApprovalBotConfigurationException.class)
+                .hasMessageContaining("ado.organization is missing while ado.http-client-enabled=true.");
+    }
+
+    @Test
+    void missingAdoOrganizationPassesStartupValidationWhenHttpClientIsDisabled() {
+        var validator = startupValidator(bind(validYaml()
+                .replace("organization: my-org", "organization: \"\"")));
+
+        var report = validator.validate();
+
+        assertThat(report.fatalMessages()).isEmpty();
+    }
+
+    @Test
     void missingWebhookSharedSecretFailsStartupValidationWhenEnabled() {
         var validator = startupValidator(bind(validYaml().replace("value: test-webhook-secret", "value: \"\"")));
 

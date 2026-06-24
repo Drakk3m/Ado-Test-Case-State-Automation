@@ -11,8 +11,9 @@ class EventClassifierTest {
 
     private static final String SME_FIELD = "Custom.ApprovedBySME";
     private static final String SQA_FIELD = "Custom.ApprovedBySQA";
+    private static final String CONFIGURED_ORGANIZATION = "configured-org";
 
-    private final EventClassifier classifier = new EventClassifier();
+    private final EventClassifier classifier = new EventClassifier(CONFIGURED_ORGANIZATION);
 
     @Test
     void enabledProjectSupportedTestCaseValidIdAndRevisionReturnsProcessable() {
@@ -20,11 +21,30 @@ class EventClassifierTest {
 
         assertThat(classification.status()).isEqualTo(EventClassificationStatus.PROCESSABLE);
         assertThat(classification.maybeWorkItemKey()).hasValueSatisfying(key -> {
-            assertThat(key.organization()).isEqualTo("org");
+            assertThat(key.organization()).isEqualTo(CONFIGURED_ORGANIZATION);
             assertThat(key.project()).isEqualTo("ProjectA");
             assertThat(key.workItemId()).isEqualTo(123L);
         });
         assertThat(classification.maybeRevision()).contains(27);
+    }
+
+    @Test
+    void processableEventUsesConfiguredOrganizationWhenWebhookOrganizationIsMissing() {
+        var event = new AdoWebhookEvent(
+                "workitem.updated",
+                null,
+                validEvent().resource(),
+                null
+        );
+
+        var classification = classifier.classify(event, config(true, "Test Case"));
+
+        assertThat(classification.status()).isEqualTo(EventClassificationStatus.PROCESSABLE);
+        assertThat(classification.maybeWorkItemKey()).hasValueSatisfying(key -> {
+            assertThat(key.organization()).isEqualTo(CONFIGURED_ORGANIZATION);
+            assertThat(key.project()).isEqualTo("ProjectA");
+            assertThat(key.workItemId()).isEqualTo(123L);
+        });
     }
 
     @Test
