@@ -58,6 +58,7 @@ Complete every item before enabling writes:
 * Local SQLite file/path is understood before testing idempotency.
 * Service hook points only to a local tunnel or sandbox-hosted service.
 * Service hook sends the configured shared-secret header, or the endpoint is otherwise protected for local sandbox validation.
+* Local manually submitted webhook tests use [Invoke-SandboxWebhook.ps1](../tools/Invoke-SandboxWebhook.ps1), not hand-written JSON.
 
 Recommended local write-enabled override:
 
@@ -120,7 +121,73 @@ Verify logs do not contain:
 * Raw field values.
 * Full comment text.
 
-## E. Manual Test Scenarios
+## E. Local Webhook Helper
+
+Use [Invoke-SandboxWebhook.ps1](../tools/Invoke-SandboxWebhook.ps1) to submit local webhook test payloads. The helper posts to `http://localhost:8080/api/ado/webhooks/work-item-updated`, sets `X-ADO-Webhook-Secret`, prints the HTTP response status/body, and does not read PATs or modify application config.
+
+Dry-run SME example:
+
+```powershell
+.\tools\Invoke-SandboxWebhook.ps1 `
+  -ProjectName "Project Name With Spaces" `
+  -Organization "ExampleOrg" `
+  -WorkItemId 12345 `
+  -Revision 4 `
+  -OldState "In Review" `
+  -NewState "In Review" `
+  -ChangedByEmail "sme@example.com" `
+  -ChangedByDisplayName "SME Sandbox" `
+  -SharedSecret $env:ADO_WEBHOOK_SHARED_SECRET
+```
+
+Dry-run SQA example:
+
+```powershell
+.\tools\Invoke-SandboxWebhook.ps1 `
+  -ProjectName "Project Name With Spaces" `
+  -Organization "ExampleOrg" `
+  -WorkItemId 12345 `
+  -Revision 5 `
+  -OldState "In Review" `
+  -NewState "In Review" `
+  -ChangedByEmail "sqa@example.com" `
+  -ChangedByDisplayName "SQA Sandbox" `
+  -SharedSecret $env:ADO_WEBHOOK_SHARED_SECRET
+```
+
+Write-enabled warning example:
+
+```powershell
+# Run only after dry-run validation passed and application-local.yml intentionally has ado.dry-run=false.
+.\tools\Invoke-SandboxWebhook.ps1 `
+  -ProjectName "Project Name With Spaces" `
+  -Organization "ExampleOrg" `
+  -WorkItemId 12345 `
+  -Revision 6 `
+  -OldState "In Review" `
+  -NewState "In Review" `
+  -ChangedByEmail "sme@example.com" `
+  -ChangedByDisplayName "SME Sandbox" `
+  -SharedSecret $env:ADO_WEBHOOK_SHARED_SECRET
+```
+
+Duplicate revision example:
+
+```powershell
+# Re-run the same command after a completed or skipped result to validate idempotency.
+.\tools\Invoke-SandboxWebhook.ps1 `
+  -ProjectName "Project Name With Spaces" `
+  -Organization "ExampleOrg" `
+  -WorkItemId 12345 `
+  -Revision 6 `
+  -OldState "In Review" `
+  -NewState "In Review" `
+  -ChangedByEmail "sme@example.com" `
+  -ChangedByDisplayName "SME Sandbox" `
+  -SharedSecret $env:ADO_WEBHOOK_SHARED_SECRET
+```
+
+## F. Manual Test Scenarios
 
 Run one scenario at a time. After each scenario, inspect Azure DevOps UI before continuing.
 
@@ -231,7 +298,7 @@ Expected:
 * No Work Item comment is created.
 * Re-sending the same payload is valid after the read path is healthy.
 
-## F. Rollback And Cleanup
+## G. Rollback And Cleanup
 
 After the write-enabled test:
 
@@ -243,7 +310,7 @@ After the write-enabled test:
 * Keep `src/main/resources/application-local.yml` untracked.
 * Never commit `application-local.yml`, PAT values, webhook secrets, private tunnel URLs, or local company config.
 
-## G. Go / No-go
+## H. Go / No-go
 
 Go only if:
 

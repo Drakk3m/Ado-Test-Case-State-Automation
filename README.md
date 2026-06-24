@@ -10,6 +10,10 @@ For local execution, safe sandbox setup, and manual validation steps, see:
 * [Sandbox Validation Checklist](docs/sandbox-validation-checklist.md)
 * [Pre-Sandbox Readiness Checklist](docs/pre-sandbox-readiness-checklist.md)
 
+Local sandbox tooling:
+
+* [Invoke-SandboxWebhook.ps1](tools/Invoke-SandboxWebhook.ps1) posts safe placeholder webhook test payloads to the local Spring Boot endpoint.
+
 Sandbox configuration reminders:
 
 * `ado.organization` is required when `ado.http-client-enabled=true`.
