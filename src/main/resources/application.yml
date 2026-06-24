@@ -1,6 +1,7 @@
 ado:
   organization: my-org
   personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
+  http-client-enabled: false
   dry-run: true
   projects:
     ProjectA:

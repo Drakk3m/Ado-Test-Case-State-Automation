@@ -96,12 +96,24 @@ class ApprovalBotSpringConfigurationTest {
     }
 
     @Test
-    void missingAdoTokenFailsStartupValidation() {
-        var validator = startupValidator(bind(validYaml().replace("personal-access-token: test-token", "personal-access-token: \"\"")));
+    void missingAdoTokenFailsStartupValidationWhenHttpClientIsEnabled() {
+        var validator = startupValidator(bind(validYaml()
+                .replace("personal-access-token: test-token", "personal-access-token: \"\"")
+                .replace("http-client-enabled: false", "http-client-enabled: true")));
 
         assertThatThrownBy(validator::validate)
                 .isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("ado.personal-access-token is missing.");
+    }
+
+    @Test
+    void missingAdoTokenPassesStartupValidationWhenHttpClientIsDisabled() {
+        var validator = startupValidator(bind(validYaml()
+                .replace("personal-access-token: test-token", "personal-access-token: \"\"")));
+
+        var report = validator.validate();
+
+        assertThat(report.fatalMessages()).isEmpty();
     }
 
     @Test
@@ -245,6 +257,7 @@ class ApprovalBotSpringConfigurationTest {
                 ado:
                   organization: my-org
                   personal-access-token: test-token
+                  http-client-enabled: false
                   projects:
                     ProjectA:
                       enabled: true

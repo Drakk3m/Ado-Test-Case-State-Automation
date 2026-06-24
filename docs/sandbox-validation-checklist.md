@@ -10,7 +10,7 @@ Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azur
 - [ ] No production project is enabled.
 - [ ] `ado.http-client-enabled=true`.
 - [ ] `ado.dry-run=true`.
-- [ ] PAT is sandbox-only and provided through `ADO_PERSONAL_ACCESS_TOKEN`.
+- [ ] PAT is sandbox-only and provided through `ADO_PERSONAL_ACCESS_TOKEN` when `ado.http-client-enabled=true`.
 - [ ] Webhook shared secret is provided through `ADO_WEBHOOK_SHARED_SECRET`.
 - [ ] `webhook.shared-secret.enabled=true`.
 - [ ] Sender or tunnel sends `X-ADO-Webhook-Secret`.

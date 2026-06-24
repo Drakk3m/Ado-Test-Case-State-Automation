@@ -31,7 +31,7 @@ V1 does not implement:
 * Advanced HTML/XML normalization.
 * Retry scheduler, retry dashboard, or background backoff execution.
 * V2 workflows.
-* Webhook authentication or signature verification.
+* Full webhook signature verification, OAuth, JWT, or role-based authorization.
 
 ## Required Local Prerequisites
 
@@ -40,7 +40,7 @@ Install or prepare:
 * Java 21.
 * Maven.
 * Access to an Azure DevOps sandbox organization and sandbox project.
-* A dedicated sandbox PAT with the minimum required Work Items permissions for read, update, and comments.
+* A dedicated sandbox PAT with the minimum required Work Items permissions for read, update, and comments when `ado.http-client-enabled=true`.
 * Custom fields created in the sandbox process/template:
   * Approved by SME.
   * Approved by SQA.
@@ -50,6 +50,8 @@ Install or prepare:
 ## Required Environment Variables
 
 Use placeholders only in committed files. Set real values locally through your shell or secret manager.
+`ADO_PERSONAL_ACCESS_TOKEN` is required only when `ado.http-client-enabled=true`.
+`ADO_WEBHOOK_SHARED_SECRET` is required when `webhook.shared-secret.enabled=true`.
 
 ```powershell
 $env:ADO_PERSONAL_ACCESS_TOKEN = "<sandbox-token>"
@@ -145,7 +147,7 @@ Run the Spring Boot app locally:
 mvn spring-boot:run
 ```
 
-On Windows PowerShell, set the PAT in the same terminal before starting the app:
+On Windows PowerShell, set the needed secrets in the same terminal before starting the app. The PAT is required when `ado.http-client-enabled=true`; the webhook shared secret is required when `webhook.shared-secret.enabled=true`:
 
 ```powershell
 $env:ADO_PERSONAL_ACCESS_TOKEN = "<sandbox-token>"
@@ -258,6 +260,7 @@ When `ado.http-client-enabled=true` and `ado.dry-run=true`, expect ADO fetch log
 Startup fails due to missing PAT:
 
 * Confirm `ADO_PERSONAL_ACCESS_TOKEN` is set in the same shell running the app.
+* Confirm this is expected only when `ado.http-client-enabled=true`.
 * Keep the property value as `${ADO_PERSONAL_ACCESS_TOKEN:}` in committed config.
 
 Startup fails due to invalid project config:
