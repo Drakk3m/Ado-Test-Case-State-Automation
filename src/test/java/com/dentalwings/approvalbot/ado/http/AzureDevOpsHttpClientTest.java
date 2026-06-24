@@ -34,6 +34,18 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
+    void urlBuilderEncodesProjectWithSpacesAndDotsExactlyOnce() {
+        var key = new AdoWorkItemKey("STMN-Group", "ADOnis 2.0 Test Project", 25193);
+
+        var url = new AzureDevOpsUrlBuilder().workItemUrl(key);
+
+        assertThat(url)
+                .isEqualTo("https://dev.azure.com/STMN-Group/ADOnis%202.0%20Test%20Project/_apis/wit/workitems/25193?api-version=7.1")
+                .contains("ADOnis%202.0%20Test%20Project")
+                .doesNotContain("%2520");
+    }
+
+    @Test
     void urlBuilderCreatesCorrectFetchRevisionUrl() {
         var url = new AzureDevOpsUrlBuilder().workItemRevisionUrl(KEY, 27);
 
@@ -199,6 +211,19 @@ class AzureDevOpsHttpClientTest {
         assertThat(exchange.requests.getFirst().url().toString()).doesNotContain("secret-pat");
         assertThat(exchange.requests.getFirst().headers().getFirst(HttpHeaders.AUTHORIZATION))
                 .isEqualTo(new AzureDevOpsAuth().basicAuthHeader("secret-pat"));
+    }
+
+    @Test
+    void fetchRequestForProjectWithSpacesDoesNotDoubleEncodeUrl() {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, "secret-pat");
+        var key = new AdoWorkItemKey("STMN-Group", "ADOnis 2.0 Test Project", 25193);
+
+        client.fetchWorkItem(key);
+
+        assertThat(exchange.requests.getFirst().url().toString())
+                .isEqualTo("https://dev.azure.com/STMN-Group/ADOnis%202.0%20Test%20Project/_apis/wit/workitems/25193?api-version=7.1")
+                .doesNotContain("%2520");
     }
 
     @Test

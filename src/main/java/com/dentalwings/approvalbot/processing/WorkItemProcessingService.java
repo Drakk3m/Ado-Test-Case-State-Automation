@@ -5,6 +5,8 @@ import com.dentalwings.approvalbot.ado.AdoIdentity;
 import com.dentalwings.approvalbot.ado.AdoPatchResult;
 import com.dentalwings.approvalbot.ado.AdoWorkItem;
 import com.dentalwings.approvalbot.ado.AdoWorkItemRevision;
+import com.dentalwings.approvalbot.ado.http.AdoClientNonRetryableException;
+import com.dentalwings.approvalbot.ado.http.AdoClientRetryableException;
 import com.dentalwings.approvalbot.domain.Identity;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import com.dentalwings.approvalbot.domain.WorkflowDecision;
@@ -44,8 +46,28 @@ public class WorkItemProcessingService {
                 command.workItemKey().workItemId(),
                 command.revision(),
                 command.revision() - 1);
-        var currentWorkItem = adoClient.fetchWorkItem(command.workItemKey());
-        var previousRevision = adoClient.fetchWorkItemRevision(command.workItemKey(), command.revision() - 1);
+        AdoWorkItem currentWorkItem;
+        AdoWorkItemRevision previousRevision;
+        try {
+            currentWorkItem = adoClient.fetchWorkItem(command.workItemKey());
+            previousRevision = adoClient.fetchWorkItemRevision(command.workItemKey(), command.revision() - 1);
+        } catch (AdoClientRetryableException exception) {
+            LOGGER.warn("ADO source fetch failed project={} workItemId={} revision={} retryable={} message={}",
+                    command.workItemKey().project(),
+                    command.workItemKey().workItemId(),
+                    command.revision(),
+                    true,
+                    exception.getMessage());
+            return WorkItemProcessingResult.failedRetryable("ADO read failed with retryable error.", null);
+        } catch (AdoClientNonRetryableException exception) {
+            LOGGER.warn("ADO source fetch failed project={} workItemId={} revision={} retryable={} message={}",
+                    command.workItemKey().project(),
+                    command.workItemKey().workItemId(),
+                    command.revision(),
+                    false,
+                    exception.getMessage());
+            return WorkItemProcessingResult.failedNonRetryable("ADO read failed with non-retryable error.", null);
+        }
         LOGGER.debug("Fetched ADO source of truth project={} workItemId={} currentRevision={} previousRevision={}",
                 command.workItemKey().project(),
                 command.workItemKey().workItemId(),

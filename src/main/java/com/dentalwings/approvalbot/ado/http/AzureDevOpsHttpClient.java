@@ -8,6 +8,7 @@ import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
 import com.dentalwings.approvalbot.ado.AdoWorkItemRevision;
 import com.dentalwings.approvalbot.config.spring.AdoProperties;
 import com.dentalwings.approvalbot.domain.PatchOperation;
+import java.net.URI;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,7 +92,7 @@ public class AzureDevOpsHttpClient implements AdoClient {
         LOGGER.info("ADO HTTP operation started operation=patchWorkItem organization={} project={} workItemId={} operationCount={}",
                 key.organization(), key.project(), key.workItemId(), patchOperations.size());
         return webClient.patch()
-                .uri(urlBuilder.workItemPatchUrl(key))
+                .uri(uri(urlBuilder.workItemPatchUrl(key)))
                 .contentType(JSON_PATCH)
                 .bodyValue(patchOperations)
                 .exchangeToMono(response -> handlePatchResponse(key, response))
@@ -117,7 +118,7 @@ public class AzureDevOpsHttpClient implements AdoClient {
         LOGGER.info("ADO HTTP operation started operation=createWorkItemComment organization={} project={} workItemId={}",
                 key.organization(), key.project(), key.workItemId());
         return webClient.post()
-                .uri(urlBuilder.workItemCommentsUrl(key))
+                .uri(uri(urlBuilder.workItemCommentsUrl(key)))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new AdoRestCommentRequest(commentText))
                 .exchangeToMono(response -> handleCommentResponse(key, response))
@@ -134,9 +135,13 @@ public class AzureDevOpsHttpClient implements AdoClient {
 
     private <T> T get(String url, Class<T> responseType) {
         return webClient.get()
-                .uri(url)
+                .uri(uri(url))
                 .exchangeToMono(response -> handleResponse(response, responseType))
                 .block();
+    }
+
+    private URI uri(String url) {
+        return URI.create(url);
     }
 
     private <T> Mono<T> handleResponse(ClientResponse response, Class<T> responseType) {
