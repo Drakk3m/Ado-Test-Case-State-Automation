@@ -49,6 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "ado.projects.ProjectA.approvals.sme-users[0]=sme@example.com",
         "ado.projects.ProjectA.approvals.sqa-users[0]=sqa@example.com",
         "bot.identity-email=bot@example.com",
+        "webhook.shared-secret.value=test-webhook-secret",
         "idempotency.type=in-memory",
         "idempotency.ttl-hours=24",
         "idempotency.max-records=10000"
@@ -80,7 +81,7 @@ class AdoWebhookPipelineSmokeTest {
         exchange.enqueueJson(HttpStatus.OK, currentWorkItemJson(701, 32));
         exchange.enqueueJson(HttpStatus.CREATED, commentJson("comment-701"));
 
-        mockMvc.perform(post(WEBHOOK_PATH)
+        mockMvc.perform(webhookPost()
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(webhookPayload(701, 31, "Human User", "human@example.com")))
                 .andExpect(status().isAccepted())
@@ -121,7 +122,7 @@ class AdoWebhookPipelineSmokeTest {
         exchange.enqueueJson(HttpStatus.OK, previousRevisionJson(40));
         exchange.enqueueJson(HttpStatus.CONFLICT, "{}");
 
-        mockMvc.perform(post(WEBHOOK_PATH)
+        mockMvc.perform(webhookPost()
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(webhookPayload(702, 41, "Human User", "human@example.com")))
                 .andExpect(status().isServiceUnavailable())
@@ -140,7 +141,7 @@ class AdoWebhookPipelineSmokeTest {
         exchange.enqueueJson(HttpStatus.OK, currentWorkItemJson(703, 52));
         exchange.enqueueJson(HttpStatus.INTERNAL_SERVER_ERROR, "{}");
 
-        mockMvc.perform(post(WEBHOOK_PATH)
+        mockMvc.perform(webhookPost()
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(webhookPayload(703, 51, "Human User", "human@example.com")))
                 .andExpect(status().isAccepted())
@@ -154,7 +155,7 @@ class AdoWebhookPipelineSmokeTest {
 
     @Test
     void skippedBotGeneratedEventDoesNotCallAdo() throws Exception {
-        mockMvc.perform(post(WEBHOOK_PATH)
+        mockMvc.perform(webhookPost()
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(webhookPayload(704, 61, "Approval Bot", "bot@example.com")))
                 .andExpect(status().isAccepted())
@@ -171,7 +172,7 @@ class AdoWebhookPipelineSmokeTest {
         exchange.enqueueJson(HttpStatus.CREATED, commentJson("comment-705"));
 
         var payload = webhookPayload(705, 71, "Human User", "human@example.com");
-        mockMvc.perform(post(WEBHOOK_PATH)
+        mockMvc.perform(webhookPost()
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isAccepted())
@@ -179,7 +180,7 @@ class AdoWebhookPipelineSmokeTest {
 
         var requestCountAfterFirstPost = exchange.requests.size();
 
-        mockMvc.perform(post(WEBHOOK_PATH)
+        mockMvc.perform(webhookPost()
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isAccepted())
@@ -199,6 +200,10 @@ class AdoWebhookPipelineSmokeTest {
         assertThat(exchange.requests.get(2).url()).contains("/_apis/wit/workitems/701?");
         assertThat(exchange.requests.get(3).method()).isEqualTo(HttpMethod.POST);
         assertThat(exchange.requests.get(3).url()).contains("/_apis/wit/workItems/701/comments?");
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder webhookPost() {
+        return post(WEBHOOK_PATH).header("X-ADO-Webhook-Secret", "test-webhook-secret");
     }
 
     private List<Map<String, Object>> patchBody(RecordedRequest request) throws Exception {

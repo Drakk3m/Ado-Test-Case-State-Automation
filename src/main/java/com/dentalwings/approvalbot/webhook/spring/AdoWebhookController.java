@@ -9,9 +9,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,21 +26,33 @@ public class AdoWebhookController {
     private final ObjectProvider<WebhookEventProcessingPipeline> pipelineProvider;
     private final AdoWebhookEventMapper mapper;
     private final ProjectApprovalConfigResolver configResolver;
+    private final WebhookSharedSecretValidator sharedSecretValidator;
 
     public AdoWebhookController(
             ObjectProvider<WebhookEventProcessingPipeline> pipelineProvider,
             AdoWebhookEventMapper mapper,
-            ProjectApprovalConfigResolver configResolver
+            ProjectApprovalConfigResolver configResolver,
+            WebhookSharedSecretValidator sharedSecretValidator
     ) {
         this.pipelineProvider = pipelineProvider;
         this.mapper = mapper;
         this.configResolver = configResolver;
+        this.sharedSecretValidator = sharedSecretValidator;
     }
 
     @PostMapping("/work-item-updated")
     public ResponseEntity<WebhookResponse> workItemUpdated(
+            @RequestHeader HttpHeaders headers,
             @RequestBody AdoServiceHookWorkItemUpdatedRequest request
     ) {
+        var sharedSecretResult = sharedSecretValidator.validate(headers.getFirst(sharedSecretValidator.headerName()));
+        if (!sharedSecretResult.valid()) {
+            LOGGER.warn("ADO webhook shared-secret validation failed reason={}",
+                    sharedSecretResult.failureReason().logValue());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new WebhookResponse("UNAUTHORIZED", "Webhook shared-secret validation failed."));
+        }
+
         var pipeline = pipelineProvider.getIfAvailable();
         if (pipeline == null) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)

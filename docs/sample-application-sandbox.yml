@@ -24,6 +24,12 @@ ado:
 bot:
   identity-email: approval-bot@example.test
 
+webhook:
+  shared-secret:
+    enabled: true
+    header-name: X-ADO-Webhook-Secret
+    value: ${ADO_WEBHOOK_SHARED_SECRET:}
+
 retry:
   max-attempts: 3
   default-backoff-seconds: 30

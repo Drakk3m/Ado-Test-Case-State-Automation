@@ -7,6 +7,7 @@ public class ApprovalBotProperties {
 
     private AdoProperties ado = new AdoProperties();
     private BotProperties bot = new BotProperties();
+    private WebhookProperties webhook = new WebhookProperties();
     private RetryProperties retry = new RetryProperties();
     private IdempotencyProperties idempotency = new IdempotencyProperties();
 
@@ -24,6 +25,14 @@ public class ApprovalBotProperties {
 
     public void setBot(BotProperties bot) {
         this.bot = bot == null ? new BotProperties() : bot;
+    }
+
+    public WebhookProperties getWebhook() {
+        return webhook;
+    }
+
+    public void setWebhook(WebhookProperties webhook) {
+        this.webhook = webhook == null ? new WebhookProperties() : webhook;
     }
 
     public RetryProperties getRetry() {

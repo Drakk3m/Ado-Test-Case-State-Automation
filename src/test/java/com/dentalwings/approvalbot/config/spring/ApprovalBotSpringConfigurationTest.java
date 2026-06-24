@@ -23,6 +23,9 @@ class ApprovalBotSpringConfigurationTest {
         assertThat(properties.getAdo().getOrganization()).isEqualTo("my-org");
         assertThat(properties.getAdo().getPersonalAccessToken()).isEqualTo("test-token");
         assertThat(properties.getAdo().isDryRun()).isTrue();
+        assertThat(properties.getWebhook().getSharedSecret().isEnabled()).isTrue();
+        assertThat(properties.getWebhook().getSharedSecret().getHeaderName()).isEqualTo("X-ADO-Webhook-Secret");
+        assertThat(properties.getWebhook().getSharedSecret().getValue()).isEqualTo("test-webhook-secret");
         assertThat(properties.getAdo().getProjects()).containsKey("ProjectA");
         assertThat(properties.getAdo().getProjects().get("ProjectA").getSupportedWorkItemTypes())
                 .containsExactly("Test Case");
@@ -47,6 +50,7 @@ class ApprovalBotSpringConfigurationTest {
                         "ado.projects.ProjectA.approvals.sme-users[0]=ana.perez@company.com",
                         "ado.projects.ProjectA.approvals.sqa-users[0]=carlos.gomez@company.com",
                         "bot.identity-email=ado-approval-bot@company.com",
+                        "webhook.shared-secret.value=test-webhook-secret",
                         "idempotency.type=in-memory"
                 )
                 .run(context -> {
@@ -98,6 +102,36 @@ class ApprovalBotSpringConfigurationTest {
         assertThatThrownBy(validator::validate)
                 .isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("ado.personal-access-token is missing.");
+    }
+
+    @Test
+    void missingWebhookSharedSecretFailsStartupValidationWhenEnabled() {
+        var validator = startupValidator(bind(validYaml().replace("value: test-webhook-secret", "value: \"\"")));
+
+        assertThatThrownBy(validator::validate)
+                .isInstanceOf(ApprovalBotConfigurationException.class)
+                .hasMessageContaining("webhook.shared-secret.value is missing while webhook.shared-secret.enabled=true.")
+                .hasMessageNotContaining("test-webhook-secret");
+    }
+
+    @Test
+    void webhookSharedSecretPassesStartupValidationWhenEnabledAndValuePresent() {
+        var validator = startupValidator(bind(validYaml()));
+
+        var report = validator.validate();
+
+        assertThat(report.fatalMessages()).isEmpty();
+    }
+
+    @Test
+    void webhookSharedSecretPassesStartupValidationWhenDisabledAndValueMissing() {
+        var validator = startupValidator(bind(validYaml()
+                .replace("enabled: true\n    header-name: X-ADO-Webhook-Secret\n    value: test-webhook-secret",
+                        "enabled: false\n    header-name: X-ADO-Webhook-Secret\n    value: \"\"")));
+
+        var report = validator.validate();
+
+        assertThat(report.fatalMessages()).isEmpty();
     }
 
     @Test
@@ -177,7 +211,9 @@ class ApprovalBotSpringConfigurationTest {
         var yaml = Files.readString(Path.of("src/main/resources/application.yml"));
 
         assertThat(yaml).contains("${ADO_PERSONAL_ACCESS_TOKEN:}");
+        assertThat(yaml).contains("${ADO_WEBHOOK_SHARED_SECRET:}");
         assertThat(yaml).doesNotContain("test-token");
+        assertThat(yaml).doesNotContain("test-webhook-secret");
         assertThat(yaml).doesNotContain("Basic ");
         assertThat(yaml).doesNotContain("Bearer ");
     }
@@ -228,6 +264,12 @@ class ApprovalBotSpringConfigurationTest {
 
                 bot:
                   identity-email: ado-approval-bot@company.com
+
+                webhook:
+                  shared-secret:
+                    enabled: true
+                    header-name: X-ADO-Webhook-Secret
+                    value: test-webhook-secret
 
                 retry:
                   max-attempts: 3

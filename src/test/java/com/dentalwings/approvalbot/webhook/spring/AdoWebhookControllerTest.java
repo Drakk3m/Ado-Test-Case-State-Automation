@@ -8,9 +8,14 @@ import com.dentalwings.approvalbot.processing.pipeline.WebhookProcessingResult;
 import com.dentalwings.approvalbot.webhook.AdoWebhookEvent;
 import com.dentalwings.approvalbot.webhook.EventClassification;
 import com.dentalwings.approvalbot.webhook.EventClassificationStatus;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.lang.reflect.Method;
 import java.util.Optional;
 import java.util.Set;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,8 +27,11 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.slf4j.LoggerFactory.getLogger;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -40,6 +48,103 @@ class AdoWebhookControllerTest {
 
     @MockBean
     private ProjectApprovalConfigResolver configResolver;
+
+    @MockBean
+    private WebhookSharedSecretValidator sharedSecretValidator;
+
+    @BeforeEach
+    void allowSharedSecretByDefault() {
+        when(sharedSecretValidator.headerName()).thenReturn("X-ADO-Webhook-Secret");
+        when(sharedSecretValidator.validate(any()))
+                .thenReturn(WebhookSharedSecretValidator.ValidationResult.accepted());
+    }
+
+    @Test
+    void sharedSecretDisabledAllowsRequestWithoutHeader() throws Exception {
+        when(configResolver.findByProjectName("ProjectA")).thenReturn(Optional.of(config()));
+        when(pipeline.process(any(), any())).thenReturn(completedResult());
+        when(sharedSecretValidator.validate(null))
+                .thenReturn(WebhookSharedSecretValidator.ValidationResult.accepted());
+
+        mockMvc.perform(post("/api/ado/webhooks/work-item-updated")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(minimalPayload()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        verify(pipeline).process(any(), any());
+    }
+
+    @Test
+    void sharedSecretEnabledRejectsRequestWithoutHeaderAndDoesNotCallPipeline() throws Exception {
+        when(sharedSecretValidator.validate(null))
+                .thenReturn(WebhookSharedSecretValidator.ValidationResult.invalid(
+                        WebhookSharedSecretValidator.FailureReason.MISSING_HEADER));
+
+        mockMvc.perform(post("/api/ado/webhooks/work-item-updated")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(minimalPayload()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value("UNAUTHORIZED"));
+
+        verifyNoInteractions(pipeline);
+    }
+
+    @Test
+    void sharedSecretEnabledRejectsRequestWithWrongHeaderAndDoesNotLeakSecretValuesInLogs() throws Exception {
+        when(sharedSecretValidator.validate("received-secret-value"))
+                .thenReturn(WebhookSharedSecretValidator.ValidationResult.invalid(
+                        WebhookSharedSecretValidator.FailureReason.INVALID_HEADER));
+
+        var logs = captureControllerLogs(() -> mockMvc.perform(post("/api/ado/webhooks/work-item-updated")
+                        .header("X-ADO-Webhook-Secret", "received-secret-value")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(minimalPayload()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value("UNAUTHORIZED")));
+
+        verify(pipeline, never()).process(any(), any());
+        assertThat(logs)
+                .contains("ADO webhook shared-secret validation failed reason=invalid header")
+                .doesNotContain("received-secret-value")
+                .doesNotContain("configured-secret-value");
+    }
+
+    @Test
+    void sharedSecretEnabledAcceptsRequestWithCorrectHeaderAndDelegatesToPipeline() throws Exception {
+        when(configResolver.findByProjectName("ProjectA")).thenReturn(Optional.of(config()));
+        when(pipeline.process(any(), any())).thenReturn(completedResult());
+        when(sharedSecretValidator.validate("correct-secret"))
+                .thenReturn(WebhookSharedSecretValidator.ValidationResult.accepted());
+
+        mockMvc.perform(post("/api/ado/webhooks/work-item-updated")
+                        .header("X-ADO-Webhook-Secret", "correct-secret")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(minimalPayload()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        verify(pipeline).process(any(), any());
+    }
+
+    @Test
+    void sharedSecretHeaderNameIsConfigurable() throws Exception {
+        when(configResolver.findByProjectName("ProjectA")).thenReturn(Optional.of(config()));
+        when(pipeline.process(any(), any())).thenReturn(completedResult());
+        when(sharedSecretValidator.headerName()).thenReturn("X-Custom-Webhook-Secret");
+        when(sharedSecretValidator.validate("custom-secret"))
+                .thenReturn(WebhookSharedSecretValidator.ValidationResult.accepted());
+
+        mockMvc.perform(post("/api/ado/webhooks/work-item-updated")
+                        .header("X-Custom-Webhook-Secret", "custom-secret")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(minimalPayload()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        verify(sharedSecretValidator).validate("custom-secret");
+        verify(pipeline).process(any(), any());
+    }
 
     @Test
     void controllerAcceptsMinimalValidWorkItemUpdatedPayloadAndDelegatesToPipeline() throws Exception {
@@ -198,6 +303,30 @@ class AdoWebhookControllerTest {
                   }
                 }
                 """;
+    }
+
+    private String captureControllerLogs(ThrowingAction action) throws Exception {
+        var logger = (Logger) getLogger(AdoWebhookController.class);
+        var originalLevel = logger.getLevel();
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.INFO);
+        try {
+            action.run();
+            return appender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .reduce("", (left, right) -> left + "\n" + right);
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(originalLevel);
+        }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingAction {
+
+        void run() throws Exception;
     }
 
     private void assertNoForbiddenTypeReferences(String forbiddenText, Class<?>... classes) {
