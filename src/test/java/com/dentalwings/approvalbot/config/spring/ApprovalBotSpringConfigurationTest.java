@@ -251,6 +251,15 @@ class ApprovalBotSpringConfigurationTest {
         assertThat(yaml).doesNotContain("Bearer ");
     }
 
+    @Test
+    void sampleSandboxYamlBindsBracketedProjectNameWithSpacesAndDots() throws IOException {
+        var properties = bind(Files.readString(Path.of("docs/sample-application-sandbox.yml")));
+
+        assertThat(properties.getAdo().getProjects())
+                .containsKey("Example Sandbox Project 2.0")
+                .doesNotContainKey("[Example Sandbox Project 2.0]");
+    }
+
     private ProjectApprovalConfigStartupValidator startupValidator(ApprovalBotProperties properties) {
         return new ProjectApprovalConfigStartupValidator(
                 properties,

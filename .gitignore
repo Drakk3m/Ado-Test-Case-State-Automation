@@ -6,6 +6,8 @@ target/
 .env
 .env.*
 !.env.example
+src/main/resources/application-local.yml
+src/main/resources/application-*.local.yml
 *.db
 *.sqlite
 *.sqlite3
@@ -25,6 +27,8 @@ ngrok.yaml
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+data/*.db-*
+data/*.sqlite-*
 data/*-journal
 data/*-wal
 data/*-shm

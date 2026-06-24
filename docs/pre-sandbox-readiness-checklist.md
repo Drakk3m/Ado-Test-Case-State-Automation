@@ -12,11 +12,14 @@ Use this before the first real Azure DevOps sandbox dry-run.
 ## Configuration
 
 - `ado.http-client-enabled=true` only for sandbox HTTP validation.
+- `ado.organization` is set when `ado.http-client-enabled=true`.
 - `ado.dry-run=true` for the first sandbox run.
 - `ADO_PERSONAL_ACCESS_TOKEN` is set only when the HTTP client is enabled.
 - `webhook.shared-secret.enabled=true`.
 - `ADO_WEBHOOK_SHARED_SECRET` is set when shared-secret validation is enabled.
 - `ado.projects` contains only the sandbox project.
+- The configured project key matches the webhook project name exactly.
+- Project names with spaces, dots, or special characters use Spring Boot bracket notation, for example `"[Project Name With Spaces]"`.
 - No production organization, project, PAT, webhook secret, or private tunnel URL is committed.
 
 ## Webhook Boundary
@@ -33,6 +36,9 @@ Use this before the first real Azure DevOps sandbox dry-run.
 - Dry-run suppresses Work Item comment creation.
 - Dry-run logs operation paths only, not raw field values.
 - Dry-run logs comment suppression without comment bodies.
+- Dry-run ADO paths show encoded spaces as `%20`, not `%2520`.
+- Retryable ADO read failures such as 429, 5xx, or transport failures return `FAILED_RETRYABLE`.
+- Repeating the same event is valid only when it was not marked processed.
 
 ## ADO Write Safety
 
@@ -43,6 +49,7 @@ Use this before the first real Azure DevOps sandbox dry-run.
 - Comments use the Work Item Comments API, not `System.History`.
 - Comment creation is skipped if PATCH fails.
 - Comment failure after PATCH success is treated as completed with warning.
+- Idempotency uses `project + workItemId + revision`; after `COMPLETED` or `SKIPPED`, repeat deliveries are skipped.
 
 ## Go / No-Go
 

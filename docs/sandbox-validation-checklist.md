@@ -7,6 +7,9 @@ Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azur
 - [ ] Working tree is clean.
 - [ ] `mvn test` passes.
 - [ ] Config points only to a sandbox organization and sandbox project.
+- [ ] `ado.organization` is set when `ado.http-client-enabled=true`.
+- [ ] `ado.projects` key matches the webhook project name exactly.
+- [ ] Project names with spaces, dots, or special characters use bracket notation such as `"[Project Name With Spaces]"`.
 - [ ] No production project is enabled.
 - [ ] `ado.http-client-enabled=true`.
 - [ ] `ado.dry-run=true`.
@@ -43,6 +46,9 @@ Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azur
 - [ ] Expected `would create comment` appears only when comment creation is expected.
 - [ ] No real PATCH/comment request reached Azure DevOps.
 - [ ] No secret or raw content leaked in logs.
+- [ ] ADO paths contain `%20` for spaces and do not contain `%2520`.
+- [ ] Duplicate project/workItemId/revision is skipped only after a completed or skipped result.
+- [ ] Retryable ADO read failures return `FAILED_RETRYABLE` and can be retried when not marked processed.
 
 ## Controlled Write-enabled Sandbox Test
 

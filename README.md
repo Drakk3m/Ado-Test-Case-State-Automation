@@ -8,3 +8,10 @@ For local execution, safe sandbox setup, and manual validation steps, see:
 * [Azure DevOps Sandbox Validation Playbook](docs/Azure%20DevOps%20Sandbox%20Validation%20Playbook.md)
 * [Sandbox Validation Checklist](docs/sandbox-validation-checklist.md)
 * [Pre-Sandbox Readiness Checklist](docs/pre-sandbox-readiness-checklist.md)
+
+Sandbox configuration reminders:
+
+* `ado.organization` is required when `ado.http-client-enabled=true`.
+* `ado.projects` keys must match the Azure DevOps webhook project name exactly.
+* Project names with spaces, dots, or special characters should use Spring Boot YAML bracket notation, for example `"[Example Sandbox Project 2.0]"`.
+* `ado.dry-run=true` still performs real Azure DevOps reads, but suppresses PATCH and comment writes.
