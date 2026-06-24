@@ -10,6 +10,7 @@ import com.dentalwings.approvalbot.config.spring.AdoProperties;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import java.net.URI;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -89,8 +90,8 @@ public class AzureDevOpsHttpClient implements AdoClient {
             return validationResult;
         }
 
-        LOGGER.info("ADO HTTP operation started operation=patchWorkItem organization={} project={} workItemId={} operationCount={}",
-                key.organization(), key.project(), key.workItemId(), patchOperations.size());
+        LOGGER.info("ADO HTTP operation started operation=patchWorkItem organization={} project={} workItemId={} operationCount={} operationPaths={}",
+                key.organization(), key.project(), key.workItemId(), patchOperations.size(), operationPaths(patchOperations));
         return webClient.patch()
                 .uri(uri(urlBuilder.workItemPatchUrl(key)))
                 .contentType(JSON_PATCH)
@@ -188,6 +189,12 @@ public class AzureDevOpsHttpClient implements AdoClient {
         }
 
         return null;
+    }
+
+    private List<String> operationPaths(List<PatchOperation> patchOperations) {
+        return patchOperations.stream()
+                .map(PatchOperation::path)
+                .collect(Collectors.toUnmodifiableList());
     }
 
     private Mono<AdoPatchResult> handlePatchResponse(AdoWorkItemKey key, ClientResponse response) {

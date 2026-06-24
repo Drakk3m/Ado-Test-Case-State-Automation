@@ -226,7 +226,6 @@ public class WorkflowEngine {
             return null;
         }
         return emailNormalizer.normalize(identity.email())
-                .map(email -> (identity.displayName() == null || identity.displayName().isBlank() ? email : identity.displayName().trim()) + " <" + email + ">")
                 .orElse(null);
     }
 

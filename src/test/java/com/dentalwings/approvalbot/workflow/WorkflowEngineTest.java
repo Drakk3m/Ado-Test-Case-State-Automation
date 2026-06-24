@@ -120,7 +120,7 @@ class WorkflowEngineTest {
         assertThat(decision.patchOperations()).containsExactly(
                 PatchOperation.replaceField(SME_FIELD, null),
                 PatchOperation.replaceField(SQA_FIELD, null),
-                PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>")
+                PatchOperation.replaceField(SME_FIELD, "ana@example.com")
         );
         assertThat(decision.comment()).isNull();
     }
@@ -133,7 +133,7 @@ class WorkflowEngineTest {
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SQA_FIELD, "Sam Quality <sam@example.com>"),
+                PatchOperation.replaceField(SQA_FIELD, "sam@example.com"),
                 PatchOperation.replaceField("System.State", "Approved")
         );
         assertThat(decision.comment()).contains("Test Case approved automatically");
@@ -183,7 +183,7 @@ class WorkflowEngineTest {
 
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
 
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "ana@example.com"));
     }
 
     @Test
@@ -196,7 +196,7 @@ class WorkflowEngineTest {
         assertThat(decision.patchOperations()).containsExactly(
                 PatchOperation.replaceField(SME_FIELD, null),
                 PatchOperation.replaceField(SQA_FIELD, null),
-                PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>")
+                PatchOperation.replaceField(SME_FIELD, "ana@example.com")
         );
     }
 
@@ -219,7 +219,39 @@ class WorkflowEngineTest {
 
         var decision = workflowEngine.decide(input("In Review", config, dualRole(), Map.of(), Map.of()));
 
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "Dual Role <dual@example.com>"));
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "dual@example.com"));
+    }
+
+    @Test
+    void smeApprovalPatchValueUsesEmailLoginScalarAndNotDisplayName() {
+        var changedBy = new Identity("Yunier Perez [u129670@example.com](mailto:u129670@example.com)", "U129670@EXAMPLE.COM");
+        var config = config(true, Set.of("u129670@example.com"), Set.of("sam@example.com"));
+
+        var decision = workflowEngine.decide(input("In Review", config, changedBy, Map.of(), Map.of()));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "u129670@example.com"));
+        assertThat(decision.patchOperations().getFirst().value())
+                .isInstanceOf(String.class)
+                .isNotEqualTo(changedBy)
+                .asString()
+                .doesNotContain("displayName")
+                .doesNotContain("Yunier Perez");
+    }
+
+    @Test
+    void sqaApprovalPatchValueUsesEmailLoginScalarAndNotDisplayName() {
+        var changedBy = new Identity("SQA Display", "SQA@EXAMPLE.COM");
+        var config = config(true, Set.of("ana@example.com"), Set.of("sqa@example.com"));
+
+        var decision = workflowEngine.decide(input("In Review", config, changedBy, Map.of(), Map.of()));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, "sqa@example.com"));
+        assertThat(decision.patchOperations().getFirst().value())
+                .isInstanceOf(String.class)
+                .isNotEqualTo(changedBy)
+                .asString()
+                .doesNotContain("displayName")
+                .doesNotContain("SQA Display");
     }
 
     @Test
@@ -236,6 +268,16 @@ class WorkflowEngineTest {
     @Test
     void existingValidApprovalsFromDifferentUsersMakeApprovedValid() {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
+        assertThat(decision.patchRequired()).isFalse();
+    }
+
+    @Test
+    void existingValidBareEmailApprovalsFromDifferentUsersMakeApprovedValid() {
+        var current = fields(SME_FIELD, "ana@example.com", SQA_FIELD, "sam@example.com");
 
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
 
