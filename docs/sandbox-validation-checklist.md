@@ -1,6 +1,6 @@
 # Sandbox Validation Checklist
 
-Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md).
+Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md). For `ado.dry-run=false`, use [Azure DevOps Write Enabled Sandbox Validation](Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md).
 
 ## Before Dry-run
 
@@ -53,9 +53,12 @@ Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azur
 ## Controlled Write-enabled Sandbox Test
 
 - [ ] Dry-run passed.
+- [ ] Dedicated write-enabled sandbox playbook was followed.
 - [ ] Same sandbox project remains configured.
 - [ ] Only `ado.dry-run=false` changed.
 - [ ] One disposable Test Case selected.
+- [ ] Project name exactly matches the webhook project name.
+- [ ] `application-local.yml` is untracked and ignored.
 - [ ] One scenario run at a time.
 - [ ] Azure DevOps UI confirms expected PATCH/comment behavior.
 - [ ] Dry-run is re-enabled immediately if behavior is unexpected.
