@@ -199,6 +199,7 @@ class ApprovalBotBeanWiringTest {
                         "ado.projects.ProjectA.approvals.sme-users[0]=ana.perez@company.com",
                         "ado.projects.ProjectA.approvals.sqa-users[0]=carlos.gomez@company.com",
                         "bot.identity-email=ado-approval-bot@company.com",
+                        "webhook.shared-secret.value=test-webhook-secret",
                         "idempotency.type=" + idempotencyType,
                         "idempotency.ttl-hours=24",
                         "idempotency.max-records=10000"

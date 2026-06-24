@@ -11,12 +11,15 @@ Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azur
 - [ ] `ado.http-client-enabled=true`.
 - [ ] `ado.dry-run=true`.
 - [ ] PAT is sandbox-only and provided through `ADO_PERSONAL_ACCESS_TOKEN`.
+- [ ] Webhook shared secret is provided through `ADO_WEBHOOK_SHARED_SECRET`.
+- [ ] `webhook.shared-secret.enabled=true`.
+- [ ] Sender or tunnel sends `X-ADO-Webhook-Secret`.
 - [ ] Custom fields exist in the sandbox.
 - [ ] Custom field reference names match config.
 - [ ] Bot identity email matches the PAT account.
 - [ ] Work Item Updated service hook points only to local tunnel or sandbox service.
 - [ ] SQLite path points to a local sandbox database.
-- [ ] Logs do not print PAT, `Authorization`, full payloads, raw field values, or full comment text.
+- [ ] Logs do not print PAT, webhook shared secret, `Authorization`, full payloads, raw field values, or full comment text.
 
 ## Dry-run Scenarios
 

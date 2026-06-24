@@ -53,21 +53,25 @@ Use placeholders only in committed files. Set real values locally through your s
 
 ```powershell
 $env:ADO_PERSONAL_ACCESS_TOKEN = "<sandbox-token>"
+$env:ADO_WEBHOOK_SHARED_SECRET = "<sandbox-shared-secret>"
 ```
 
 For cmd.exe:
 
 ```bat
 set ADO_PERSONAL_ACCESS_TOKEN=<sandbox-token>
+set ADO_WEBHOOK_SHARED_SECRET=<sandbox-shared-secret>
 ```
 
 For bash:
 
 ```bash
 export ADO_PERSONAL_ACCESS_TOKEN="<sandbox-token>"
+export ADO_WEBHOOK_SHARED_SECRET="<sandbox-shared-secret>"
 ```
 
 Never commit a real PAT.
+Never commit a real webhook shared secret.
 
 ## application.yml Example
 
@@ -99,6 +103,12 @@ ado:
 
 bot:
   identity-email: approval-bot@example.test
+
+webhook:
+  shared-secret:
+    enabled: true
+    header-name: X-ADO-Webhook-Secret
+    value: ${ADO_WEBHOOK_SHARED_SECRET:}
 
 idempotency:
   type: sqlite
@@ -139,6 +149,7 @@ On Windows PowerShell, set the PAT in the same terminal before starting the app:
 
 ```powershell
 $env:ADO_PERSONAL_ACCESS_TOKEN = "<sandbox-token>"
+$env:ADO_WEBHOOK_SHARED_SECRET = "<sandbox-shared-secret>"
 mvn spring-boot:run
 ```
 
@@ -151,6 +162,14 @@ POST /api/ado/webhooks/work-item-updated
 ```
 
 The controller is intentionally thin. It maps the incoming payload, resolves project configuration, and delegates to the processing pipeline.
+
+When `webhook.shared-secret.enabled=true`, requests must include the configured shared-secret header before the controller maps or delegates the payload:
+
+```text
+X-ADO-Webhook-Secret: <sandbox-shared-secret>
+```
+
+Configure the same header in the tunnel/test sender when possible. Azure DevOps Service Hooks may not support arbitrary headers in every configuration; if your setup cannot send this header, keep the endpoint private, use tunnel access controls, or temporarily set `webhook.shared-secret.enabled=false` only for controlled local sandbox validation. Never disable this gate for production exposure.
 
 ## Azure DevOps Sandbox Setup Checklist
 
@@ -169,6 +188,7 @@ Before enabling real HTTP validation:
 * Configure at least one SQA user.
 * Configure the bot identity email.
 * Create a dedicated sandbox PAT for the bot/service account.
+* Create a dedicated sandbox webhook shared secret.
 * Confirm the PAT belongs to the bot/service account, not a human production account.
 * Configure a Work Item Updated service hook only for the sandbox project.
 * Point the service hook only to a local tunnel or sandbox-hosted service.
@@ -176,6 +196,7 @@ Before enabling real HTTP validation:
 * Verify `ado.http-client-enabled` is still `false` until final sandbox readiness checks pass.
 * Use `ado.http-client-enabled=true` with `ado.dry-run=true` as the first ADO HTTP validation mode.
 * Set `ado.dry-run=false` only after dry-run logs show the expected PATCH and comment actions.
+* Verify `webhook.shared-secret.enabled=true` and the sender/tunnel includes `X-ADO-Webhook-Secret`.
 
 ## Manual Validation Scenarios
 
@@ -204,12 +225,14 @@ Run these with sandbox Test Cases only:
 * Verify approval custom field reference names before running.
 * Do not include production projects in enabled config.
 * Do not commit real secrets, real PAT values, private URLs, or credentials.
+* Do not log or share the webhook shared secret.
 
 ## What To Look For In Logs During Sandbox Validation
 
 Logs are intended to make sandbox validation debuggable without exposing sensitive content. Look for:
 
 * Webhook classification result, such as processable, skipped, or malformed.
+* Shared-secret validation failures by category only, such as missing header or invalid header.
 * Skip or malformed reason.
 * Project, Work Item id, and revision.
 * Idempotency duplicate detection for repeated webhook revisions.
@@ -222,6 +245,7 @@ Logs are intended to make sandbox validation debuggable without exposing sensiti
 The logs should not contain:
 
 * PAT values.
+* Webhook shared-secret values.
 * `Authorization` headers.
 * Full webhook payloads.
 * Full comment text.

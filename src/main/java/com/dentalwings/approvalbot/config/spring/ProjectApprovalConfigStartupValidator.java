@@ -45,6 +45,7 @@ public class ProjectApprovalConfigStartupValidator implements ApplicationRunner 
         var warningMessages = new ArrayList<String>();
 
         validateAdoBoundary(fatalMessages);
+        validateWebhookBoundary(fatalMessages);
         validateProjects(fatalMessages, warningMessages);
 
         warningMessages.forEach(message -> LOGGER.warn("Approval bot configuration warning: {}", message));
@@ -62,6 +63,14 @@ public class ProjectApprovalConfigStartupValidator implements ApplicationRunner 
         }
         if (properties.getAdo().getProjects().isEmpty()) {
             fatalMessages.add("ado.projects must contain at least one project configuration.");
+        }
+    }
+
+    private void validateWebhookBoundary(ArrayList<String> fatalMessages) {
+        var sharedSecret = properties.getWebhook().getSharedSecret();
+        if (sharedSecret.isEnabled() && isBlank(sharedSecret.getValue())) {
+            LOGGER.warn("Webhook shared-secret validation configuration failed reason=missing configured secret");
+            fatalMessages.add("webhook.shared-secret.value is missing while webhook.shared-secret.enabled=true.");
         }
     }
 

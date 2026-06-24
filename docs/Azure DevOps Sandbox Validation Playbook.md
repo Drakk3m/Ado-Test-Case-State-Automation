@@ -26,6 +26,9 @@ Complete every item before starting the app against Azure DevOps:
 * `ado.dry-run=true`.
 * PAT is sandbox-only.
 * PAT is provided through `ADO_PERSONAL_ACCESS_TOKEN` or another local secret source, not committed config.
+* Webhook shared secret is provided through `ADO_WEBHOOK_SHARED_SECRET` or another local secret source, not committed config.
+* `webhook.shared-secret.enabled=true`.
+* Sender or tunnel can provide the configured `X-ADO-Webhook-Secret` header.
 * Custom fields exist in the sandbox process/template.
 * Custom field reference names match config exactly.
 * Bot identity email matches the account used by the PAT.
@@ -82,6 +85,12 @@ ado:
 bot:
   identity-email: approval-bot@example.test
 
+webhook:
+  shared-secret:
+    enabled: true
+    header-name: X-ADO-Webhook-Secret
+    value: ${ADO_WEBHOOK_SHARED_SECRET:}
+
 retry:
   max-attempts: 3
   default-backoff-seconds: 30
@@ -106,6 +115,7 @@ Set the PAT in Windows PowerShell:
 
 ```powershell
 $env:ADO_PERSONAL_ACCESS_TOKEN = "<sandbox-token>"
+$env:ADO_WEBHOOK_SHARED_SECRET = "<sandbox-shared-secret>"
 ```
 
 Run the application:
@@ -121,6 +131,14 @@ POST /api/ado/webhooks/work-item-updated
 ```
 
 Use a tunnel URL only for the sandbox hook.
+
+When the sender or tunnel supports custom headers, send:
+
+```text
+X-ADO-Webhook-Secret: <sandbox-shared-secret>
+```
+
+Azure DevOps Service Hooks may not support arbitrary headers in every configuration. If your setup cannot send the header, keep the endpoint private, use tunnel access controls, or temporarily set `webhook.shared-secret.enabled=false` only for controlled local sandbox validation. Never use that fallback for production exposure.
 
 ## F. Dry-run Validation Scenarios
 
@@ -154,6 +172,7 @@ For every scenario, inspect:
 * Dry-run `would PATCH` operation count and operation paths when a patch is expected.
 * Dry-run `would create comment` only when a comment is expected.
 * Absence of PAT values, `Authorization` headers, full webhook payloads, full comment text, and raw field values.
+* Absence of webhook shared-secret values.
 
 ## G. Dry-run Go/No-go Criteria
 
@@ -164,6 +183,7 @@ Go only if:
 * Logs show expected classification and processing result.
 * Dry-run logs show expected operation paths.
 * No PAT, `Authorization` header, comment text, raw field value, or full webhook payload leaked.
+* No webhook shared-secret value leaked.
 * Idempotency duplicate behavior works.
 * No unexpected PATCH or comment HTTP request reached Azure DevOps.
 
@@ -175,6 +195,7 @@ No-go if:
 * A real write is detected during dry-run.
 * Configured field names do not match Azure DevOps.
 * Any secret appears in logs.
+* The tunnel or sender cannot protect the public endpoint with either the shared-secret header or another access control.
 
 ## H. Controlled Write-enabled Sandbox Validation
 
@@ -201,6 +222,7 @@ If anything unexpected happens:
 * Stop the app.
 * Disable the sandbox service hook.
 * Set `ado.dry-run=true`.
+* Rotate the sandbox webhook shared secret if it may have been exposed.
 * Inspect or clear the local sandbox SQLite idempotency database if necessary.
 * Manually restore the sandbox Test Case if needed.
 * Do not retry blindly.
