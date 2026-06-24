@@ -185,6 +185,53 @@ X-ADO-Webhook-Secret: <sandbox-shared-secret>
 
 Configure the same header in the tunnel/test sender when possible. Azure DevOps Service Hooks may not support arbitrary headers in every configuration; if your setup cannot send this header, keep the endpoint private, use tunnel access controls, or temporarily set `webhook.shared-secret.enabled=false` only for controlled local sandbox validation. Never disable this gate for production exposure.
 
+For local sandbox tests, use [Invoke-SandboxWebhook.ps1](../tools/Invoke-SandboxWebhook.ps1) instead of hand-writing webhook payloads. The helper posts to the local endpoint, sets `X-ADO-Webhook-Secret`, and does not read PATs or modify application config.
+
+Dry-run SME example:
+
+```powershell
+.\tools\Invoke-SandboxWebhook.ps1 `
+  -ProjectName "Project Name With Spaces" `
+  -Organization "ExampleOrg" `
+  -WorkItemId 12345 `
+  -Revision 4 `
+  -OldState "In Review" `
+  -NewState "In Review" `
+  -ChangedByEmail "sme@example.com" `
+  -ChangedByDisplayName "SME Sandbox" `
+  -SharedSecret $env:ADO_WEBHOOK_SHARED_SECRET
+```
+
+Dry-run SQA example:
+
+```powershell
+.\tools\Invoke-SandboxWebhook.ps1 `
+  -ProjectName "Project Name With Spaces" `
+  -Organization "ExampleOrg" `
+  -WorkItemId 12345 `
+  -Revision 5 `
+  -OldState "In Review" `
+  -NewState "In Review" `
+  -ChangedByEmail "sqa@example.com" `
+  -ChangedByDisplayName "SQA Sandbox" `
+  -SharedSecret $env:ADO_WEBHOOK_SHARED_SECRET
+```
+
+Duplicate revision example:
+
+```powershell
+.\tools\Invoke-SandboxWebhook.ps1 `
+  -ProjectName "Project Name With Spaces" `
+  -Organization "ExampleOrg" `
+  -WorkItemId 12345 `
+  -Revision 5 `
+  -OldState "In Review" `
+  -NewState "In Review" `
+  -ChangedByEmail "sqa@example.com" `
+  -ChangedByDisplayName "SQA Sandbox" `
+  -SharedSecret $env:ADO_WEBHOOK_SHARED_SECRET
+```
+
 ## Azure DevOps Sandbox Setup Checklist
 
 Before enabling real HTTP validation:
