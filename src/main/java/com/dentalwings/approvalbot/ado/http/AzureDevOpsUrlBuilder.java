@@ -6,7 +6,8 @@ import java.nio.charset.StandardCharsets;
 
 public class AzureDevOpsUrlBuilder {
 
-    public static final String API_VERSION = "7.1";
+    public static final String WORK_ITEM_API_VERSION = "7.1";
+    public static final String COMMENTS_API_VERSION = "7.1-preview";
 
     public String workItemUrl(AdoWorkItemKey key) {
         validateKey(key);
@@ -17,7 +18,7 @@ public class AzureDevOpsUrlBuilder {
                 + "/_apis/wit/workitems/"
                 + key.workItemId()
                 + "?api-version="
-                + API_VERSION;
+                + WORK_ITEM_API_VERSION;
     }
 
     public String workItemRevisionUrl(AdoWorkItemKey key, int revision) {
@@ -31,7 +32,7 @@ public class AzureDevOpsUrlBuilder {
                 + "/revisions/"
                 + revision
                 + "?api-version="
-                + API_VERSION;
+                + WORK_ITEM_API_VERSION;
     }
 
     public String workItemPatchUrl(AdoWorkItemKey key) {
@@ -47,7 +48,7 @@ public class AzureDevOpsUrlBuilder {
                 + "/_apis/wit/workItems/"
                 + key.workItemId()
                 + "/comments?api-version="
-                + API_VERSION;
+                + COMMENTS_API_VERSION;
     }
 
     private void validateKey(AdoWorkItemKey key) {

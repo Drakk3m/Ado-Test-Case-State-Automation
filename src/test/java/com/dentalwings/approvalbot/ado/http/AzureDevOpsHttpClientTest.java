@@ -63,7 +63,7 @@ class AzureDevOpsHttpClientTest {
     void urlBuilderCreatesCorrectCommentUrl() {
         var url = new AzureDevOpsUrlBuilder().workItemCommentsUrl(KEY);
 
-        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workItems/123/comments?api-version=7.1");
+        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workItems/123/comments?api-version=7.1-preview");
     }
 
     @Test
