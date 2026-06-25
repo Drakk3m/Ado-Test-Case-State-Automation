@@ -12,6 +12,8 @@ ado:
 
 Write-enabled mode sends real Azure DevOps PATCH requests and may create real Work Item comments. Run it only against a sandbox Azure DevOps project and only with disposable Test Cases.
 
+After the first successful write-enabled run, record evidence using [Azure DevOps Sandbox Validation Evidence](Azure%20DevOps%20Sandbox%20Validation%20Evidence.md). That document captures the validated sandbox fields, state override, API-version findings, and safe ADO verification commands.
+
 ## B. Safety Warnings
 
 Do not use this playbook against production.
@@ -80,8 +82,8 @@ ado:
         in-review: In Review
         approved: Approval
       fields:
-        approved-by-sme: Custom.ApprovedBySME
-        approved-by-sqa: Custom.ApprovedBySQA
+        approved-by-sme: Custom.ApproverTech
+        approved-by-sqa: Custom.ApproverTest
         reversible-business-fields:
           - System.Title
           - System.Description
@@ -214,7 +216,8 @@ Expected:
 * Classification is processable.
 * Current Work Item and previous revision are fetched.
 * PATCH paths include `/rev`.
-* PATCH paths include the configured SME approval field path, for example `/fields/Custom.ApprovedBySME`.
+* PATCH paths include the configured SME approval field path.
+* For the validated sandbox, the visible SME approval field path is `/fields/Custom.ApproverTech`.
 * Azure DevOps shows the SME approval field changed.
 * Logs do not include raw field values or full comment text.
 
@@ -235,7 +238,8 @@ Expected:
 * Classification is processable.
 * Current Work Item and previous revision are fetched.
 * PATCH paths include `/rev`.
-* PATCH paths include the configured SQA approval field path, for example `/fields/Custom.ApprovedBySQA`.
+* PATCH paths include the configured SQA approval field path.
+* For the validated sandbox, the visible SQA approval field path is `/fields/Custom.ApproverTest`.
 * Azure DevOps shows the SQA approval field changed.
 * Logs do not include raw field values or full comment text.
 
@@ -254,7 +258,8 @@ Expected:
 * Workflow accepts different SME and SQA users.
 * PATCH paths include `/rev`.
 * PATCH paths include the missing approval field.
-* If the current workflow rules determine both approvals are valid, PATCH paths include `/fields/System.State` and Azure DevOps state transitions to `Approved`.
+* If the current workflow rules determine both approvals are valid, PATCH paths include `/fields/System.State` and Azure DevOps state transitions to the configured final approval state.
+* For the validated sandbox, the final approval state is `Approval`.
 * If the current workflow rules require another corrective action, Azure DevOps reflects that decision exactly.
 * No unexpected reversible business field writes occur.
 

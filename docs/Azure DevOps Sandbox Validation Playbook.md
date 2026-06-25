@@ -15,6 +15,8 @@ ado:
 
 `ado.organization` is required when the HTTP client is enabled. Dry-run mode allows real webhook processing and real Azure DevOps reads. It suppresses Work Item PATCH requests and Work Item comment creation.
 
+The successful write-enabled sandbox evidence, ADO discovery commands, and real integration findings are captured in [Azure DevOps Sandbox Validation Evidence](Azure%20DevOps%20Sandbox%20Validation%20Evidence.md).
+
 ## B. Pre-flight Safety Checklist
 
 Complete every item before starting the app against Azure DevOps:
@@ -86,8 +88,8 @@ ado:
         in-review: In Review
         approved: Approval
       fields:
-        approved-by-sme: Custom.ApprovedBySME
-        approved-by-sqa: Custom.ApprovedBySQA
+        approved-by-sme: Custom.ApproverTech
+        approved-by-sqa: Custom.ApproverTest
         reversible-business-fields:
           - System.Title
           - System.Description

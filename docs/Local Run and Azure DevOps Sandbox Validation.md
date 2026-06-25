@@ -4,7 +4,7 @@ This project is sandbox validation ready. It is not production ready.
 
 Use this guide to run the service locally and validate it only against an Azure DevOps sandbox organization or non-production project. Do not enable the HTTP client against a production Azure DevOps project first.
 
-For the first real dry-run validation, follow the focused [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md). For the first controlled `ado.dry-run=false` test, use [Azure DevOps Write Enabled Sandbox Validation](Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md). A concise checkbox version is available in [Sandbox Validation Checklist](sandbox-validation-checklist.md).
+For the first real dry-run validation, follow the focused [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md). For the first controlled `ado.dry-run=false` test, use [Azure DevOps Write Enabled Sandbox Validation](Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md). The successful write-enabled evidence and ADO verification commands are captured in [Azure DevOps Sandbox Validation Evidence](Azure%20DevOps%20Sandbox%20Validation%20Evidence.md). A concise checkbox version is available in [Sandbox Validation Checklist](sandbox-validation-checklist.md).
 
 ## Current Project Status
 
@@ -106,8 +106,8 @@ ado:
         in-review: In Review
         approved: Approval
       fields:
-        approved-by-sme: Custom.ApprovedBySME
-        approved-by-sqa: Custom.ApprovedBySQA
+        approved-by-sme: Custom.ApproverTech
+        approved-by-sqa: Custom.ApproverTest
         reversible-business-fields:
           - System.Title
           - System.Description
@@ -138,6 +138,8 @@ idempotency:
 Keep `ado.http-client-enabled=false` until you are ready for sandbox HTTP validation. Enable it only after configuration, custom fields, service hook, and PAT scope have been checked. When it is enabled, keep `ado.organization` populated with the sandbox organization name.
 
 Workflow state names are configured per project. If your sandbox process uses a final state such as `Approval` instead of `Approved`, set `ado.projects.<project>.states.approved` to that exact Azure DevOps state value. Missing state configuration defaults to `Design`, `In Review`, and `Approved`.
+
+The validated sandbox used visible approval fields `Custom.ApproverTech` and `Custom.ApproverTest`. Earlier assumed fields `Custom.Dev_SME` and `Custom.SQA_SME` were not the correct visible approval fields for that sandbox. Always verify field reference names in ADO before enabling writes; use [Azure DevOps Sandbox Validation Evidence](Azure%20DevOps%20Sandbox%20Validation%20Evidence.md#how-to-verify-this-against-ado) for safe discovery commands.
 
 Dry-run mode is enabled by default through `ado.dry-run=true`. When the HTTP client is enabled, dry-run still fetches Work Items and revisions from Azure DevOps, still computes workflow decisions, and still builds patch operations and comment text internally. It suppresses ADO PATCH requests and Work Item comment creation.
 
@@ -368,6 +370,22 @@ PATCH conflict or revision mismatch:
 Comment failure produces completed-with-warning:
 
 * PATCH succeeded, comment creation failed, and V1 does not roll back or retry the comment.
+
+ADO rejects `Value cannot be null.` for approval fields:
+
+* The validated sandbox identity/person approval fields rejected `replace null`.
+* Configured approval field cleanup uses an empty string for those fields.
+* Do not generalize this behavior to reversible business fields.
+
+ADO rejects Comments API version:
+
+* Work Item Comments API uses `api-version=7.1-preview`.
+* Work Item GET, revision GET, and PATCH continue to use `api-version=7.1`.
+
+Config changes appear ignored:
+
+* YAML configuration is loaded at service startup.
+* Restart the app after editing local YAML until a future safe reload mechanism exists.
 
 SQLite database path issues:
 
