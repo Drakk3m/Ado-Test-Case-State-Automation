@@ -61,4 +61,28 @@ class ConfigUiControllerTest {
                 .andExpect(content().string(not(containsString("secret-pat"))))
                 .andExpect(content().string(not(containsString("Authorization"))));
     }
+
+    @Test
+    void workItemTypeDiscoveryEndpointReturnsSelectorOptionShapeUsedByJavascript() throws Exception {
+        when(discoveryService.listWorkItemTypeOptions(any(), any()))
+                .thenReturn(ConfigLookupResult.valid(List.of(
+                        new ConfigSelectorOption("Test Case", "Test Case", "", "ADO")
+                )));
+
+        mockMvc.perform(post("/api/config-ui/discovery/work-item-types")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organization": "STMN-Group",
+                                  "project": "ADOnis 2.0 Test Project"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"status\":\"VALID\"")))
+                .andExpect(content().string(containsString("\"values\"")))
+                .andExpect(content().string(containsString("\"value\":\"Test Case\"")))
+                .andExpect(content().string(containsString("\"displayName\":\"Test Case\"")))
+                .andExpect(content().string(not(containsString("secret-pat"))))
+                .andExpect(content().string(not(containsString("Authorization"))));
+    }
 }
