@@ -19,4 +19,5 @@ Sandbox configuration reminders:
 * `ado.organization` is required when `ado.http-client-enabled=true`.
 * `ado.projects` keys must match the Azure DevOps webhook project name exactly.
 * Project names with spaces, dots, or special characters should use Spring Boot YAML bracket notation, for example `"[Example Sandbox Project 2.0]"`.
+* Project workflow state names are configurable per project under `states`; use `approved: Approval` when the ADO process uses `Approval` instead of `Approved`.
 * `ado.dry-run=true` still performs real Azure DevOps reads, but suppresses PATCH and comment writes.

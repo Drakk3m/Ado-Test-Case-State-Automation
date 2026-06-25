@@ -31,6 +31,9 @@ class ApprovalBotSpringConfigurationTest {
                 .containsExactly("Test Case");
         assertThat(properties.getAdo().getProjects().get("ProjectA").getFields().getApprovedBySme())
                 .isEqualTo("Custom.ApprovedBySME");
+        assertThat(properties.getAdo().getProjects().get("ProjectA").getStates().getDesign()).isEqualTo("Design");
+        assertThat(properties.getAdo().getProjects().get("ProjectA").getStates().getInReview()).isEqualTo("In Review");
+        assertThat(properties.getAdo().getProjects().get("ProjectA").getStates().getApproved()).isEqualTo("Approved");
         assertThat(properties.getRetry().getMaxAttempts()).isEqualTo(3);
         assertThat(properties.getIdempotency().getType()).isEqualTo("sqlite");
     }
@@ -74,6 +77,18 @@ class ApprovalBotSpringConfigurationTest {
         assertThat(mapped.smeUsers()).containsExactly("ana.perez@company.com");
         assertThat(mapped.sqaUsers()).containsExactly("carlos.gomez@company.com");
         assertThat(mapped.botIdentityEmail()).isEqualTo("ado-approval-bot@company.com");
+        assertThat(mapped.stateNames().design()).isEqualTo("Design");
+        assertThat(mapped.stateNames().inReview()).isEqualTo("In Review");
+        assertThat(mapped.stateNames().approved()).isEqualTo("Approved");
+    }
+
+    @Test
+    void projectStateNamesCanOverrideApprovedState() {
+        var properties = bind(validYamlWithStates("Design", "In Review", "Approval"));
+        var mapped = new ProjectApprovalConfigMapper().toProjectConfigs(properties).get("ProjectA");
+
+        assertThat(properties.getAdo().getProjects().get("ProjectA").getStates().getApproved()).isEqualTo("Approval");
+        assertThat(mapped.stateNames().approved()).isEqualTo("Approval");
     }
 
     @Test
@@ -177,6 +192,15 @@ class ApprovalBotSpringConfigurationTest {
                 .isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("Project 'ProjectA': Missing SME approval field config.")
                 .hasMessageContaining("Project 'ProjectA': Missing SME users.");
+    }
+
+    @Test
+    void blankWorkflowStateNameFailsStartupValidation() {
+        var validator = startupValidator(bind(validYamlWithStates("Design", "\"\"", "Approved")));
+
+        assertThatThrownBy(validator::validate)
+                .isInstanceOf(ApprovalBotConfigurationException.class)
+                .hasMessageContaining("Project 'ProjectA': Missing workflow in-review state name.");
     }
 
     @Test
@@ -325,5 +349,16 @@ class ApprovalBotSpringConfigurationTest {
                   ttl-hours: 24
                   max-records: 10000
                 """;
+    }
+
+    private String validYamlWithStates(String design, String inReview, String approved) {
+        return validYaml().replaceFirst(
+                "(?m)^(\\s*)fields:",
+                "$1states:\n"
+                        + "$1  design: " + design + "\n"
+                        + "$1  in-review: " + inReview + "\n"
+                        + "$1  approved: " + approved + "\n"
+                        + "$1fields:"
+        );
     }
 }

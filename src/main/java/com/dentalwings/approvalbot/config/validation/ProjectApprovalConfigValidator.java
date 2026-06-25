@@ -25,6 +25,7 @@ public class ProjectApprovalConfigValidator {
         validateRequiredText(config.approvedBySqaField(), "Missing SQA approval field config.", issues);
         validateRequiredText(config.botIdentityEmail(), "Missing bot identity email.", issues);
         validateEmail(config.botIdentityEmail(), "Invalid bot identity email.", issues);
+        validateWorkflowStateNames(config, issues);
 
         validateSupportedWorkItemTypes(config, issues);
         validateReversibleBusinessFields(config, issues);
@@ -49,6 +50,12 @@ public class ProjectApprovalConfigValidator {
         if (config.supportedWorkItemTypes().stream().noneMatch(WorkflowEngine.WORK_ITEM_TYPE_TEST_CASE::equals)) {
             issues.add(ConfigValidationIssue.fatal("Enabled V1 project must support Test Case work item type."));
         }
+    }
+
+    private void validateWorkflowStateNames(ProjectApprovalConfig config, ArrayList<ConfigValidationIssue> issues) {
+        validateRequiredText(config.stateNames().design(), "Missing workflow design state name.", issues);
+        validateRequiredText(config.stateNames().inReview(), "Missing workflow in-review state name.", issues);
+        validateRequiredText(config.stateNames().approved(), "Missing workflow approved state name.", issues);
     }
 
     private void validateReversibleBusinessFields(ProjectApprovalConfig config, ArrayList<ConfigValidationIssue> issues) {

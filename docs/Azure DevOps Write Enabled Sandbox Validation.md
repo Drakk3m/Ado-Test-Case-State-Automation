@@ -32,6 +32,7 @@ ado:
 
 * Confirm approval field reference names before running.
 * Confirm reversible business field reference names before running.
+* Confirm configured workflow state names match the sandbox process exactly, especially `states.approved` if the final state is `Approval` instead of `Approved`.
 * Confirm `ado.dry-run=false` is never used accidentally in production config.
 * Confirm `src/main/resources/application-local.yml` is untracked and ignored.
 * Never commit `application-local.yml`, PAT values, webhook secrets, private tunnel URLs, or local company config.
@@ -53,6 +54,7 @@ Complete every item before enabling writes:
 * `ado.projects` contains only the sandbox project.
 * Project key uses bracket notation if the sandbox project name needs it.
 * Configured project key exactly matches the Azure DevOps webhook project name.
+* `states.approved` matches the real final approval state in the sandbox process.
 * `bot.identity-email` is not the same as any SME or SQA test user.
 * The selected Test Case has at least revision 2, so current and previous revisions can be fetched.
 * Local SQLite file/path is understood before testing idempotency.
@@ -73,6 +75,10 @@ ado:
       enabled: true
       supported-work-item-types:
         - Test Case
+      states:
+        design: Design
+        in-review: In Review
+        approved: Approval
       fields:
         approved-by-sme: Custom.ApprovedBySME
         approved-by-sqa: Custom.ApprovedBySQA
