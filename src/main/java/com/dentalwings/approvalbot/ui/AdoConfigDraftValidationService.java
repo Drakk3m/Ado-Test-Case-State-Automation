@@ -50,9 +50,9 @@ public class AdoConfigDraftValidationService {
         }
         result.add("ado.organization", ConfigValidationStatus.VALID, "Organization value is present; project discovery validates ADO access.");
 
-        if (ado.isHttpClientEnabled() && isBlank(environment.get(PAT_ENV))) {
-            result.add("ado.personal-access-token", ConfigValidationStatus.WARNING, "PAT environment variable is not present. Keep the value as a placeholder in YAML.");
-        } else if (ado.isHttpClientEnabled()) {
+        if (isBlank(environment.get(PAT_ENV))) {
+            result.add("ado.personal-access-token", ConfigValidationStatus.ERROR, "PAT environment variable is required for ADO-backed validation. Keep the value as a placeholder in YAML.");
+        } else {
             result.add("ado.personal-access-token", ConfigValidationStatus.VALID, "PAT environment variable is present; value is not displayed.");
         }
 
@@ -91,10 +91,9 @@ public class AdoConfigDraftValidationService {
         }
 
         var organization = model.getAdo().getOrganization();
-        var projectNames = discoveryService.listProjects(organization);
         var seen = new HashSet<String>();
         for (int i = 0; i < projects.size(); i++) {
-            validateProject(model, projects.get(i), i, seen, projectNames, result);
+            validateProject(model, projects.get(i), i, seen, result);
         }
     }
 
@@ -103,7 +102,6 @@ public class AdoConfigDraftValidationService {
             ConfigUiModel.ProjectConfig project,
             int index,
             Set<String> seen,
-            ConfigLookupResult<String> projectNames,
             ConfigValidationResult result
     ) {
         var prefix = "ado.projects[" + index + "]";
@@ -116,7 +114,8 @@ public class AdoConfigDraftValidationService {
         if (!seen.add(normalizedName)) {
             result.add(prefix + ".name", ConfigValidationStatus.ERROR, "Duplicate project name.");
         } else {
-            validateValueFromLookup(prefix + ".name", project.getName(), projectNames, "Project was found in ADO.", "Project was not found in ADO.", result);
+            var projectLookup = discoveryService.validateProject(model.getAdo().getOrganization(), project.getName());
+            validateValueFromLookup(prefix + ".name", project.getName(), projectLookup, "Project was found in ADO.", "Project was not found in ADO.", result);
         }
 
         validateWorkItemTypes(model, project, prefix, result);
@@ -194,6 +193,12 @@ public class AdoConfigDraftValidationService {
             return;
         }
 
+        var displayNameOnly = users.stream().filter(this::isLikelyDisplayNameOnly).toList();
+        if (!displayNameOnly.isEmpty()) {
+            result.add(field, ConfigValidationStatus.WARNING, "User values must be email/login based; displayName-only values are not treated as validated identities.");
+            return;
+        }
+
         var lookup = discoveryService.resolveUsers(model.getAdo().getOrganization(), users);
         if (lookup.status() == ConfigValidationStatus.VALID) {
             var resolved = normalizedSet(lookup.values());
@@ -242,6 +247,11 @@ public class AdoConfigDraftValidationService {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean isLikelyDisplayNameOnly(String value) {
+        var normalized = normalize(value);
+        return !normalized.contains("@") && !normalized.contains("\\");
     }
 
     private boolean isBlank(String value) {

@@ -51,6 +51,64 @@ public class AzureDevOpsUrlBuilder {
                 + COMMENTS_API_VERSION;
     }
 
+    public String projectUrl(String organization, String project) {
+        requireComponent("organization", organization);
+        requireComponent("project", project);
+        return "https://dev.azure.com/"
+                + encode(organization)
+                + "/_apis/projects/"
+                + encode(project)
+                + "?api-version="
+                + WORK_ITEM_API_VERSION;
+    }
+
+    public String projectsUrl(String organization) {
+        requireComponent("organization", organization);
+        return "https://dev.azure.com/"
+                + encode(organization)
+                + "/_apis/projects?api-version="
+                + WORK_ITEM_API_VERSION;
+    }
+
+    public String workItemTypesUrl(String organization, String project) {
+        requireComponent("organization", organization);
+        requireComponent("project", project);
+        return "https://dev.azure.com/"
+                + encode(organization)
+                + "/"
+                + encode(project)
+                + "/_apis/wit/workitemtypes?api-version="
+                + WORK_ITEM_API_VERSION;
+    }
+
+    public String workItemTypeFieldsUrl(String organization, String project, String workItemType) {
+        requireComponent("organization", organization);
+        requireComponent("project", project);
+        requireComponent("work item type", workItemType);
+        return "https://dev.azure.com/"
+                + encode(organization)
+                + "/"
+                + encode(project)
+                + "/_apis/wit/workitemtypes/"
+                + encode(workItemType)
+                + "/fields?api-version="
+                + WORK_ITEM_API_VERSION;
+    }
+
+    public String workItemTypeStatesUrl(String organization, String project, String workItemType) {
+        requireComponent("organization", organization);
+        requireComponent("project", project);
+        requireComponent("work item type", workItemType);
+        return "https://dev.azure.com/"
+                + encode(organization)
+                + "/"
+                + encode(project)
+                + "/_apis/wit/workitemtypes/"
+                + encode(workItemType)
+                + "/states?api-version="
+                + WORK_ITEM_API_VERSION;
+    }
+
     private void validateKey(AdoWorkItemKey key) {
         if (key == null) {
             throw new IllegalArgumentException("Azure DevOps Work Item key must not be null.");

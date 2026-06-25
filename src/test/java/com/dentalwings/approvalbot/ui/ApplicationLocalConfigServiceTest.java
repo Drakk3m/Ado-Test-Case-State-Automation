@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,6 +44,22 @@ class ApplicationLocalConfigServiceTest {
 
         var written = Files.readString(configFile, StandardCharsets.UTF_8);
         assertThat(written).contains("'[ADOnis 2.0 Test Project]':");
+    }
+
+    @Test
+    void apiSaveResponseDoesNotExposeEnvironmentSecretValues() throws Exception {
+        var configFile = tempDir.resolve("application-local.yml");
+        var service = new ApplicationLocalConfigService(configFile, validatingService(validDiscovery()));
+        var controller = new ConfigUiApiController(service);
+
+        var response = controller.save(validModel());
+        var json = new ObjectMapper().writeValueAsString(response);
+
+        assertThat(json)
+                .contains("${ADO_PERSONAL_ACCESS_TOKEN:}")
+                .contains("${ADO_WEBHOOK_SHARED_SECRET:}")
+                .doesNotContain("real-pat")
+                .doesNotContain("real-secret");
     }
 
     @Test
