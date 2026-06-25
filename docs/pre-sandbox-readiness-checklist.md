@@ -20,6 +20,8 @@ Use this before the first real Azure DevOps sandbox dry-run.
 - `ado.projects` contains only the sandbox project.
 - The configured project key matches the webhook project name exactly.
 - Project names with spaces, dots, or special characters use Spring Boot bracket notation, for example `"[Project Name With Spaces]"`.
+- Visible approval fields are verified in ADO before write-enabled testing.
+- Project state names are verified in ADO before write-enabled testing.
 - No production organization, project, PAT, webhook secret, or private tunnel URL is committed.
 
 ## Webhook Boundary
@@ -44,9 +46,9 @@ Use this before the first real Azure DevOps sandbox dry-run.
 
 - PATCH uses `application/json-patch+json`.
 - PATCH starts with `/rev` test.
-- PATCH uses `replace` with `null` for clears.
+- PATCH uses field-appropriate clear values; validated sandbox approval identity/person fields clear with an empty string.
 - PATCH rejects `remove`.
-- Comments use the Work Item Comments API, not `System.History`.
+- Comments use the Work Item Comments API with `api-version=7.1-preview`, not `System.History`.
 - Comment creation is skipped if PATCH fails.
 - Comment failure after PATCH success is treated as completed with warning.
 - Idempotency uses `project + workItemId + revision`; after `COMPLETED` or `SKIPPED`, repeat deliveries are skipped.

@@ -1,6 +1,6 @@
 # Sandbox Validation Checklist
 
-Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md). For `ado.dry-run=false`, use [Azure DevOps Write Enabled Sandbox Validation](Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md).
+Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azure%20DevOps%20Sandbox%20Validation%20Playbook.md). For `ado.dry-run=false`, use [Azure DevOps Write Enabled Sandbox Validation](Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md). Record final evidence with [Azure DevOps Sandbox Validation Evidence](Azure%20DevOps%20Sandbox%20Validation%20Evidence.md).
 
 ## Before Dry-run
 
@@ -19,6 +19,8 @@ Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azur
 - [ ] Sender or tunnel sends `X-ADO-Webhook-Secret`.
 - [ ] Custom fields exist in the sandbox.
 - [ ] Custom field reference names match config.
+- [ ] Visible approval fields are verified in ADO before write-enabled testing.
+- [ ] Configured final approval state matches the project process, for example `Approval` or `Approved`.
 - [ ] Bot identity email matches the PAT account.
 - [ ] Work Item Updated service hook points only to local tunnel or sandbox service.
 - [ ] SQLite path points to a local sandbox database.
@@ -61,4 +63,6 @@ Use this checklist with the full [Azure DevOps Sandbox Validation Playbook](Azur
 - [ ] `application-local.yml` is untracked and ignored.
 - [ ] One scenario run at a time.
 - [ ] Azure DevOps UI confirms expected PATCH/comment behavior.
+- [ ] Final successful run shows PATCH success, comment success, and result `COMPLETED`.
+- [ ] Comment failure after PATCH success maps to `COMPLETED_WITH_WARNING` with no rollback.
 - [ ] Dry-run is re-enabled immediately if behavior is unexpected.

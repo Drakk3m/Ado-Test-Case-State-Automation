@@ -13,8 +13,8 @@ ado:
         in-review: In Review
         approved: Approval
       fields:
-        approved-by-sme: Custom.ApprovedBySME
-        approved-by-sqa: Custom.ApprovedBySQA
+        approved-by-sme: Custom.ApproverTech
+        approved-by-sqa: Custom.ApproverTest
         reversible-business-fields:
           - System.Title
           - System.Description
