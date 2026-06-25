@@ -398,6 +398,55 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
+    void patchFailureMessageIncludesSanitizedAdoResponseBody() {
+        var result = patchResultFor(
+                HttpStatus.BAD_REQUEST,
+                """
+                        {
+                          "message": "VS403654: The field Custom.ApproverTech is invalid.\\nCheck the identity value."
+                        }
+                        """
+        );
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.retryable()).isFalse();
+        assertThat(result.message())
+                .contains("Azure DevOps PATCH request failed with status 400.")
+                .contains("ADO response:")
+                .contains("Custom.ApproverTech")
+                .contains("Check the identity value.")
+                .doesNotContain("\n")
+                .doesNotContain("\r");
+    }
+
+    @Test
+    void patchFailureMessageTruncatesLongAdoResponseBody() {
+        var result = patchResultFor(HttpStatus.BAD_REQUEST, "x".repeat(1200));
+
+        assertThat(result.message())
+                .hasSizeLessThan(1100)
+                .endsWith("...");
+    }
+
+    @Test
+    void patchFailureMessageDoesNotExposePatchRequestValues() {
+        var operations = List.of(
+                PatchOperation.testRevision(27),
+                PatchOperation.replaceField("Custom.ApproverTech", "SECRET_APPROVER_VALUE")
+        );
+        var client = clientReturning("""
+                {"message":"The field Custom.ApproverTech is invalid."}
+                """, HttpStatus.BAD_REQUEST);
+
+        var result = client.patchWorkItem(KEY, operations);
+
+        assertThat(result.message())
+                .contains("Custom.ApproverTech")
+                .doesNotContain("SECRET_APPROVER_VALUE")
+                .doesNotContain("secret-pat");
+    }
+
+    @Test
     void authorizationPatchResponsesMapToNonRetryableFailure() {
         assertThat(patchResultFor(HttpStatus.UNAUTHORIZED).retryable()).isFalse();
         assertThat(patchResultFor(HttpStatus.FORBIDDEN).retryable()).isFalse();
@@ -660,7 +709,11 @@ class AzureDevOpsHttpClientTest {
     }
 
     private com.dentalwings.approvalbot.ado.AdoPatchResult patchResultFor(HttpStatus status) {
-        var client = clientReturning(workItemJson(), status);
+        return patchResultFor(status, status.is2xxSuccessful() ? workItemJson() : "");
+    }
+
+    private com.dentalwings.approvalbot.ado.AdoPatchResult patchResultFor(HttpStatus status, String body) {
+        var client = clientReturning(body, status);
 
         return client.patchWorkItem(KEY, validPatchOperations());
     }
