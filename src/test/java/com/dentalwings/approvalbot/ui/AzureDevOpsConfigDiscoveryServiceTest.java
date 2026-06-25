@@ -46,6 +46,19 @@ class AzureDevOpsConfigDiscoveryServiceTest {
     }
 
     @Test
+    void emptyAdoDiscoveryResponseReturnsWarningWithOptionCountZero() {
+        var service = discovery(new RecordingExchangeFunction("""
+                {"value":[]}
+                """, HttpStatus.OK));
+
+        var result = service.listWorkItemTypes("STMN-Group", "Sandbox");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.WARNING);
+        assertThat(result.optionCount()).isZero();
+        assertThat(result.message()).contains("no options");
+    }
+
+    @Test
     void listFieldReferenceNamesReturnsReferenceNamesFromAdoResponse() {
         var service = discovery(new RecordingExchangeFunction("""
                 {"value":[{"referenceName":"System.Title"},{"referenceName":"Custom.ApproverTech"}]}

@@ -42,6 +42,7 @@ class ConfigUiStaticAssetsTest {
 
         assertThat(javascript)
                 .contains("lookupHasOptions(lookup)")
+                .contains("lookupOptionCount(lookup)")
                 .contains("normalizeOptionsLookup(lookup, emptyMessage)")
                 .contains("No Work Item Types were returned for the verified project.")
                 .contains("No fields were returned for the selected Work Item Type.")
@@ -57,6 +58,33 @@ class ConfigUiStaticAssetsTest {
                 .contains("discovery.requestToken")
                 .contains("isCurrentDiscoveryRequest(index, requestToken, projectName)")
                 .contains("isCurrentDiscoveryRequest(index, requestToken, projectName, type)");
+    }
+
+    @Test
+    void javascriptDiagnosticsAreOptInAndAvoidSecretKeys() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("isConfigUiDebugEnabled()")
+                .contains("debugConfigUi")
+                .contains("localStorage.getItem(\"configUiDebug\") === \"true\"")
+                .contains("console.debug(\"[config-ui-discovery]\"")
+                .contains("console.error(\"[config-ui-discovery]\"")
+                .contains("\"authorization\", \"pat\", \"sharedSecret\", \"secret\", \"yaml\"");
+    }
+
+    @Test
+    void javascriptDiscoveryDiagnosticsRecordRequestsAndFailures() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("request-started")
+                .contains("request-completed")
+                .contains("request-failed")
+                .contains("selector-populated")
+                .contains("selector-state")
+                .contains("dependent-selectors-cleared")
+                .contains("verify-project-clicked");
     }
 
     @Test
