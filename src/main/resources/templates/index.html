@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Approval Bot - Config UI</title>
+    <link rel="stylesheet" href="/css/nova-lite.css">
+</head>
+<body>
+<main class="container">
+    <header class="hero">
+        <h1>Configuracion Approval Bot</h1>
+        <p>Prepara un borrador de <code>application-local.yml</code> y separa texto sin validar de valores verificados.</p>
+        <p class="note">Los secretos no se guardan en disco: se mantienen como <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> y <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.</p>
+        <p class="note">La validacion ADO en vivo esta preparada como contrato y se muestra como <strong>Not checked</strong> hasta conectar discovery real. Hot-load queda diferido: reinicia el servicio despues de cambios YAML.</p>
+    </header>
+
+    <section class="card grid-2">
+        <div>
+            <h2>ADO</h2>
+            <label>Organization
+                <input id="adoOrganization" type="text">
+            </label>
+            <label class="switch-row"><input id="adoHttpClientEnabled" type="checkbox"> HTTP client enabled</label>
+            <label class="switch-row"><input id="adoDryRun" type="checkbox"> Dry run</label>
+        </div>
+        <div>
+            <h2>Bot / Webhook</h2>
+            <label>Bot identity email
+                <input id="botIdentityEmail" type="email">
+            </label>
+            <label class="switch-row"><input id="webhookEnabled" type="checkbox"> Webhook shared secret enabled</label>
+            <label>Webhook header
+                <input id="webhookHeaderName" type="text">
+            </label>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="row-between">
+            <h2>Projects</h2>
+            <button id="addProject" type="button">+ Agregar proyecto</button>
+        </div>
+        <div id="projects"></div>
+    </section>
+
+    <section class="card grid-2">
+        <div>
+            <h2>Retry</h2>
+            <label>Max attempts
+                <input id="retryMaxAttempts" type="number" min="1">
+            </label>
+            <label>Default backoff seconds
+                <input id="retryBackoff" type="number" min="1">
+            </label>
+            <label class="switch-row"><input id="retryRespectAfter" type="checkbox"> Respect Retry-After</label>
+        </div>
+        <div>
+            <h2>Idempotency</h2>
+            <label>Type
+                <input id="idempotencyType" type="text">
+            </label>
+            <label>Sqlite path
+                <input id="idempotencyPath" type="text">
+            </label>
+            <label>TTL hours
+                <input id="idempotencyTtl" type="number" min="1">
+            </label>
+            <label>Max records
+                <input id="idempotencyMaxRecords" type="number" min="1">
+            </label>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="row-gap">
+            <div class="row">
+                <button id="previewBtn" type="button">Previsualizar YAML</button>
+                <button id="saveBtn" type="button" class="primary">Guardar application-local.yml</button>
+            </div>
+            <p id="status" class="status"></p>
+            <div id="validationSummary" class="validation-summary"></div>
+            <pre id="yamlOutput"></pre>
+        </div>
+    </section>
+</main>
+
+<script src="/js/config-ui.js"></script>
+</body>
+</html>
+
