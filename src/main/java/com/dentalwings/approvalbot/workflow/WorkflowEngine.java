@@ -79,8 +79,8 @@ public class WorkflowEngine {
     private WorkflowDecision designToApprovedCorrection(ProjectApprovalConfig config) {
         var operations = new ArrayList<PatchOperation>();
         operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_IN_REVIEW));
-        operations.add(PatchOperation.replaceField(config.approvedBySmeField(), null));
-        operations.add(PatchOperation.replaceField(config.approvedBySqaField(), null));
+        operations.add(clearApprovalField(config.approvedBySmeField()));
+        operations.add(clearApprovalField(config.approvedBySqaField()));
         return WorkflowDecision.completed(operations, """
                 The Test Case was returned to In Review because it cannot move directly from Design to Approved.
 
@@ -102,8 +102,8 @@ public class WorkflowEngine {
 
         if (!changedReversibleFields.isEmpty()) {
             var operations = new ArrayList<PatchOperation>();
-            operations.add(PatchOperation.replaceField(config.approvedBySmeField(), null));
-            operations.add(PatchOperation.replaceField(config.approvedBySqaField(), null));
+            operations.add(clearApprovalField(config.approvedBySmeField()));
+            operations.add(clearApprovalField(config.approvedBySqaField()));
             operations.addAll(currentUserApprovalOperations(input.changedBy(), classification, config, Map.of()));
             return WorkflowDecision.completed(operations, null, "Authorized content change resets approvals and records current reviewer.");
         }
@@ -133,16 +133,16 @@ public class WorkflowEngine {
 
         var validation = approvalValidator.validate(validationFields, config);
         if (hasValue(projectedFields.get(config.approvedBySmeField())) && !validation.validSme()) {
-            addProjectedOperation(PatchOperation.replaceField(config.approvedBySmeField(), null), operations, projectedFields, validationFields, input.changedBy(), config);
+            addProjectedOperation(clearApprovalField(config.approvedBySmeField()), operations, projectedFields, validationFields, input.changedBy(), config);
         }
         if (hasValue(projectedFields.get(config.approvedBySqaField())) && !validation.validSqa()) {
-            addProjectedOperation(PatchOperation.replaceField(config.approvedBySqaField(), null), operations, projectedFields, validationFields, input.changedBy(), config);
+            addProjectedOperation(clearApprovalField(config.approvedBySqaField()), operations, projectedFields, validationFields, input.changedBy(), config);
         }
 
         validation = approvalValidator.validate(validationFields, config);
         var sameApprovalEmail = validation.smeEmail().isPresent() && validation.smeEmail().equals(validation.sqaEmail());
         if (sameApprovalEmail) {
-            addProjectedOperation(PatchOperation.replaceField(config.approvedBySqaField(), null), operations, projectedFields, validationFields, input.changedBy(), config);
+            addProjectedOperation(clearApprovalField(config.approvedBySqaField()), operations, projectedFields, validationFields, input.changedBy(), config);
             validation = approvalValidator.validate(validationFields, config);
         }
 
@@ -181,10 +181,10 @@ public class WorkflowEngine {
         operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_IN_REVIEW));
         var sameApprovalEmail = validation.smeEmail().isPresent() && validation.smeEmail().equals(validation.sqaEmail());
         if (!validation.validSme()) {
-            operations.add(PatchOperation.replaceField(config.approvedBySmeField(), null));
+            operations.add(clearApprovalField(config.approvedBySmeField()));
         }
         if (!validation.validSqa() || sameApprovalEmail) {
-            operations.add(PatchOperation.replaceField(config.approvedBySqaField(), null));
+            operations.add(clearApprovalField(config.approvedBySqaField()));
         }
         return WorkflowDecision.completed(operations,
                 "The Test Case was returned to In Review because it does not have valid SME and SQA approvals from different users.",
@@ -194,16 +194,16 @@ public class WorkflowEngine {
     private List<PatchOperation> clearApprovalsIfPresent(Map<String, Object> fields, ProjectApprovalConfig config) {
         var operations = new ArrayList<PatchOperation>();
         if (hasValue(fields.get(config.approvedBySmeField()))) {
-            operations.add(PatchOperation.replaceField(config.approvedBySmeField(), null));
+            operations.add(clearApprovalField(config.approvedBySmeField()));
         }
         if (hasValue(fields.get(config.approvedBySqaField()))) {
-            operations.add(PatchOperation.replaceField(config.approvedBySqaField(), null));
+            operations.add(clearApprovalField(config.approvedBySqaField()));
         }
         return operations;
     }
 
     private Object logicalApprovalValueForValidation(String field, Object value, Identity changedBy, ProjectApprovalConfig config) {
-        if (value == null) {
+        if (value == null || !hasValue(value)) {
             return null;
         }
         if (field.equals(config.approvedBySmeField()) || field.equals(config.approvedBySqaField())) {
@@ -255,8 +255,13 @@ public class WorkflowEngine {
 
     private void restoreApprovalFieldIfChanged(WorkflowInput input, String field, List<PatchOperation> operations) {
         if (!valueComparator.equivalent(input.previousFields().get(field), input.currentFields().get(field))) {
-            operations.add(PatchOperation.replaceField(field, input.previousFields().get(field)));
+            var previousValue = input.previousFields().get(field);
+            operations.add(hasValue(previousValue) ? PatchOperation.replaceField(field, previousValue) : clearApprovalField(field));
         }
+    }
+
+    private PatchOperation clearApprovalField(String field) {
+        return PatchOperation.replaceField(field, "");
     }
 
     private boolean isBotGenerated(Identity changedBy, ProjectApprovalConfig config) {

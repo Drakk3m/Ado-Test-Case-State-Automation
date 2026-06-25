@@ -78,8 +78,8 @@ class WorkItemProcessingServiceTest {
         assertThat(client.patchCalls).isOne();
         assertThat(client.patchOperations).contains(
                 PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, null),
-                PatchOperation.replaceField(SQA_FIELD, null)
+                PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, "")
         );
     }
 

@@ -102,11 +102,11 @@ class AdoWebhookPipelineSmokeTest {
         assertThat(patchBody).anySatisfy(operation -> assertThat(operation)
                 .containsEntry("op", "replace")
                 .containsEntry("path", "/fields/Custom.ApprovedBySME")
-                .containsEntry("value", null));
+                .containsEntry("value", ""));
         assertThat(patchBody).anySatisfy(operation -> assertThat(operation)
                 .containsEntry("op", "replace")
                 .containsEntry("path", "/fields/Custom.ApprovedBySQA")
-                .containsEntry("value", null));
+                .containsEntry("value", ""));
         assertThat(exchange.patchRequests().getFirst().body()).doesNotContain("System.History");
 
         var commentBody = commentBody(exchange.commentRequests().getFirst());
