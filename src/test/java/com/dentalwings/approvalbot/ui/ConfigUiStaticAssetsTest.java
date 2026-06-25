@@ -30,10 +30,33 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("Verify Project")
                 .contains("isProjectVerified(discovery, project)")
-                .contains("const workItemTypeDisabled = projectVerified ? \"\" : \"disabled\"")
+                .contains("const workItemTypeDisabled = projectVerified && lookupHasOptions(discovery.workItemTypes) ? \"\" : \"disabled\"")
                 .contains("const fieldAndStateDisabled = dependentOptionsReady ? \"\" : \"disabled\"")
                 .contains("if (isProjectVerified(discovery, project))")
                 .contains("Verify the project before selecting a Work Item type");
+    }
+
+    @Test
+    void javascriptDoesNotEnableEmptySelectorListsSilently() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("lookupHasOptions(lookup)")
+                .contains("normalizeOptionsLookup(lookup, emptyMessage)")
+                .contains("No Work Item Types were returned for the verified project.")
+                .contains("No fields were returned for the selected Work Item Type.")
+                .contains("No states were returned for the selected Work Item Type.");
+    }
+
+    @Test
+    void javascriptIgnoresStaleDiscoveryResponsesAfterParentChanges() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("discoveryRequestSequence")
+                .contains("discovery.requestToken")
+                .contains("isCurrentDiscoveryRequest(index, requestToken, projectName)")
+                .contains("isCurrentDiscoveryRequest(index, requestToken, projectName, type)");
     }
 
     @Test
@@ -68,6 +91,7 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("schedulePreview()")
                 .contains("previewDraft(false)")
+                .contains("loadFieldAndStateOptions(index)")
                 .contains("/api/config-ui/preview");
     }
 

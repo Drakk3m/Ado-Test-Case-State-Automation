@@ -9,6 +9,7 @@ let lastPreview = null;
 let previewTimer = null;
 let projectOptionLookup = { status: "NOT_CHECKED", message: "", values: [] };
 let projectDiscovery = [];
+let discoveryRequestSequence = 0;
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -43,6 +44,7 @@ function createProjectModel() {
 
 function createDiscoveryState() {
     return {
+        requestToken: 0,
         projectStatus: { status: "NOT_CHECKED", message: "Project has not been loaded." },
         workItemTypes: { status: "NOT_CHECKED", message: "Load a project first.", values: [] },
         fields: { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] },
@@ -92,6 +94,7 @@ function clearDiscovery(index, level) {
     if (!discovery) {
         return;
     }
+    discovery.requestToken = ++discoveryRequestSequence;
     if (level === "project") {
         discovery.projectStatus = { status: "NOT_CHECKED", message: "Project selection changed." };
         discovery.workItemTypes = { status: "NOT_CHECKED", message: "Load the project again.", values: [] };
@@ -163,6 +166,32 @@ function lookupContainsValue(lookup, value) {
         .some((option) => String(option?.value ?? option ?? "").trim().toLowerCase() === normalized);
 }
 
+function lookupHasOptions(lookup) {
+    return lookup?.status === "VALID" && (lookup.values || []).length > 0;
+}
+
+function normalizeOptionsLookup(lookup, emptyMessage) {
+    if (lookup?.status === "VALID" && (lookup.values || []).length === 0) {
+        return { status: "WARNING", message: emptyMessage, values: [] };
+    }
+    return lookup;
+}
+
+function isCurrentDiscoveryRequest(index, requestToken, projectName, workItemType) {
+    const project = state.ado.projects[index];
+    const discovery = projectDiscovery[index];
+    if (!project || !discovery || discovery.requestToken !== requestToken) {
+        return false;
+    }
+    if ((project.name || "").trim() !== projectName) {
+        return false;
+    }
+    if (workItemType !== undefined && (project.supportedWorkItemTypes?.[0] || "") !== workItemType) {
+        return false;
+    }
+    return true;
+}
+
 function isProjectVerified(discovery, project) {
     return discovery?.projectStatus?.status === "VALID"
         && lookupContainsValue(discovery.projectStatus, project.name);
@@ -174,8 +203,8 @@ function hasSelectedWorkItemType(project) {
 
 function areFieldsAndStatesReady(discovery, project) {
     return hasSelectedWorkItemType(project)
-        && discovery?.fields?.status === "VALID"
-        && discovery?.states?.status === "VALID";
+        && lookupHasOptions(discovery?.fields)
+        && lookupHasOptions(discovery?.states);
 }
 
 function allValuesInLookup(values, lookup) {
@@ -235,7 +264,7 @@ function renderProjects() {
         const selectedType = project.supportedWorkItemTypes?.[0] || "";
         const projectVerified = isProjectVerified(discovery, project);
         const dependentOptionsReady = areFieldsAndStatesReady(discovery, project);
-        const workItemTypeDisabled = projectVerified ? "" : "disabled";
+        const workItemTypeDisabled = projectVerified && lookupHasOptions(discovery.workItemTypes) ? "" : "disabled";
         const fieldAndStateDisabled = dependentOptionsReady ? "" : "disabled";
         const card = document.createElement("div");
         card.className = "project-card";
@@ -478,17 +507,31 @@ async function loadProject(index) {
     ensureDiscovery();
     const project = state.ado.projects[index];
     const discovery = projectDiscovery[index];
+    const projectName = (project.name || "").trim();
     clearChildSelections(project);
     clearDiscovery(index, "project");
-    discovery.projectStatus = await discover("/api/config-ui/discovery/validate-project", {
+    const requestToken = ++discoveryRequestSequence;
+    discovery.requestToken = requestToken;
+    const projectStatus = await discover("/api/config-ui/discovery/validate-project", {
         organization: state.ado.organization,
-        project: project.name
+        project: projectName
     });
+    if (!isCurrentDiscoveryRequest(index, requestToken, projectName)) {
+        return;
+    }
+    discovery.projectStatus = projectStatus;
     if (isProjectVerified(discovery, project)) {
-        discovery.workItemTypes = await discover("/api/config-ui/discovery/work-item-types", {
+        const workItemTypes = await discover("/api/config-ui/discovery/work-item-types", {
             organization: state.ado.organization,
-            project: project.name
+            project: projectName
         });
+        if (!isCurrentDiscoveryRequest(index, requestToken, projectName)) {
+            return;
+        }
+        discovery.workItemTypes = normalizeOptionsLookup(
+                workItemTypes,
+                "No Work Item Types were returned for the verified project."
+        );
     } else {
         discovery.workItemTypes = { status: "NOT_CHECKED", message: "Verify the project before selecting a Work Item type.", values: [] };
     }
@@ -512,16 +555,27 @@ async function loadFieldAndStateOptions(index) {
         schedulePreview();
         return;
     }
-    discovery.fields = await discover("/api/config-ui/discovery/fields", {
+    const projectName = (project.name || "").trim();
+    const requestToken = ++discoveryRequestSequence;
+    discovery.requestToken = requestToken;
+    const fields = await discover("/api/config-ui/discovery/fields", {
         organization: state.ado.organization,
-        project: project.name,
+        project: projectName,
         workItemType: type
     });
-    discovery.states = await discover("/api/config-ui/discovery/states", {
+    if (!isCurrentDiscoveryRequest(index, requestToken, projectName, type)) {
+        return;
+    }
+    const states = await discover("/api/config-ui/discovery/states", {
         organization: state.ado.organization,
-        project: project.name,
+        project: projectName,
         workItemType: type
     });
+    if (!isCurrentDiscoveryRequest(index, requestToken, projectName, type)) {
+        return;
+    }
+    discovery.fields = normalizeOptionsLookup(fields, "No fields were returned for the selected Work Item Type.");
+    discovery.states = normalizeOptionsLookup(states, "No states were returned for the selected Work Item Type.");
     renderProjects();
     schedulePreview();
 }
