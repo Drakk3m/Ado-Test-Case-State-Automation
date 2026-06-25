@@ -141,6 +141,85 @@ class WorkflowEngineTest {
     }
 
     @Test
+    void inReviewWithCurrentSmeAlreadyPresentAndValidSqaMovesStateToApproved() {
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "Approved"));
+        assertThat(decision.comment()).contains("Test Case approved automatically");
+    }
+
+    @Test
+    void inReviewWithCurrentSqaAlreadyPresentAndValidSmeMovesStateToApproved() {
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "Approved"));
+        assertThat(decision.comment()).contains("Test Case approved automatically");
+    }
+
+    @Test
+    void inReviewWithValidSmeAndInvalidSqaClearsInvalidSqaAndRemainsInReview() {
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Other User <other@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, null));
+        assertThat(decision.patchOperations()).extracting(PatchOperation::op).doesNotContain("remove");
+        assertThat(decision.comment()).isNull();
+    }
+
+    @Test
+    void inReviewWithInvalidSmeAndValidSqaClearsInvalidSmeAndRemainsInReview() {
+        var current = fields(SME_FIELD, "Other User <other@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, null));
+        assertThat(decision.comment()).isNull();
+    }
+
+    @Test
+    void inReviewWithOnlyValidSmeRemainsInReviewWithoutPatch() {
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
+        assertThat(decision.patchRequired()).isFalse();
+        assertThat(decision.reason()).isEqualTo("Approval already reflects current reviewer.");
+    }
+
+    @Test
+    void inReviewWithOnlyValidSqaRemainsInReviewWithoutPatch() {
+        var current = fields(SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
+        assertThat(decision.patchRequired()).isFalse();
+        assertThat(decision.reason()).isEqualTo("Approval already reflects current reviewer.");
+    }
+
+    @Test
+    void inReviewWithSameUserInBothApprovalFieldsDoesNotApproveAndClearsSqa() {
+        var config = config(true, Set.of("dual@example.com"), Set.of("dual@example.com"));
+        var current = fields(SME_FIELD, "Dual Role <dual@example.com>", SQA_FIELD, "Dual Role <dual@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config, dualRole(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, null));
+        assertThat(decision.patchOperations()).doesNotContain(PatchOperation.replaceField("System.State", "Approved"));
+    }
+
+    @Test
     void approvedWithMissingApprovalsIsForcedBackToInReview() {
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), Map.of()));
 

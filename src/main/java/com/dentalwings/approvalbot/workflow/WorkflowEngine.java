@@ -109,7 +109,7 @@ public class WorkflowEngine {
         }
 
         if (classification.authorizedApprover()) {
-            return handleApproverSaveWithoutContentChange(input, config, classification);
+            return finalizeInReviewApprovals(input, config, classification);
         }
 
         var approvalRestores = restoreChangedApprovalFields(input, config);
@@ -117,21 +117,35 @@ public class WorkflowEngine {
             return WorkflowDecision.completed(approvalRestores, null, "Manual approval field edit was ignored.");
         }
 
-        return WorkflowDecision.skipped("No reversible content change or approval action required.");
+        return finalizeInReviewApprovals(input, config, classification);
     }
 
-    private WorkflowDecision handleApproverSaveWithoutContentChange(WorkflowInput input, ProjectApprovalConfig config, IdentityClassification classification) {
+    private WorkflowDecision finalizeInReviewApprovals(WorkflowInput input, ProjectApprovalConfig config, IdentityClassification classification) {
         var projectedFields = new LinkedHashMap<>(input.currentFields());
         var validationFields = new LinkedHashMap<>(input.currentFields());
         var operations = new ArrayList<PatchOperation>();
-        for (PatchOperation operation : currentUserApprovalOperations(input.changedBy(), classification, config, projectedFields)) {
-            operations.add(operation);
-            var field = operation.path().replace("/fields/", "");
-            projectedFields.put(field, operation.value());
-            validationFields.put(field, logicalApprovalValueForValidation(field, operation.value(), input.changedBy(), config));
+
+        if (classification.authorizedApprover()) {
+            for (PatchOperation operation : currentUserApprovalOperations(input.changedBy(), classification, config, projectedFields)) {
+                addProjectedOperation(operation, operations, projectedFields, validationFields, input.changedBy(), config);
+            }
         }
 
         var validation = approvalValidator.validate(validationFields, config);
+        if (hasValue(projectedFields.get(config.approvedBySmeField())) && !validation.validSme()) {
+            addProjectedOperation(PatchOperation.replaceField(config.approvedBySmeField(), null), operations, projectedFields, validationFields, input.changedBy(), config);
+        }
+        if (hasValue(projectedFields.get(config.approvedBySqaField())) && !validation.validSqa()) {
+            addProjectedOperation(PatchOperation.replaceField(config.approvedBySqaField(), null), operations, projectedFields, validationFields, input.changedBy(), config);
+        }
+
+        validation = approvalValidator.validate(validationFields, config);
+        var sameApprovalEmail = validation.smeEmail().isPresent() && validation.smeEmail().equals(validation.sqaEmail());
+        if (sameApprovalEmail) {
+            addProjectedOperation(PatchOperation.replaceField(config.approvedBySqaField(), null), operations, projectedFields, validationFields, input.changedBy(), config);
+            validation = approvalValidator.validate(validationFields, config);
+        }
+
         if (validation.fullyApprovedByDifferentUsers()) {
             operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_APPROVED));
             return WorkflowDecision.completed(operations, approvedComment(projectedFields, config), "Approvals are valid and complete.");
@@ -141,6 +155,20 @@ public class WorkflowEngine {
             return WorkflowDecision.skipped("Approval already reflects current reviewer.");
         }
         return WorkflowDecision.completed(operations, null, "Current reviewer approval was recorded.");
+    }
+
+    private void addProjectedOperation(
+            PatchOperation operation,
+            List<PatchOperation> operations,
+            Map<String, Object> projectedFields,
+            Map<String, Object> validationFields,
+            Identity changedBy,
+            ProjectApprovalConfig config
+    ) {
+        operations.add(operation);
+        var field = operation.path().replace("/fields/", "");
+        projectedFields.put(field, operation.value());
+        validationFields.put(field, logicalApprovalValueForValidation(field, operation.value(), changedBy, config));
     }
 
     private WorkflowDecision handleApproved(WorkflowInput input, ProjectApprovalConfig config) {
@@ -207,6 +235,12 @@ public class WorkflowEngine {
             return List.of(PatchOperation.replaceField(config.approvedBySmeField(), approvalValue));
         }
         if (classification.sqa()) {
+            var currentEmail = emailNormalizer.normalize(changedBy.email()).orElse(null);
+            var existingSme = approvalValueParser.extractEmail(projectedFields.get(config.approvedBySmeField()));
+            var existingSqa = approvalValueParser.extractEmail(projectedFields.get(config.approvedBySqaField()));
+            if (currentEmail != null && (existingSme.filter(currentEmail::equals).isPresent() || existingSqa.filter(currentEmail::equals).isPresent())) {
+                return List.of();
+            }
             return List.of(PatchOperation.replaceField(config.approvedBySqaField(), approvalValue));
         }
         return List.of();
