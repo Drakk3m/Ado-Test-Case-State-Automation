@@ -4,6 +4,10 @@ public interface AdoConfigDiscoveryService {
 
     ConfigLookupResult<String> listProjects(String organization);
 
+    default ConfigLookupResult<String> validateProject(String organization, String project) {
+        return listProjects(organization);
+    }
+
     ConfigLookupResult<String> listWorkItemTypes(String organization, String project);
 
     ConfigLookupResult<String> listFieldReferenceNames(String organization, String project, String workItemType);

@@ -16,6 +16,10 @@ public record ConfigLookupResult<T>(
         return new ConfigLookupResult<>(ConfigValidationStatus.NOT_CHECKED, message, List.of());
     }
 
+    public static <T> ConfigLookupResult<T> warning(String message) {
+        return new ConfigLookupResult<>(ConfigValidationStatus.WARNING, message, List.of());
+    }
+
     public static <T> ConfigLookupResult<T> error(String message) {
         return new ConfigLookupResult<>(ConfigValidationStatus.ERROR, message, List.of());
     }

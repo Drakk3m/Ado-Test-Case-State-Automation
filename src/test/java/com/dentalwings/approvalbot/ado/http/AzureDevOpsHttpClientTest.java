@@ -67,6 +67,34 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
+    void urlBuilderCreatesCorrectProjectDiscoveryUrl() {
+        var url = new AzureDevOpsUrlBuilder().projectUrl("my org", "Project A");
+
+        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/_apis/projects/Project%20A?api-version=7.1");
+    }
+
+    @Test
+    void urlBuilderCreatesCorrectWorkItemTypesDiscoveryUrl() {
+        var url = new AzureDevOpsUrlBuilder().workItemTypesUrl("my org", "Project A");
+
+        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workitemtypes?api-version=7.1");
+    }
+
+    @Test
+    void urlBuilderCreatesCorrectWorkItemTypeFieldsDiscoveryUrl() {
+        var url = new AzureDevOpsUrlBuilder().workItemTypeFieldsUrl("my org", "Project A", "Test Case");
+
+        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workitemtypes/Test%20Case/fields?api-version=7.1");
+    }
+
+    @Test
+    void urlBuilderCreatesCorrectWorkItemTypeStatesDiscoveryUrl() {
+        var url = new AzureDevOpsUrlBuilder().workItemTypeStatesUrl("my org", "Project A", "Test Case");
+
+        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workitemtypes/Test%20Case/states?api-version=7.1");
+    }
+
+    @Test
     void urlBuilderRejectsNullWorkItemKeyWithClearMessage() {
         assertThatThrownBy(() -> new AzureDevOpsUrlBuilder().workItemUrl(null))
                 .isInstanceOf(IllegalArgumentException.class)

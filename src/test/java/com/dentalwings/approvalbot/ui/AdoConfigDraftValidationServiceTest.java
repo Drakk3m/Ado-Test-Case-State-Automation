@@ -91,6 +91,40 @@ class AdoConfigDraftValidationServiceTest {
     }
 
     @Test
+    void displayNameOnlyUserIsNotMarkedValid() {
+        var service = ApplicationLocalConfigServiceTest.validatingService(ApplicationLocalConfigServiceTest.validDiscovery());
+        var model = ApplicationLocalConfigServiceTest.validModel();
+        model.getAdo().getProjects().getFirst().getApprovals().getSmeUsers().clear();
+        model.getAdo().getProjects().getFirst().getApprovals().getSmeUsers().add("Sandbox User");
+
+        var result = service.validate(model);
+
+        assertThat(result.fields())
+                .anySatisfy(field -> {
+                    assertThat(field.field()).contains("sme-users");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.WARNING);
+                    assertThat(field.message()).contains("displayName-only");
+                });
+    }
+
+    @Test
+    void missingPatEnvironmentVariableBlocksAdoBackedValidation() {
+        var service = new AdoConfigDraftValidationService(ApplicationLocalConfigServiceTest.validDiscovery(), java.util.Map.of(
+                "ADO_WEBHOOK_SHARED_SECRET", "real-secret"
+        ));
+
+        var result = service.validate(ApplicationLocalConfigServiceTest.validModel());
+
+        assertThat(result.canGenerateFinalYaml()).isFalse();
+        assertThat(result.fields())
+                .anySatisfy(field -> {
+                    assertThat(field.field()).isEqualTo("ado.personal-access-token");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
+                    assertThat(field.message()).contains("required");
+                });
+    }
+
+    @Test
     void notCheckedDiscoveryMarksValuesAsNotCheckedWithoutPretendingValid() {
         var service = ApplicationLocalConfigServiceTest.validatingService(new NotCheckedAdoConfigDiscoveryService());
 
