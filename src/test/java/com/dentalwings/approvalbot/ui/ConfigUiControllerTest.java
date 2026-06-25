@@ -58,6 +58,7 @@ class ConfigUiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Custom.ApproverTech")))
                 .andExpect(content().string(containsString("Approver Tech")))
+                .andExpect(content().string(containsString("\"optionCount\":1")))
                 .andExpect(content().string(not(containsString("secret-pat"))))
                 .andExpect(content().string(not(containsString("Authorization"))));
     }
@@ -82,6 +83,28 @@ class ConfigUiControllerTest {
                 .andExpect(content().string(containsString("\"values\"")))
                 .andExpect(content().string(containsString("\"value\":\"Test Case\"")))
                 .andExpect(content().string(containsString("\"displayName\":\"Test Case\"")))
+                .andExpect(content().string(containsString("\"optionCount\":1")))
+                .andExpect(content().string(not(containsString("secret-pat"))))
+                .andExpect(content().string(not(containsString("Authorization"))));
+    }
+
+    @Test
+    void emptyDiscoveryEndpointResponseIsWarningWithOptionCountZero() throws Exception {
+        when(discoveryService.listWorkItemTypeOptions(any(), any()))
+                .thenReturn(ConfigLookupResult.valid(List.of()));
+
+        mockMvc.perform(post("/api/config-ui/discovery/work-item-types")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organization": "STMN-Group",
+                                  "project": "ADOnis 2.0 Test Project"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"status\":\"WARNING\"")))
+                .andExpect(content().string(containsString("\"optionCount\":0")))
+                .andExpect(content().string(containsString("no options")))
                 .andExpect(content().string(not(containsString("secret-pat"))))
                 .andExpect(content().string(not(containsString("Authorization"))));
     }
