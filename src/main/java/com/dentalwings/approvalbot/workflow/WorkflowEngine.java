@@ -1,6 +1,7 @@
 package com.dentalwings.approvalbot.workflow;
 
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.config.WorkflowStateNames;
 import com.dentalwings.approvalbot.domain.Identity;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import com.dentalwings.approvalbot.domain.WorkflowDecision;
@@ -12,12 +13,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public class WorkflowEngine {
 
-    public static final String STATE_DESIGN = "Design";
-    public static final String STATE_IN_REVIEW = "In Review";
-    public static final String STATE_APPROVED = "Approved";
+    public static final String STATE_DESIGN = WorkflowStateNames.DEFAULT_DESIGN;
+    public static final String STATE_IN_REVIEW = WorkflowStateNames.DEFAULT_IN_REVIEW;
+    public static final String STATE_APPROVED = WorkflowStateNames.DEFAULT_APPROVED;
     public static final String WORK_ITEM_TYPE_TEST_CASE = "Test Case";
     public static final String SYSTEM_STATE = "System.State";
 
@@ -39,6 +41,7 @@ public class WorkflowEngine {
 
     public WorkflowDecision decide(WorkflowInput input) {
         var config = input.projectConfig();
+        var stateNames = config == null ? WorkflowStateNames.defaults() : config.stateNames();
         if (config == null || !config.enabled()) {
             return WorkflowDecision.skipped("Project is disabled.");
         }
@@ -48,20 +51,20 @@ public class WorkflowEngine {
         if (!config.supportedWorkItemTypes().contains(input.workItemType())) {
             return WorkflowDecision.skipped("Work item type is unsupported.");
         }
-        if (!isKnownState(input.currentState())) {
+        if (!isKnownState(input.currentState(), stateNames)) {
             return WorkflowDecision.skipped("Current state is out of scope.");
         }
 
-        if (STATE_DESIGN.equals(input.previousState()) && STATE_APPROVED.equals(input.currentState())) {
+        if (stateEquals(stateNames.design(), input.previousState()) && stateEquals(stateNames.approved(), input.currentState())) {
             return designToApprovedCorrection(config);
         }
-        if (STATE_DESIGN.equals(input.currentState())) {
+        if (stateEquals(stateNames.design(), input.currentState())) {
             return handleDesign(input, config);
         }
-        if (STATE_IN_REVIEW.equals(input.currentState())) {
+        if (stateEquals(stateNames.inReview(), input.currentState())) {
             return handleInReview(input, config);
         }
-        if (STATE_APPROVED.equals(input.currentState())) {
+        if (stateEquals(stateNames.approved(), input.currentState())) {
             return handleApproved(input, config);
         }
 
@@ -78,7 +81,7 @@ public class WorkflowEngine {
 
     private WorkflowDecision designToApprovedCorrection(ProjectApprovalConfig config) {
         var operations = new ArrayList<PatchOperation>();
-        operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_IN_REVIEW));
+        operations.add(PatchOperation.replaceField(SYSTEM_STATE, config.stateNames().inReview()));
         operations.add(clearApprovalField(config.approvedBySmeField()));
         operations.add(clearApprovalField(config.approvedBySqaField()));
         return WorkflowDecision.completed(operations, """
@@ -147,7 +150,7 @@ public class WorkflowEngine {
         }
 
         if (validation.fullyApprovedByDifferentUsers()) {
-            operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_APPROVED));
+            operations.add(PatchOperation.replaceField(SYSTEM_STATE, config.stateNames().approved()));
             return WorkflowDecision.completed(operations, approvedComment(projectedFields, config), "Approvals are valid and complete.");
         }
 
@@ -178,7 +181,7 @@ public class WorkflowEngine {
         }
 
         var operations = new ArrayList<PatchOperation>();
-        operations.add(PatchOperation.replaceField(SYSTEM_STATE, STATE_IN_REVIEW));
+        operations.add(PatchOperation.replaceField(SYSTEM_STATE, config.stateNames().inReview()));
         var sameApprovalEmail = validation.smeEmail().isPresent() && validation.smeEmail().equals(validation.sqaEmail());
         if (!validation.validSme()) {
             operations.add(clearApprovalField(config.approvedBySmeField()));
@@ -309,7 +312,11 @@ public class WorkflowEngine {
         return value != null && !value.toString().trim().isEmpty();
     }
 
-    private boolean isKnownState(String state) {
-        return STATE_DESIGN.equals(state) || STATE_IN_REVIEW.equals(state) || STATE_APPROVED.equals(state);
+    private boolean isKnownState(String state, WorkflowStateNames stateNames) {
+        return stateEquals(stateNames.design(), state) || stateEquals(stateNames.inReview(), state) || stateEquals(stateNames.approved(), state);
+    }
+
+    private boolean stateEquals(String configuredState, String actualState) {
+        return Objects.equals(configuredState, actualState);
     }
 }

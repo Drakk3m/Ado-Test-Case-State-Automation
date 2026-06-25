@@ -11,7 +11,7 @@ For the first real dry-run validation, follow the focused [Azure DevOps Sandbox 
 V1 currently supports:
 
 * Azure DevOps Test Case work items.
-* Design, In Review, and Approved states.
+* Configured Design, In Review, and approved/final states.
 * Configured SME and SQA approval fields.
 * Configured reversible business fields only.
 * JSON Patch corrections with `/rev` test operations.
@@ -101,6 +101,10 @@ ado:
       enabled: true
       supported-work-item-types:
         - Test Case
+      states:
+        design: Design
+        in-review: In Review
+        approved: Approval
       fields:
         approved-by-sme: Custom.ApprovedBySME
         approved-by-sqa: Custom.ApprovedBySQA
@@ -132,6 +136,8 @@ idempotency:
 ```
 
 Keep `ado.http-client-enabled=false` until you are ready for sandbox HTTP validation. Enable it only after configuration, custom fields, service hook, and PAT scope have been checked. When it is enabled, keep `ado.organization` populated with the sandbox organization name.
+
+Workflow state names are configured per project. If your sandbox process uses a final state such as `Approval` instead of `Approved`, set `ado.projects.<project>.states.approved` to that exact Azure DevOps state value. Missing state configuration defaults to `Design`, `In Review`, and `Approved`.
 
 Dry-run mode is enabled by default through `ado.dry-run=true`. When the HTTP client is enabled, dry-run still fetches Work Items and revisions from Azure DevOps, still computes workflow decisions, and still builds patch operations and comment text internally. It suppresses ADO PATCH requests and Work Item comment creation.
 

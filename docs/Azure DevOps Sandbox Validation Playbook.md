@@ -48,7 +48,7 @@ Prepare a disposable sandbox project with:
 * Workflow states:
   * `Design`
   * `In Review`
-  * `Approved`
+  * Final approval state, for example `Approved` or `Approval`
 * Custom fields:
   * Approved by SME
   * Approved by SQA
@@ -81,6 +81,10 @@ ado:
       enabled: true
       supported-work-item-types:
         - Test Case
+      states:
+        design: Design
+        in-review: In Review
+        approved: Approval
       fields:
         approved-by-sme: Custom.ApprovedBySME
         approved-by-sqa: Custom.ApprovedBySQA

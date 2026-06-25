@@ -2,6 +2,7 @@ package com.dentalwings.approvalbot.workflow;
 
 import com.dentalwings.approvalbot.ado.AdoIdentity;
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.config.WorkflowStateNames;
 import com.dentalwings.approvalbot.domain.Identity;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import com.dentalwings.approvalbot.domain.ProcessingResult;
@@ -138,6 +139,55 @@ class WorkflowEngineTest {
                 PatchOperation.replaceField("System.State", "Approved")
         );
         assertThat(decision.comment()).contains("Test Case approved automatically");
+    }
+
+    @Test
+    void sqaApprovingAfterSmeMovesStateToConfiguredApprovedState() {
+        var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
+
+        var decision = workflowEngine.decide(input("Peer Review", config, sqa(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
+                PatchOperation.replaceField("System.State", "Approval")
+        );
+    }
+
+    @Test
+    void configuredApprovedStateIsRecognizedAsFinalized() {
+        var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("Approval", config, nonApprover(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
+        assertThat(decision.patchRequired()).isFalse();
+    }
+
+    @Test
+    void configuredDesignStateIsRecognized() {
+        var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
+
+        var decision = workflowEngine.decide(input("Draft", config, sme(), Map.of(), current));
+
+        assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""));
+    }
+
+    @Test
+    void configuredInReviewStateIsRecognized() {
+        var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
+
+        var decision = workflowEngine.decide(input("Peer Review", config, sqa(), Map.of(), current));
+
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
+                PatchOperation.replaceField("System.State", "Approval")
+        );
     }
 
     @Test
@@ -541,7 +591,15 @@ class WorkflowEngineTest {
         return config(enabled, Set.of("ana@example.com"), Set.of("sam@example.com"));
     }
 
+    private ProjectApprovalConfig config(boolean enabled, WorkflowStateNames stateNames) {
+        return config(enabled, Set.of("ana@example.com"), Set.of("sam@example.com"), stateNames);
+    }
+
     private ProjectApprovalConfig config(boolean enabled, Set<String> smeUsers, Set<String> sqaUsers) {
+        return config(enabled, smeUsers, sqaUsers, WorkflowStateNames.defaults());
+    }
+
+    private ProjectApprovalConfig config(boolean enabled, Set<String> smeUsers, Set<String> sqaUsers, WorkflowStateNames stateNames) {
         return new ProjectApprovalConfig(
                 "ProjectA",
                 enabled,
@@ -551,7 +609,8 @@ class WorkflowEngineTest {
                 Set.of(TITLE_FIELD, DESCRIPTION_FIELD),
                 smeUsers,
                 sqaUsers,
-                "bot@example.com"
+                "bot@example.com",
+                stateNames
         );
     }
 

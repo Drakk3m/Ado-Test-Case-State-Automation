@@ -8,6 +8,10 @@ ado:
       enabled: true
       supported-work-item-types:
         - Test Case
+      states:
+        design: Design
+        in-review: In Review
+        approved: Approval
       fields:
         approved-by-sme: Custom.ApprovedBySME
         approved-by-sqa: Custom.ApprovedBySQA

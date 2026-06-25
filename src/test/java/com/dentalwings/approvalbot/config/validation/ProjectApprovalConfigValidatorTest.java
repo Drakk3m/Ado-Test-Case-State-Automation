@@ -1,6 +1,7 @@
 package com.dentalwings.approvalbot.config.validation;
 
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.config.WorkflowStateNames;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -103,6 +104,20 @@ class ProjectApprovalConfigValidatorTest {
     }
 
     @Test
+    void blankConfiguredWorkflowStateNameIsFatal() {
+        assertFatal(validConfig(
+                        SME_FIELD,
+                        SQA_FIELD,
+                        fields(TITLE_FIELD),
+                        users("ana@example.com"),
+                        users("sam@example.com"),
+                        "bot@example.com",
+                        workItemTypes("Test Case"),
+                        new WorkflowStateNames("Design", " ", "Approved")),
+                "Missing workflow in-review state name.");
+    }
+
+    @Test
     void duplicateSmeEmailCreatesWarning() {
         var result = validator.validate(validConfig(SME_FIELD, SQA_FIELD, fields(TITLE_FIELD), users("Ana@Example.com", " ana@example.com "), users("sam@example.com"), "bot@example.com", workItemTypes("Test Case")));
 
@@ -175,6 +190,28 @@ class ProjectApprovalConfigValidatorTest {
             String botIdentityEmail,
             Set<String> supportedWorkItemTypes
     ) {
+        return validConfig(
+                approvedBySmeField,
+                approvedBySqaField,
+                reversibleBusinessFields,
+                smeUsers,
+                sqaUsers,
+                botIdentityEmail,
+                supportedWorkItemTypes,
+                WorkflowStateNames.defaults()
+        );
+    }
+
+    private ProjectApprovalConfig validConfig(
+            String approvedBySmeField,
+            String approvedBySqaField,
+            Set<String> reversibleBusinessFields,
+            Set<String> smeUsers,
+            Set<String> sqaUsers,
+            String botIdentityEmail,
+            Set<String> supportedWorkItemTypes,
+            WorkflowStateNames stateNames
+    ) {
         return new ProjectApprovalConfig(
                 "ProjectA",
                 true,
@@ -184,7 +221,8 @@ class ProjectApprovalConfigValidatorTest {
                 reversibleBusinessFields,
                 smeUsers,
                 sqaUsers,
-                botIdentityEmail
+                botIdentityEmail,
+                stateNames
         );
     }
 

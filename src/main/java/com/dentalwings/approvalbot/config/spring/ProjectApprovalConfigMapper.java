@@ -1,6 +1,7 @@
 package com.dentalwings.approvalbot.config.spring;
 
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.config.WorkflowStateNames;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -21,6 +22,7 @@ public class ProjectApprovalConfigMapper {
     ) {
         var fields = projectProperties.getFields();
         var approvals = projectProperties.getApprovals();
+        var states = projectProperties.getStates();
         return new ProjectApprovalConfig(
                 projectName,
                 projectProperties.isEnabled(),
@@ -30,7 +32,20 @@ public class ProjectApprovalConfigMapper {
                 fields.getReversibleBusinessFields(),
                 approvals.getSmeUsers(),
                 approvals.getSqaUsers(),
-                botProperties.getIdentityEmail()
+                botProperties.getIdentityEmail(),
+                new WorkflowStateNames(
+                        trimToNull(states.getDesign()),
+                        trimToNull(states.getInReview()),
+                        trimToNull(states.getApproved())
+                )
         );
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        var trimmed = value.trim();
+        return trimmed.isEmpty() ? "" : trimmed;
     }
 }

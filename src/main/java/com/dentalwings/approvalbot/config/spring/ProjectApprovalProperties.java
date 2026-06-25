@@ -9,6 +9,7 @@ public class ProjectApprovalProperties {
     private Set<String> supportedWorkItemTypes = new LinkedHashSet<>();
     private ApprovalFieldsProperties fields = new ApprovalFieldsProperties();
     private ApprovalUsersProperties approvals = new ApprovalUsersProperties();
+    private WorkflowStateProperties states = new WorkflowStateProperties();
 
     public boolean isEnabled() {
         return enabled;
@@ -42,5 +43,13 @@ public class ProjectApprovalProperties {
 
     public void setApprovals(ApprovalUsersProperties approvals) {
         this.approvals = approvals == null ? new ApprovalUsersProperties() : approvals;
+    }
+
+    public WorkflowStateProperties getStates() {
+        return states;
+    }
+
+    public void setStates(WorkflowStateProperties states) {
+        this.states = states == null ? new WorkflowStateProperties() : states;
     }
 }
