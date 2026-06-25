@@ -6,6 +6,8 @@ import com.dentalwings.approvalbot.ado.http.AzureDevOpsAuth;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsUrlBuilder;
 import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.reactive.function.client.ClientRequest;
@@ -35,14 +37,37 @@ class AzureDevOpsConfigDiscoveryServiceTest {
 
     @Test
     void listWorkItemTypesReturnsNamesFromAdoResponse() {
-        var service = discovery(new RecordingExchangeFunction("""
-                {"value":[{"name":"Bug"},{"name":"Test Case"}]}
-                """, HttpStatus.OK));
+        var exchange = new RecordingExchangeFunction("""
+                {"count":2,"value":[{"name":"Bug"},{"name":"Test Case"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
 
-        var result = service.listWorkItemTypes("STMN-Group", "Sandbox");
+        var result = service.listWorkItemTypes("STMN-Group", "ADOnis 2.0 Test Project");
 
         assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
         assertThat(result.values()).containsExactly("Bug", "Test Case");
+        assertThat(exchange.requests.getFirst().url().toString())
+                .isEqualTo("https://dev.azure.com/STMN-Group/ADOnis%202.0%20Test%20Project/_apis/wit/workitemtypes?api-version=7.1")
+                .contains("ADOnis%202.0%20Test%20Project")
+                .doesNotContain("%2520");
+    }
+
+    @Test
+    void listWorkItemTypeOptionsMapsAdoValueArrayToSelectorOptions() {
+        var service = discovery(new RecordingExchangeFunction("""
+                {"count":1,"values":[{"name":"Wrong"}],"value":[{"name":"Test Case"}]}
+                """, HttpStatus.OK));
+
+        var result = service.listWorkItemTypeOptions("STMN-Group", "ADOnis 2.0 Test Project");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.optionCount()).isEqualTo(1);
+        assertThat(result.values()).singleElement()
+                .satisfies(option -> {
+                    assertThat(option.value()).isEqualTo("Test Case");
+                    assertThat(option.displayName()).isEqualTo("Test Case");
+                    assertThat(option.source()).isEqualTo("ADO");
+                });
     }
 
     @Test
@@ -111,24 +136,51 @@ class AzureDevOpsConfigDiscoveryServiceTest {
         assertThat(exchange.requests).isEmpty();
     }
 
-    @Test
-    void missingProjectMapsToError() {
-        var service = discovery(new RecordingExchangeFunction("{}", HttpStatus.NOT_FOUND));
+    @ParameterizedTest
+    @CsvSource({
+            "BAD_REQUEST,failed with status 400",
+            "FORBIDDEN,authorization failed",
+            "NOT_FOUND,not found"
+    })
+    void adoHttpDiscoveryFailuresMapToError(HttpStatus status, String expectedMessage) {
+        var service = discovery(new RecordingExchangeFunction("""
+                {"message":"The project or work item type could not be discovered."}
+                """, status));
 
-        var result = service.validateProject("STMN-Group", "Missing Project");
+        var result = service.validateProject("STMN-Group", "ADOnis 2.0 Test Project");
 
         assertThat(result.status()).isEqualTo(ConfigValidationStatus.ERROR);
-        assertThat(result.message()).contains("not found");
+        assertThat(result.message()).contains(expectedMessage);
+        assertThat(result.message()).contains("project or work item type").doesNotContain("secret-pat");
     }
 
     @Test
-    void retryableAdoFailureMapsToNotChecked() {
-        var service = discovery(new RecordingExchangeFunction("{}", HttpStatus.SERVICE_UNAVAILABLE));
+    void retryableAdoFailureMapsToErrorBecauseDiscoveryWasAttempted() {
+        var service = discovery(new RecordingExchangeFunction("""
+                {"message":"ADO is temporarily unavailable."}
+                """, HttpStatus.SERVICE_UNAVAILABLE));
 
         var result = service.listWorkItemTypes("STMN-Group", "Sandbox");
 
-        assertThat(result.status()).isEqualTo(ConfigValidationStatus.NOT_CHECKED);
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.ERROR);
         assertThat(result.message()).contains("retryable status 503");
+    }
+
+    @Test
+    void transportFailureMapsToSanitizedErrorBecauseDiscoveryWasAttempted() {
+        var service = new AzureDevOpsConfigDiscoveryService(
+                "secret-pat",
+                request -> Mono.error(new IllegalStateException("connection failed with secret-pat")),
+                new AzureDevOpsUrlBuilder()
+        );
+
+        var result = service.listWorkItemTypes("STMN-Group", "Sandbox");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.ERROR);
+        assertThat(result.message())
+                .contains("transport error")
+                .contains("IllegalStateException")
+                .doesNotContain("secret-pat");
     }
 
     @Test
