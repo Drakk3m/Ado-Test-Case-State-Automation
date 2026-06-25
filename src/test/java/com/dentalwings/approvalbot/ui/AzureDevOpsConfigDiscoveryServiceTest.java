@@ -58,6 +58,23 @@ class AzureDevOpsConfigDiscoveryServiceTest {
     }
 
     @Test
+    void listFieldOptionsUsesReferenceNameAsValueAndFriendlyNameAsDisplayOnly() {
+        var service = discovery(new RecordingExchangeFunction("""
+                {"value":[{"name":"Approver Tech","referenceName":"Custom.ApproverTech","type":"identity"}]}
+                """, HttpStatus.OK));
+
+        var result = service.listFieldOptions("STMN-Group", "Sandbox", "Test Case");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.values()).singleElement()
+                .satisfies(option -> {
+                    assertThat(option.value()).isEqualTo("Custom.ApproverTech");
+                    assertThat(option.displayName()).isEqualTo("Approver Tech");
+                    assertThat(option.description()).isEqualTo("identity");
+                });
+    }
+
+    @Test
     void listObservedStateNamesReturnsStateNamesFromAdoResponse() {
         var service = discovery(new RecordingExchangeFunction("""
                 {"value":[{"name":"Design"},{"name":"In Review"},{"name":"Approval"}]}

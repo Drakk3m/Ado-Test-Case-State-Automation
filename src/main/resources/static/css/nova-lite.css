@@ -37,7 +37,7 @@ body {
 .card {
     background: var(--nova-surface);
     border: 1px solid var(--nova-border);
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 16px;
     margin-bottom: 16px;
 }
@@ -64,12 +64,14 @@ label {
 
 input,
 textarea,
+select,
 button {
     font: inherit;
 }
 
 input,
-textarea {
+textarea,
+select {
     border: 1px solid var(--nova-border);
     background: var(--nova-surface-2);
     color: var(--nova-text);
@@ -80,6 +82,15 @@ textarea {
 textarea {
     min-height: 74px;
     resize: vertical;
+}
+
+select {
+    width: 100%;
+    min-height: 38px;
+}
+
+select[multiple] {
+    min-height: 148px;
 }
 
 button {
@@ -112,6 +123,7 @@ button.remove {
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .row-between {
@@ -132,6 +144,32 @@ button.remove {
     border-radius: 8px;
     padding: 12px;
     margin-bottom: 12px;
+}
+
+.selector-grid {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.selector-grid button {
+    min-height: 38px;
+    margin-bottom: 10px;
+}
+
+.lookup-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    color: var(--nova-muted);
+    font-size: 13px;
+}
+
+.compact {
+    margin-top: 0;
+    font-size: 13px;
 }
 
 .status {
@@ -212,5 +250,16 @@ pre {
     border-radius: 8px;
     padding: 12px;
     overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+    .selector-grid,
+    .validation-summary li {
+        grid-template-columns: 1fr;
+    }
+
+    .selector-grid button {
+        margin-bottom: 0;
+    }
 }
 
