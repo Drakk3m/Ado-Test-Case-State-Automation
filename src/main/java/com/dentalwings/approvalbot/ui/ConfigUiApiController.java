@@ -15,9 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConfigUiApiController {
 
     private final ApplicationLocalConfigService configService;
+    private final AdoConfigDiscoveryService discoveryService;
 
-    public ConfigUiApiController(ApplicationLocalConfigService configService) {
+    public ConfigUiApiController(ApplicationLocalConfigService configService, AdoConfigDiscoveryService discoveryService) {
         this.configService = configService;
+        this.discoveryService = discoveryService;
     }
 
     @GetMapping("/model")
@@ -43,6 +45,36 @@ public class ConfigUiApiController {
                 "path", path.toString(),
                 "preview", configService.preview(model)
         );
+    }
+
+    @PostMapping("/discovery/projects")
+    public ConfigLookupResult<ConfigSelectorOption> projects(@RequestBody ConfigDiscoveryRequest request) {
+        return discoveryService.listProjectOptions(request.organization());
+    }
+
+    @PostMapping("/discovery/validate-project")
+    public ConfigLookupResult<String> validateProject(@RequestBody ConfigDiscoveryRequest request) {
+        return discoveryService.validateProject(request.organization(), request.project());
+    }
+
+    @PostMapping("/discovery/work-item-types")
+    public ConfigLookupResult<ConfigSelectorOption> workItemTypes(@RequestBody ConfigDiscoveryRequest request) {
+        return discoveryService.listWorkItemTypeOptions(request.organization(), request.project());
+    }
+
+    @PostMapping("/discovery/fields")
+    public ConfigLookupResult<ConfigSelectorOption> fields(@RequestBody ConfigDiscoveryRequest request) {
+        return discoveryService.listFieldOptions(request.organization(), request.project(), request.workItemType());
+    }
+
+    @PostMapping("/discovery/states")
+    public ConfigLookupResult<ConfigSelectorOption> states(@RequestBody ConfigDiscoveryRequest request) {
+        return discoveryService.listStateOptions(request.organization(), request.project(), request.workItemType());
+    }
+
+    @PostMapping("/discovery/users/search")
+    public ConfigLookupResult<ConfigSelectorOption> users(@RequestBody ConfigDiscoveryRequest request) {
+        return discoveryService.searchIdentityOptions(request.organization(), request.query());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

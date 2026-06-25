@@ -49,8 +49,9 @@ class ApplicationLocalConfigServiceTest {
     @Test
     void apiSaveResponseDoesNotExposeEnvironmentSecretValues() throws Exception {
         var configFile = tempDir.resolve("application-local.yml");
-        var service = new ApplicationLocalConfigService(configFile, validatingService(validDiscovery()));
-        var controller = new ConfigUiApiController(service);
+        var discovery = validDiscovery();
+        var service = new ApplicationLocalConfigService(configFile, validatingService(discovery));
+        var controller = new ConfigUiApiController(service, discovery);
 
         var response = controller.save(validModel());
         var json = new ObjectMapper().writeValueAsString(response);
@@ -60,6 +61,28 @@ class ApplicationLocalConfigServiceTest {
                 .contains("${ADO_WEBHOOK_SHARED_SECRET:}")
                 .doesNotContain("real-pat")
                 .doesNotContain("real-secret");
+    }
+
+    @Test
+    void discoveryEndpointResponseDoesNotExposeEnvironmentSecretValues() throws Exception {
+        var configFile = tempDir.resolve("application-local.yml");
+        var discovery = validDiscovery();
+        var service = new ApplicationLocalConfigService(configFile, validatingService(discovery));
+        var controller = new ConfigUiApiController(service, discovery);
+
+        var response = controller.fields(new ConfigDiscoveryRequest(
+                "STMN-Group",
+                "ADOnis 2.0 Test Project",
+                "Test Case",
+                ""
+        ));
+        var json = new ObjectMapper().writeValueAsString(response);
+
+        assertThat(json)
+                .contains("Custom.ApproverTech")
+                .doesNotContain("real-pat")
+                .doesNotContain("real-secret")
+                .doesNotContain("Authorization");
     }
 
     @Test

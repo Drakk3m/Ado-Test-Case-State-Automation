@@ -12,7 +12,7 @@
         <h1>Configuracion Approval Bot</h1>
         <p>Prepara un borrador de <code>application-local.yml</code> y separa texto sin validar de valores verificados.</p>
         <p class="note">Los secretos no se guardan en disco: se mantienen como <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> y <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.</p>
-        <p class="note">La validacion ADO en vivo esta preparada como contrato y se muestra como <strong>Not checked</strong> hasta conectar discovery real. Hot-load queda diferido: reinicia el servicio despues de cambios YAML.</p>
+        <p class="note">La validacion ADO read-only carga proyectos, tipos, campos y estados cuando el PAT esta disponible. Hot-load queda diferido: reinicia el servicio despues de cambios YAML.</p>
     </header>
 
     <section class="card grid-2">
@@ -21,6 +21,11 @@
             <label>Organization
                 <input id="adoOrganization" type="text">
             </label>
+            <div class="row">
+                <button id="loadProjects" type="button">Load Projects</button>
+                <span id="projectLookupStatus"></span>
+            </div>
+            <datalist id="adoProjectOptions"></datalist>
             <label class="switch-row"><input id="adoHttpClientEnabled" type="checkbox"> HTTP client enabled</label>
             <label class="switch-row"><input id="adoDryRun" type="checkbox"> Dry run</label>
         </div>

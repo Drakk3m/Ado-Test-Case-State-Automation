@@ -4,10 +4,11 @@ const projectsEl = document.getElementById("projects");
 const validationSummaryEl = document.getElementById("validationSummary");
 const saveBtn = document.getElementById("saveBtn");
 
-let state = {
-    ado: { projects: [] }
-};
+let state = { ado: { projects: [] } };
 let lastPreview = null;
+let previewTimer = null;
+let projectOptionLookup = { status: "NOT_CHECKED", message: "", values: [] };
+let projectDiscovery = [];
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -33,24 +34,78 @@ function createProjectModel() {
     return {
         name: "",
         enabled: true,
-        supportedWorkItemTypes: ["Test Case"],
-        states: { design: "Design", inReview: "In Review", approved: "Approval" },
-        fields: {
-            approvedBySme: "Custom.ApproverTech",
-            approvedBySqa: "Custom.ApproverTest",
-            reversibleBusinessFields: [
-                "System.Title",
-                "System.Description",
-                "Microsoft.VSTS.TCM.Steps",
-                "Microsoft.VSTS.TCM.LocalDataSource"
-            ]
-        },
+        supportedWorkItemTypes: [],
+        states: { design: "Design", inReview: "In Review", approved: "Approved" },
+        fields: { approvedBySme: "", approvedBySqa: "", reversibleBusinessFields: [] },
         approvals: { smeUsers: [], sqaUsers: [] }
     };
 }
 
+function createDiscoveryState() {
+    return {
+        projectStatus: { status: "NOT_CHECKED", message: "Project has not been loaded." },
+        workItemTypes: { status: "NOT_CHECKED", message: "Load a project first.", values: [] },
+        fields: { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] },
+        states: { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] }
+    };
+}
+
+function ensureDiscovery() {
+    while (projectDiscovery.length < state.ado.projects.length) {
+        projectDiscovery.push(createDiscoveryState());
+    }
+    if (projectDiscovery.length > state.ado.projects.length) {
+        projectDiscovery = projectDiscovery.slice(0, state.ado.projects.length);
+    }
+}
+
+function invalidatePreview() {
+    lastPreview = null;
+    saveBtn.disabled = true;
+}
+
+function schedulePreview() {
+    invalidatePreview();
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+        previewDraft(false).catch(() => undefined);
+    }, 250);
+}
+
+function clearChildSelections(project) {
+    project.supportedWorkItemTypes = [];
+    project.fields.approvedBySme = "";
+    project.fields.approvedBySqa = "";
+    project.fields.reversibleBusinessFields = [];
+    project.states = { design: "Design", inReview: "In Review", approved: "Approved" };
+}
+
+function clearDiscovery(index, level) {
+    const discovery = projectDiscovery[index];
+    if (!discovery) {
+        return;
+    }
+    if (level === "project") {
+        discovery.projectStatus = { status: "NOT_CHECKED", message: "Project selection changed." };
+        discovery.workItemTypes = { status: "NOT_CHECKED", message: "Load the project again.", values: [] };
+        discovery.fields = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
+        discovery.states = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
+    }
+    if (level === "type") {
+        discovery.fields = { status: "NOT_CHECKED", message: "Work Item type changed.", values: [] };
+        discovery.states = { status: "NOT_CHECKED", message: "Work Item type changed.", values: [] };
+    }
+}
+
 function validationBadge(label) {
     return `<span class="badge badge-${label.toLowerCase().replace("_", "-")}">${label}</span>`;
+}
+
+function lookupBadge(lookup) {
+    if (!lookup?.status) {
+        return "";
+    }
+    return `<span class="lookup-status">${validationBadge(lookup.status)} ${escapeHtml(lookup.message || "")}</span>`;
 }
 
 function renderValidation(preview) {
@@ -84,9 +139,41 @@ function renderValidation(preview) {
     `;
 }
 
+function optionLabel(option) {
+    if (!option) {
+        return "";
+    }
+    if (option.displayName && option.displayName !== option.value) {
+        return `${option.displayName} (${option.value})`;
+    }
+    return option.value;
+}
+
+function selectOptions(options, selected, placeholder) {
+    const hasSelected = options.some((option) => option.value === selected);
+    const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
+    if (selected && !hasSelected) {
+        rows.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} - unchecked/manual</option>`);
+    }
+    for (const option of options) {
+        const description = option.description ? ` - ${option.description}` : "";
+        rows.push(`<option value="${escapeHtml(option.value)}" ${option.value === selected ? "selected" : ""}>${escapeHtml(optionLabel(option) + description)}</option>`);
+    }
+    return rows.join("");
+}
+
+function projectDatalist() {
+    return (projectOptionLookup.values || [])
+        .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(optionLabel(option))}</option>`)
+        .join("");
+}
+
 function renderProjects() {
+    ensureDiscovery();
     projectsEl.innerHTML = "";
     state.ado.projects.forEach((project, index) => {
+        const discovery = projectDiscovery[index];
+        const selectedType = project.supportedWorkItemTypes?.[0] || "";
         const card = document.createElement("div");
         card.className = "project-card";
         card.innerHTML = `
@@ -94,94 +181,155 @@ function renderProjects() {
                 <h3>Proyecto ${index + 1}</h3>
                 <button type="button" class="remove" data-action="remove">Eliminar</button>
             </div>
-            <label>Nombre de proyecto
-                <input data-field="name" type="text" value="${escapeHtml(project.name || "")}">
-            </label>
+            <div class="selector-grid">
+                <label>Project
+                    <input data-field="name" list="adoProjectOptions" type="text" value="${escapeHtml(project.name || "")}">
+                </label>
+                <button type="button" data-action="load-project">Validate / Load Project</button>
+            </div>
+            ${lookupBadge(discovery.projectStatus)}
             <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> Enabled</label>
-            <label>Supported work item types (coma o linea)
-                <textarea data-field="supportedWorkItemTypes">${escapeHtml((project.supportedWorkItemTypes || []).join("\n"))}</textarea>
+            <label>Work Item Type
+                <select data-field="supportedWorkItemTypes.0">
+                    ${selectOptions(discovery.workItemTypes.values || [], selectedType, "Select a discovered Work Item type")}
+                </select>
             </label>
+            ${lookupBadge(discovery.workItemTypes)}
             <div class="grid-2">
                 <label>State design
-                    <input data-field="states.design" type="text" value="${escapeHtml(project.states.design || "")}">
+                    <select data-field="states.design">
+                        ${selectOptions(discovery.states.values || [], project.states.design || "", "Select a discovered state")}
+                    </select>
                 </label>
                 <label>State in-review
-                    <input data-field="states.inReview" type="text" value="${escapeHtml(project.states.inReview || "")}">
+                    <select data-field="states.inReview">
+                        ${selectOptions(discovery.states.values || [], project.states.inReview || "", "Select a discovered state")}
+                    </select>
                 </label>
             </div>
             <label>State approved
-                <input data-field="states.approved" type="text" value="${escapeHtml(project.states.approved || "")}">
+                <select data-field="states.approved">
+                    ${selectOptions(discovery.states.values || [], project.states.approved || "", "Select a discovered final state")}
+                </select>
             </label>
+            ${lookupBadge(discovery.states)}
             <div class="grid-2">
                 <label>Field approved-by-sme
-                    <input data-field="fields.approvedBySme" type="text" value="${escapeHtml(project.fields.approvedBySme || "")}">
+                    <select data-field="fields.approvedBySme">
+                        ${selectOptions(discovery.fields.values || [], project.fields.approvedBySme || "", "Select a discovered field")}
+                    </select>
                 </label>
                 <label>Field approved-by-sqa
-                    <input data-field="fields.approvedBySqa" type="text" value="${escapeHtml(project.fields.approvedBySqa || "")}">
+                    <select data-field="fields.approvedBySqa">
+                        ${selectOptions(discovery.fields.values || [], project.fields.approvedBySqa || "", "Select a discovered field")}
+                    </select>
                 </label>
             </div>
-            <label>Reversible business fields (coma o linea)
-                <textarea data-field="fields.reversibleBusinessFields">${escapeHtml((project.fields.reversibleBusinessFields || []).join("\n"))}</textarea>
+            <label>Reversible business fields
+                <select data-field="fields.reversibleBusinessFields" multiple size="6">
+                    ${(discovery.fields.values || []).map((option) => `
+                        <option value="${escapeHtml(option.value)}" ${(project.fields.reversibleBusinessFields || []).includes(option.value) ? "selected" : ""}>
+                            ${escapeHtml(optionLabel(option))}
+                        </option>
+                    `).join("")}
+                </select>
             </label>
+            ${lookupBadge(discovery.fields)}
             <div class="grid-2">
-                <label>SME users (coma o linea)
+                <label>SME users (email/login)
                     <textarea data-field="approvals.smeUsers">${escapeHtml((project.approvals.smeUsers || []).join("\n"))}</textarea>
                 </label>
-                <label>SQA users (coma o linea)
+                <label>SQA users (email/login)
                     <textarea data-field="approvals.sqaUsers">${escapeHtml((project.approvals.sqaUsers || []).join("\n"))}</textarea>
                 </label>
             </div>
+            <p class="note compact">User identity lookup remains warning-only unless ADO returns selectable identities.</p>
         `;
 
         card.addEventListener("input", (event) => {
-            const field = event.target.getAttribute("data-field");
-            if (!field) {
-                return;
-            }
-
-            lastPreview = null;
-            saveBtn.disabled = true;
-            validationSummaryEl.innerHTML = "";
-
-            if (field === "enabled") {
-                project.enabled = event.target.checked;
-                return;
-            }
-
-            if (field === "supportedWorkItemTypes") {
-                project.supportedWorkItemTypes = splitLines(event.target.value);
-                return;
-            }
-            if (field === "fields.reversibleBusinessFields") {
-                project.fields.reversibleBusinessFields = splitLines(event.target.value);
-                return;
-            }
-            if (field === "approvals.smeUsers") {
-                project.approvals.smeUsers = splitLines(event.target.value);
-                return;
-            }
-            if (field === "approvals.sqaUsers") {
-                project.approvals.sqaUsers = splitLines(event.target.value);
-                return;
-            }
-
-            const parts = field.split(".");
-            if (parts.length === 1) {
-                project[parts[0]] = event.target.value;
-            } else {
-                project[parts[0]][parts[1]] = event.target.value;
-            }
+            handleProjectInput(project, index, event);
+        });
+        card.addEventListener("change", (event) => {
+            handleProjectInput(project, index, event);
         });
 
         card.querySelector("[data-action='remove']").addEventListener("click", () => {
             state.ado.projects.splice(index, 1);
-            lastPreview = null;
-            saveBtn.disabled = true;
+            projectDiscovery.splice(index, 1);
+            invalidatePreview();
             renderProjects();
+            schedulePreview();
+        });
+
+        card.querySelector("[data-action='load-project']").addEventListener("click", async () => {
+            await loadProject(index);
         });
 
         projectsEl.appendChild(card);
     });
+}
+
+function handleProjectInput(project, index, event) {
+    const field = event.target.getAttribute("data-field");
+    if (!field) {
+        return;
+    }
+    if (event.type === "input" && event.target.tagName === "SELECT") {
+        return;
+    }
+
+    if (field === "enabled") {
+        project.enabled = event.target.checked;
+        schedulePreview();
+        return;
+    }
+
+    if (field === "name") {
+        project.name = event.target.value;
+        clearChildSelections(project);
+        clearDiscovery(index, "project");
+        if (event.type === "change") {
+            renderProjects();
+        }
+        schedulePreview();
+        return;
+    }
+
+    if (field === "supportedWorkItemTypes.0") {
+        project.supportedWorkItemTypes = event.target.value ? [event.target.value] : [];
+        project.fields.approvedBySme = "";
+        project.fields.approvedBySqa = "";
+        project.fields.reversibleBusinessFields = [];
+        clearDiscovery(index, "type");
+        renderProjects();
+        loadFieldAndStateOptions(index).catch((error) => setStatus(error.message, true));
+        schedulePreview();
+        return;
+    }
+
+    if (field === "fields.reversibleBusinessFields") {
+        project.fields.reversibleBusinessFields = Array.from(event.target.selectedOptions).map((option) => option.value);
+        schedulePreview();
+        return;
+    }
+    if (field === "approvals.smeUsers") {
+        project.approvals.smeUsers = splitLines(event.target.value);
+        schedulePreview();
+        return;
+    }
+    if (field === "approvals.sqaUsers") {
+        project.approvals.sqaUsers = splitLines(event.target.value);
+        schedulePreview();
+        return;
+    }
+
+    const parts = field.split(".");
+    if (parts.length === 1) {
+        project[parts[0]] = event.target.value;
+    } else {
+        project[parts[0]][parts[1]] = event.target.value;
+    }
+    schedulePreview();
 }
 
 function readFormToState() {
@@ -226,18 +374,120 @@ function fillFormFromState() {
     renderProjects();
 }
 
-async function postConfig(url) {
-    readFormToState();
+async function postJson(url, body) {
     const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state)
+        body: JSON.stringify(body)
     });
     const payload = await response.json();
     if (!response.ok) {
         throw new Error(payload.error || "Error inesperado");
     }
     return payload;
+}
+
+async function postConfig(url) {
+    readFormToState();
+    return postJson(url, state);
+}
+
+async function discover(url, body) {
+    const result = await postJson(url, body);
+    if (result.status === "ERROR") {
+        setStatus(result.message || "ADO discovery returned an error.", true);
+    } else if (result.status === "NOT_CHECKED" || result.status === "WARNING") {
+        setStatus(result.message || "ADO discovery was not fully checked.");
+    }
+    return result;
+}
+
+async function loadProjects() {
+    readFormToState();
+    projectOptionLookup = await discover("/api/config-ui/discovery/projects", {
+        organization: state.ado.organization
+    });
+    renderProjectDatalist();
+    renderProjects();
+    schedulePreview();
+}
+
+async function loadProject(index) {
+    readFormToState();
+    ensureDiscovery();
+    const project = state.ado.projects[index];
+    const discovery = projectDiscovery[index];
+    discovery.projectStatus = await discover("/api/config-ui/discovery/validate-project", {
+        organization: state.ado.organization,
+        project: project.name
+    });
+    discovery.workItemTypes = await discover("/api/config-ui/discovery/work-item-types", {
+        organization: state.ado.organization,
+        project: project.name
+    });
+    discovery.fields = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
+    discovery.states = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
+    renderProjects();
+    schedulePreview();
+}
+
+async function loadFieldAndStateOptions(index) {
+    readFormToState();
+    ensureDiscovery();
+    const project = state.ado.projects[index];
+    const type = project.supportedWorkItemTypes?.[0] || "";
+    if (!project.name || !type) {
+        return;
+    }
+    const discovery = projectDiscovery[index];
+    discovery.fields = await discover("/api/config-ui/discovery/fields", {
+        organization: state.ado.organization,
+        project: project.name,
+        workItemType: type
+    });
+    discovery.states = await discover("/api/config-ui/discovery/states", {
+        organization: state.ado.organization,
+        project: project.name,
+        workItemType: type
+    });
+    renderProjects();
+    schedulePreview();
+}
+
+async function previewDraft(showStatus = true) {
+    const payload = await postConfig("/api/config-ui/preview");
+    yamlOutputEl.textContent = payload.yaml || "";
+    renderValidation(payload);
+    if (showStatus) {
+        if (payload.draftYamlAvailable) {
+            setStatus(payload.finalYamlAllowed ? "YAML final permitido." : "YAML de borrador generado; faltan validaciones ADO.");
+        } else {
+            setStatus("Errores bloqueantes: no se genero YAML.", true);
+        }
+    }
+    return payload;
+}
+
+function renderProjectDatalist() {
+    document.getElementById("adoProjectOptions").innerHTML = projectDatalist();
+    document.getElementById("projectLookupStatus").innerHTML = lookupBadge(projectOptionLookup);
+}
+
+function handleGlobalInput() {
+    readFormToState();
+    schedulePreview();
+}
+
+function handleOrganizationChanged() {
+    readFormToState();
+    projectOptionLookup = { status: "NOT_CHECKED", message: "Organization changed; reload projects.", values: [] };
+    for (const project of state.ado.projects) {
+        clearChildSelections(project);
+    }
+    projectDiscovery = state.ado.projects.map(createDiscoveryState);
+    renderProjectDatalist();
+    renderProjects();
+    schedulePreview();
 }
 
 async function initialize() {
@@ -247,26 +497,41 @@ async function initialize() {
     if (!Array.isArray(state.ado.projects)) {
         state.ado.projects = [];
     }
+    projectDiscovery = state.ado.projects.map(createDiscoveryState);
     fillFormFromState();
     saveBtn.disabled = true;
-    setStatus("Configuracion cargada. Genera un preview para validar.");
+    setStatus("Configuracion cargada. Carga ADO discovery para poblar selectores.");
+    await previewDraft(false);
 }
+
+document.getElementById("loadProjects").addEventListener("click", () => {
+    loadProjects().catch((error) => setStatus(error.message, true));
+});
+
+document.getElementById("adoOrganization").addEventListener("input", handleOrganizationChanged);
+document.getElementById("adoHttpClientEnabled").addEventListener("change", handleGlobalInput);
+document.getElementById("adoDryRun").addEventListener("change", handleGlobalInput);
+document.getElementById("botIdentityEmail").addEventListener("input", handleGlobalInput);
+document.getElementById("webhookEnabled").addEventListener("change", handleGlobalInput);
+document.getElementById("webhookHeaderName").addEventListener("input", handleGlobalInput);
+document.getElementById("retryMaxAttempts").addEventListener("input", handleGlobalInput);
+document.getElementById("retryBackoff").addEventListener("input", handleGlobalInput);
+document.getElementById("retryRespectAfter").addEventListener("change", handleGlobalInput);
+document.getElementById("idempotencyType").addEventListener("input", handleGlobalInput);
+document.getElementById("idempotencyPath").addEventListener("input", handleGlobalInput);
+document.getElementById("idempotencyTtl").addEventListener("input", handleGlobalInput);
+document.getElementById("idempotencyMaxRecords").addEventListener("input", handleGlobalInput);
 
 document.getElementById("addProject").addEventListener("click", () => {
     state.ado.projects.push(createProjectModel());
+    projectDiscovery.push(createDiscoveryState());
     renderProjects();
+    schedulePreview();
 });
 
 document.getElementById("previewBtn").addEventListener("click", async () => {
     try {
-        const payload = await postConfig("/api/config-ui/preview");
-        yamlOutputEl.textContent = payload.yaml || "";
-        renderValidation(payload);
-        if (payload.draftYamlAvailable) {
-            setStatus(payload.finalYamlAllowed ? "YAML final permitido." : "YAML de borrador generado; faltan validaciones ADO.");
-        } else {
-            setStatus("Errores bloqueantes: no se genero YAML.", true);
-        }
+        await previewDraft(true);
     } catch (error) {
         setStatus(error.message, true);
     }
