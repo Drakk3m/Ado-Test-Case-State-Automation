@@ -274,12 +274,21 @@ public class AzureDevOpsHttpClient implements AdoClient {
                         }
                     });
         }
-        LOGGER.warn("ADO HTTP operation failed operation=createWorkItemComment organization={} project={} workItemId={} httpStatus={} message={}",
-                key.organization(), key.project(), key.workItemId(), status, commentFailureMessage(status));
-        return Mono.just(AdoCommentResult.failure(commentFailureMessage(status)));
+        return response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .map(body -> {
+                    var message = commentFailureMessage(status, body);
+                    LOGGER.warn("ADO HTTP operation failed operation=createWorkItemComment organization={} project={} workItemId={} httpStatus={} message={}",
+                            key.organization(), key.project(), key.workItemId(), status, message);
+                    return AdoCommentResult.failure(message);
+                });
     }
 
-    private String commentFailureMessage(int status) {
-        return "Azure DevOps comment request failed with status " + status + ".";
+    private String commentFailureMessage(int status, String body) {
+        var diagnosticBody = sanitizeDiagnosticBody(body);
+        if (diagnosticBody.isBlank()) {
+            return "Azure DevOps comment request failed with status " + status + ".";
+        }
+        return "Azure DevOps comment request failed with status " + status + ". ADO response: " + diagnosticBody;
     }
 }

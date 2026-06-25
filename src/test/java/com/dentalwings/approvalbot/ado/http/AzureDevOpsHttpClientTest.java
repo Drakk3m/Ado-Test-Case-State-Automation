@@ -625,6 +625,36 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
+    void commentFailureMessageIncludesSanitizedAdoResponseBody() {
+        var result = commentResultFor(
+                HttpStatus.BAD_REQUEST,
+                """
+                        {
+                          "message": "TF401232: The comment payload is invalid.\\nCheck api-version."
+                        }
+                        """
+        );
+
+        assertThat(result.successful()).isFalse();
+        assertThat(result.message())
+                .contains("Azure DevOps comment request failed with status 400.")
+                .contains("ADO response:")
+                .contains("comment payload is invalid")
+                .contains("Check api-version.")
+                .doesNotContain("\n")
+                .doesNotContain("\r");
+    }
+
+    @Test
+    void commentFailureMessageTruncatesLongAdoResponseBody() {
+        var result = commentResultFor(HttpStatus.BAD_REQUEST, "x".repeat(1200));
+
+        assertThat(result.message())
+                .hasSizeLessThan(1100)
+                .endsWith("...");
+    }
+
+    @Test
     void authorizationCommentResponsesMapToFailure() {
         assertThat(commentResultFor(HttpStatus.UNAUTHORIZED).successful()).isFalse();
         assertThat(commentResultFor(HttpStatus.FORBIDDEN).successful()).isFalse();
@@ -672,11 +702,16 @@ class AzureDevOpsHttpClientTest {
 
     @Test
     void commentFailureMessageDoesNotExposePatOrText() {
-        var result = commentResultFor(HttpStatus.INTERNAL_SERVER_ERROR);
+        var client = clientReturning("""
+                {"message":"The comment request body was invalid."}
+                """, HttpStatus.INTERNAL_SERVER_ERROR);
+
+        var result = client.createWorkItemComment(KEY, "private comment body");
 
         assertThat(result.message())
+                .contains("comment request body")
                 .doesNotContain("secret-pat")
-                .doesNotContain("comment body");
+                .doesNotContain("private comment body");
     }
 
     @Test
@@ -719,7 +754,11 @@ class AzureDevOpsHttpClientTest {
     }
 
     private com.dentalwings.approvalbot.ado.AdoCommentResult commentResultFor(HttpStatus status) {
-        var client = clientReturning(commentJson("42"), status);
+        return commentResultFor(status, status.is2xxSuccessful() ? commentJson("42") : "");
+    }
+
+    private com.dentalwings.approvalbot.ado.AdoCommentResult commentResultFor(HttpStatus status, String body) {
+        var client = clientReturning(body, status);
 
         return client.createWorkItemComment(KEY, "comment body");
     }
