@@ -56,8 +56,8 @@ class WorkflowEngineTest {
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SME_FIELD, null),
-                PatchOperation.replaceField(SQA_FIELD, null)
+                PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, "")
         );
         assertThat(decision.comment()).isNull();
     }
@@ -81,8 +81,8 @@ class WorkflowEngineTest {
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(
                 PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, null),
-                PatchOperation.replaceField(SQA_FIELD, null)
+                PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, "")
         );
         assertThat(decision.comment()).contains("cannot move directly from Design to Approved");
     }
@@ -119,8 +119,8 @@ class WorkflowEngineTest {
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SME_FIELD, null),
-                PatchOperation.replaceField(SQA_FIELD, null),
+                PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, ""),
                 PatchOperation.replaceField(SME_FIELD, "Ana Perez")
         );
         assertThat(decision.comment()).isNull();
@@ -169,7 +169,7 @@ class WorkflowEngineTest {
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, null));
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, ""));
         assertThat(decision.patchOperations()).extracting(PatchOperation::op).doesNotContain("remove");
         assertThat(decision.comment()).isNull();
     }
@@ -181,7 +181,7 @@ class WorkflowEngineTest {
         var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, null));
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""));
         assertThat(decision.comment()).isNull();
     }
 
@@ -215,7 +215,7 @@ class WorkflowEngineTest {
         var decision = workflowEngine.decide(input("In Review", config, dualRole(), Map.of(), current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, null));
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, ""));
         assertThat(decision.patchOperations()).doesNotContain(PatchOperation.replaceField("System.State", "Approved"));
     }
 
@@ -226,8 +226,8 @@ class WorkflowEngineTest {
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(
                 PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, null),
-                PatchOperation.replaceField(SQA_FIELD, null)
+                PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, "")
         );
         assertThat(decision.comment()).contains("does not have valid SME and SQA approvals");
     }
@@ -242,7 +242,7 @@ class WorkflowEngineTest {
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(
                 PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SQA_FIELD, null)
+                PatchOperation.replaceField(SQA_FIELD, "")
         );
     }
 
@@ -274,8 +274,8 @@ class WorkflowEngineTest {
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), previous, current));
 
         assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SME_FIELD, null),
-                PatchOperation.replaceField(SQA_FIELD, null),
+                PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, ""),
                 PatchOperation.replaceField(SME_FIELD, "Ana Perez")
         );
     }
@@ -420,7 +420,7 @@ class WorkflowEngineTest {
 
         assertThat(decision.patchOperations()).containsExactly(
                 PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, null)
+                PatchOperation.replaceField(SME_FIELD, "")
         );
     }
 
@@ -432,7 +432,7 @@ class WorkflowEngineTest {
 
         assertThat(decision.patchOperations()).containsExactly(
                 PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, null)
+                PatchOperation.replaceField(SME_FIELD, "")
         );
     }
 
