@@ -25,6 +25,7 @@ public class AzureDevOpsHttpClient implements AdoClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AzureDevOpsHttpClient.class);
     private static final MediaType JSON_PATCH = MediaType.parseMediaType("application/json-patch+json");
+    private static final int MAX_DIAGNOSTIC_BODY_LENGTH = 1000;
 
     private final WebClient webClient;
     private final AzureDevOpsUrlBuilder urlBuilder;
@@ -96,7 +97,7 @@ public class AzureDevOpsHttpClient implements AdoClient {
                 .uri(uri(urlBuilder.workItemPatchUrl(key)))
                 .contentType(JSON_PATCH)
                 .bodyValue(patchOperations)
-                .exchangeToMono(response -> handlePatchResponse(key, response))
+                .exchangeToMono(response -> handlePatchResponse(key, patchOperations, response))
                 .onErrorResume(error -> {
                     LOGGER.warn("ADO HTTP operation failed operation=patchWorkItem organization={} project={} workItemId={} retryable={} message={}",
                             key.organization(), key.project(), key.workItemId(), true,
@@ -197,7 +198,7 @@ public class AzureDevOpsHttpClient implements AdoClient {
                 .collect(Collectors.toUnmodifiableList());
     }
 
-    private Mono<AdoPatchResult> handlePatchResponse(AdoWorkItemKey key, ClientResponse response) {
+    private Mono<AdoPatchResult> handlePatchResponse(AdoWorkItemKey key, List<PatchOperation> patchOperations, ClientResponse response) {
         var status = response.statusCode().value();
         if (status == 200 || status == 201) {
             return response.bodyToMono(AdoRestWorkItemResponse.class)
@@ -220,17 +221,40 @@ public class AzureDevOpsHttpClient implements AdoClient {
             return Mono.just(AdoPatchResult.success(-1));
         }
         if (status == 409 || status == 412 || status == 429 || status >= 500) {
-            LOGGER.warn("ADO HTTP operation failed operation=patchWorkItem organization={} project={} workItemId={} httpStatus={} retryable={} message={}",
-                    key.organization(), key.project(), key.workItemId(), status, true, patchFailureMessage(status));
-            return Mono.just(AdoPatchResult.retryableFailure(patchFailureMessage(status)));
+            return patchFailure(key, patchOperations, response, status, true);
         }
-        LOGGER.warn("ADO HTTP operation failed operation=patchWorkItem organization={} project={} workItemId={} httpStatus={} retryable={} message={}",
-                key.organization(), key.project(), key.workItemId(), status, false, patchFailureMessage(status));
-        return Mono.just(AdoPatchResult.nonRetryableFailure(patchFailureMessage(status)));
+        return patchFailure(key, patchOperations, response, status, false);
     }
 
-    private String patchFailureMessage(int status) {
-        return "Azure DevOps PATCH request failed with status " + status + ".";
+    private Mono<AdoPatchResult> patchFailure(AdoWorkItemKey key, List<PatchOperation> patchOperations, ClientResponse response, int status, boolean retryable) {
+        return response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .map(body -> {
+                    var message = patchFailureMessage(status, body);
+                    LOGGER.warn("ADO HTTP operation failed operation=patchWorkItem organization={} project={} workItemId={} httpStatus={} retryable={} operationCount={} operationPaths={} message={}",
+                            key.organization(), key.project(), key.workItemId(), status, retryable,
+                            patchOperations.size(), operationPaths(patchOperations), message);
+                    return retryable ? AdoPatchResult.retryableFailure(message) : AdoPatchResult.nonRetryableFailure(message);
+                });
+    }
+
+    private String patchFailureMessage(int status, String body) {
+        var diagnosticBody = sanitizeDiagnosticBody(body);
+        if (diagnosticBody.isBlank()) {
+            return "Azure DevOps PATCH request failed with status " + status + ".";
+        }
+        return "Azure DevOps PATCH request failed with status " + status + ". ADO response: " + diagnosticBody;
+    }
+
+    private String sanitizeDiagnosticBody(String body) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+        var sanitized = body.replaceAll("\\p{Cntrl}+", " ").trim();
+        if (sanitized.length() <= MAX_DIAGNOSTIC_BODY_LENGTH) {
+            return sanitized;
+        }
+        return sanitized.substring(0, MAX_DIAGNOSTIC_BODY_LENGTH) + "...";
     }
 
     private Mono<AdoCommentResult> handleCommentResponse(AdoWorkItemKey key, ClientResponse response) {
