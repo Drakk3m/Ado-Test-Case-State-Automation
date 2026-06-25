@@ -24,15 +24,41 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
+    void javascriptMakesProjectVerificationTheFirstAdoDiscoveryGate() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("Verify Project")
+                .contains("isProjectVerified(discovery, project)")
+                .contains("const workItemTypeDisabled = projectVerified ? \"\" : \"disabled\"")
+                .contains("const fieldAndStateDisabled = dependentOptionsReady ? \"\" : \"disabled\"")
+                .contains("if (isProjectVerified(discovery, project))")
+                .contains("Verify the project before selecting a Work Item type");
+    }
+
+    @Test
+    void javascriptBlocksFinalSaveUntilAdoSelectorStateIsCurrent() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("isUiAdoDiscoveryCurrent()")
+                .contains("isProjectDiscoveryCurrent(project, discovery)")
+                .contains("saveBtn.disabled = !preview?.finalYamlAllowed || !uiAdoDiscoveryCurrent")
+                .contains("Verify project and select current ADO-backed values before saving final YAML.");
+    }
+
+    @Test
     void javascriptClearsDependentSelectionsWhenParentsChange() throws Exception {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
                 .contains("clearChildSelections(project)")
+                .contains("clearTypeSelections(project)")
                 .contains("clearDiscovery(index, \"project\")")
                 .contains("clearDiscovery(index, \"type\")")
                 .contains("project.fields.approvedBySme = \"\"")
-                .contains("project.fields.approvedBySqa = \"\"");
+                .contains("project.fields.approvedBySqa = \"\"")
+                .contains("project.states = { design: \"Design\", inReview: \"In Review\", approved: \"Approved\" }");
     }
 
     @Test

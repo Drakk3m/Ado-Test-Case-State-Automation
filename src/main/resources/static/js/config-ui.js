@@ -80,6 +80,13 @@ function clearChildSelections(project) {
     project.states = { design: "Design", inReview: "In Review", approved: "Approved" };
 }
 
+function clearTypeSelections(project) {
+    project.fields.approvedBySme = "";
+    project.fields.approvedBySqa = "";
+    project.fields.reversibleBusinessFields = [];
+    project.states = { design: "Design", inReview: "In Review", approved: "Approved" };
+}
+
 function clearDiscovery(index, level) {
     const discovery = projectDiscovery[index];
     if (!discovery) {
@@ -112,7 +119,8 @@ function renderValidation(preview) {
     lastPreview = preview;
     const validation = preview?.validation;
     const fields = validation?.fields || [];
-    saveBtn.disabled = !preview?.finalYamlAllowed;
+    const uiAdoDiscoveryCurrent = isUiAdoDiscoveryCurrent();
+    saveBtn.disabled = !preview?.finalYamlAllowed || !uiAdoDiscoveryCurrent;
 
     if (fields.length === 0) {
         validationSummaryEl.innerHTML = "";
@@ -127,9 +135,9 @@ function renderValidation(preview) {
         </li>
     `).join("");
 
-    const finalState = preview.finalYamlAllowed
+    const finalState = preview.finalYamlAllowed && uiAdoDiscoveryCurrent
         ? "Final YAML allowed."
-        : "Final YAML blocked until errors and Not checked values are resolved.";
+        : "Final YAML blocked until errors, Not checked values, and current ADO selector verification are resolved.";
     validationSummaryEl.innerHTML = `
         <div class="validation-heading">
             <strong>Validation</strong>
@@ -147,6 +155,57 @@ function optionLabel(option) {
         return `${option.displayName} (${option.value})`;
     }
     return option.value;
+}
+
+function lookupContainsValue(lookup, value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return normalized.length > 0 && (lookup?.values || [])
+        .some((option) => String(option?.value ?? option ?? "").trim().toLowerCase() === normalized);
+}
+
+function isProjectVerified(discovery, project) {
+    return discovery?.projectStatus?.status === "VALID"
+        && lookupContainsValue(discovery.projectStatus, project.name);
+}
+
+function hasSelectedWorkItemType(project) {
+    return !!(project.supportedWorkItemTypes?.[0] || "").trim();
+}
+
+function areFieldsAndStatesReady(discovery, project) {
+    return hasSelectedWorkItemType(project)
+        && discovery?.fields?.status === "VALID"
+        && discovery?.states?.status === "VALID";
+}
+
+function allValuesInLookup(values, lookup) {
+    return values.every((value) => lookupContainsValue(lookup, value));
+}
+
+function isProjectDiscoveryCurrent(project, discovery) {
+    const selectedType = project.supportedWorkItemTypes?.[0] || "";
+    const requiredFields = [
+        project.fields.approvedBySme,
+        project.fields.approvedBySqa,
+        ...(project.fields.reversibleBusinessFields || [])
+    ];
+    const requiredStates = [
+        project.states.design,
+        project.states.inReview,
+        project.states.approved
+    ];
+
+    return isProjectVerified(discovery, project)
+        && lookupContainsValue(discovery.workItemTypes, selectedType)
+        && areFieldsAndStatesReady(discovery, project)
+        && allValuesInLookup(requiredFields, discovery.fields)
+        && allValuesInLookup(requiredStates, discovery.states);
+}
+
+function isUiAdoDiscoveryCurrent() {
+    ensureDiscovery();
+    return (state.ado.projects || []).length > 0
+        && state.ado.projects.every((project, index) => isProjectDiscoveryCurrent(project, projectDiscovery[index]));
 }
 
 function selectOptions(options, selected, placeholder) {
@@ -174,6 +233,10 @@ function renderProjects() {
     state.ado.projects.forEach((project, index) => {
         const discovery = projectDiscovery[index];
         const selectedType = project.supportedWorkItemTypes?.[0] || "";
+        const projectVerified = isProjectVerified(discovery, project);
+        const dependentOptionsReady = areFieldsAndStatesReady(discovery, project);
+        const workItemTypeDisabled = projectVerified ? "" : "disabled";
+        const fieldAndStateDisabled = dependentOptionsReady ? "" : "disabled";
         const card = document.createElement("div");
         card.className = "project-card";
         card.innerHTML = `
@@ -185,48 +248,48 @@ function renderProjects() {
                 <label>Project
                     <input data-field="name" list="adoProjectOptions" type="text" value="${escapeHtml(project.name || "")}">
                 </label>
-                <button type="button" data-action="load-project">Validate / Load Project</button>
+                <button type="button" data-action="load-project">Verify Project</button>
             </div>
             ${lookupBadge(discovery.projectStatus)}
             <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> Enabled</label>
             <label>Work Item Type
-                <select data-field="supportedWorkItemTypes.0">
+                <select data-field="supportedWorkItemTypes.0" ${workItemTypeDisabled}>
                     ${selectOptions(discovery.workItemTypes.values || [], selectedType, "Select a discovered Work Item type")}
                 </select>
             </label>
             ${lookupBadge(discovery.workItemTypes)}
             <div class="grid-2">
                 <label>State design
-                    <select data-field="states.design">
+                    <select data-field="states.design" ${fieldAndStateDisabled}>
                         ${selectOptions(discovery.states.values || [], project.states.design || "", "Select a discovered state")}
                     </select>
                 </label>
                 <label>State in-review
-                    <select data-field="states.inReview">
+                    <select data-field="states.inReview" ${fieldAndStateDisabled}>
                         ${selectOptions(discovery.states.values || [], project.states.inReview || "", "Select a discovered state")}
                     </select>
                 </label>
             </div>
             <label>State approved
-                <select data-field="states.approved">
+                <select data-field="states.approved" ${fieldAndStateDisabled}>
                     ${selectOptions(discovery.states.values || [], project.states.approved || "", "Select a discovered final state")}
                 </select>
             </label>
             ${lookupBadge(discovery.states)}
             <div class="grid-2">
                 <label>Field approved-by-sme
-                    <select data-field="fields.approvedBySme">
+                    <select data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
                         ${selectOptions(discovery.fields.values || [], project.fields.approvedBySme || "", "Select a discovered field")}
                     </select>
                 </label>
                 <label>Field approved-by-sqa
-                    <select data-field="fields.approvedBySqa">
+                    <select data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
                         ${selectOptions(discovery.fields.values || [], project.fields.approvedBySqa || "", "Select a discovered field")}
                     </select>
                 </label>
             </div>
             <label>Reversible business fields
-                <select data-field="fields.reversibleBusinessFields" multiple size="6">
+                <select data-field="fields.reversibleBusinessFields" multiple size="6" ${fieldAndStateDisabled}>
                     ${(discovery.fields.values || []).map((option) => `
                         <option value="${escapeHtml(option.value)}" ${(project.fields.reversibleBusinessFields || []).includes(option.value) ? "selected" : ""}>
                             ${escapeHtml(optionLabel(option))}
@@ -297,9 +360,7 @@ function handleProjectInput(project, index, event) {
 
     if (field === "supportedWorkItemTypes.0") {
         project.supportedWorkItemTypes = event.target.value ? [event.target.value] : [];
-        project.fields.approvedBySme = "";
-        project.fields.approvedBySqa = "";
-        project.fields.reversibleBusinessFields = [];
+        clearTypeSelections(project);
         clearDiscovery(index, "type");
         renderProjects();
         loadFieldAndStateOptions(index).catch((error) => setStatus(error.message, true));
@@ -417,16 +478,20 @@ async function loadProject(index) {
     ensureDiscovery();
     const project = state.ado.projects[index];
     const discovery = projectDiscovery[index];
+    clearChildSelections(project);
+    clearDiscovery(index, "project");
     discovery.projectStatus = await discover("/api/config-ui/discovery/validate-project", {
         organization: state.ado.organization,
         project: project.name
     });
-    discovery.workItemTypes = await discover("/api/config-ui/discovery/work-item-types", {
-        organization: state.ado.organization,
-        project: project.name
-    });
-    discovery.fields = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
-    discovery.states = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
+    if (isProjectVerified(discovery, project)) {
+        discovery.workItemTypes = await discover("/api/config-ui/discovery/work-item-types", {
+            organization: state.ado.organization,
+            project: project.name
+        });
+    } else {
+        discovery.workItemTypes = { status: "NOT_CHECKED", message: "Verify the project before selecting a Work Item type.", values: [] };
+    }
     renderProjects();
     schedulePreview();
 }
@@ -440,6 +505,13 @@ async function loadFieldAndStateOptions(index) {
         return;
     }
     const discovery = projectDiscovery[index];
+    if (!isProjectVerified(discovery, project)) {
+        discovery.fields = { status: "NOT_CHECKED", message: "Verify the project first.", values: [] };
+        discovery.states = { status: "NOT_CHECKED", message: "Verify the project first.", values: [] };
+        renderProjects();
+        schedulePreview();
+        return;
+    }
     discovery.fields = await discover("/api/config-ui/discovery/fields", {
         organization: state.ado.organization,
         project: project.name,
@@ -539,6 +611,11 @@ document.getElementById("previewBtn").addEventListener("click", async () => {
 
 document.getElementById("saveBtn").addEventListener("click", async () => {
     try {
+        if (!isUiAdoDiscoveryCurrent()) {
+            setStatus("Verify project and select current ADO-backed values before saving final YAML.", true);
+            saveBtn.disabled = true;
+            return;
+        }
         const payload = await postConfig("/api/config-ui/save");
         yamlOutputEl.textContent = payload.preview?.yaml || "";
         renderValidation(payload.preview);
