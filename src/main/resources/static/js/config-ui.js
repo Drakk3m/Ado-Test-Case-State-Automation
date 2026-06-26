@@ -14,6 +14,8 @@ let projectOptionLookup = { status: "NOT_CHECKED", message: "", values: [] };
 let projectDiscovery = [];
 let discoveryRequestSequence = 0;
 let selectorDiagnostics = {};
+let identitySearchState = {};
+let identitySearchTimers = {};
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -88,6 +90,11 @@ function ensureSelectorDiagnostic(selectorName) {
             approvalFieldCount: "",
             reversibleFieldCount: "",
             duplicateErrors: "",
+            lastQueryLength: "",
+            resultCount: "",
+            selectedCount: "",
+            unresolvedCount: "",
+            identityWarnings: "",
             enabled: false,
             message: "",
             staleIgnoredCount: 0,
@@ -141,6 +148,11 @@ function renderDiagnosticsPanel() {
                 <td>${escapeHtml(item.approvalFieldCount)}</td>
                 <td>${escapeHtml(item.reversibleFieldCount)}</td>
                 <td>${escapeHtml(item.duplicateErrors)}</td>
+                <td>${escapeHtml(item.lastQueryLength)}</td>
+                <td>${escapeHtml(item.resultCount)}</td>
+                <td>${escapeHtml(item.selectedCount)}</td>
+                <td>${escapeHtml(item.unresolvedCount)}</td>
+                <td>${escapeHtml(item.identityWarnings)}</td>
                 <td>${item.enabled ? "enabled" : "disabled"}</td>
                 <td>${escapeHtml(item.staleIgnoredCount)}</td>
                 <td>${escapeHtml(item.lastUpdated)}</td>
@@ -162,13 +174,18 @@ function renderDiagnosticsPanel() {
                     <th>approval fields</th>
                     <th>reversible fields</th>
                     <th>duplicate errors</th>
+                    <th>query length</th>
+                    <th>user results</th>
+                    <th>selected users</th>
+                    <th>unresolved users</th>
+                    <th>identity warnings</th>
                     <th>decision</th>
                     <th>stale ignored</th>
                     <th>updated</th>
                     <th>message</th>
                 </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="15">No selector diagnostics captured yet.</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="20">No selector diagnostics captured yet.</td></tr>`}</tbody>
         </table>
     `;
 }
@@ -426,6 +443,175 @@ function cleanFieldConflicts(project, changedField) {
     project.fields.reversibleBusinessFields = uniqueValues(project.fields.reversibleBusinessFields);
     project.fields.reversibleBusinessFields = removeValue(project.fields.reversibleBusinessFields, project.fields.approvedBySme);
     project.fields.reversibleBusinessFields = removeValue(project.fields.reversibleBusinessFields, project.fields.approvedBySqa);
+}
+
+function identityKey(index, role) {
+    return `${index}:${role}`;
+}
+
+function ensureIdentitySearchState(index, role) {
+    const key = identityKey(index, role);
+    if (!identitySearchState[key]) {
+        identitySearchState[key] = {
+            query: "",
+            lookup: { status: "NOT_CHECKED", message: "Type at least 2 characters to search ADO identities.", values: [], optionCount: 0 },
+            searching: false
+        };
+    }
+    return identitySearchState[key];
+}
+
+function roleUsers(project, role) {
+    return role === "sme" ? project.approvals.smeUsers : project.approvals.sqaUsers;
+}
+
+function setRoleUsers(project, role, users) {
+    if (role === "sme") {
+        project.approvals.smeUsers = users;
+    } else {
+        project.approvals.sqaUsers = users;
+    }
+}
+
+function normalizedIdentity(value) {
+    return String(value || "").trim().toLowerCase();
+}
+
+function isResolvableIdentityValue(value) {
+    const normalized = normalizedIdentity(value);
+    return normalized.includes("@") || normalized.includes("\\");
+}
+
+function duplicateIdentityMessages(project) {
+    const messages = [];
+    for (const role of ["sme", "sqa"]) {
+        const seen = new Set();
+        for (const user of roleUsers(project, role) || []) {
+            const normalized = normalizedIdentity(user);
+            if (normalized && seen.has(normalized)) {
+                messages.push(`${role.toUpperCase()} users contain duplicate identity: ${normalized}.`);
+            }
+            seen.add(normalized);
+        }
+    }
+    const sqa = new Set((project.approvals.sqaUsers || []).map(normalizedIdentity));
+    for (const smeUser of project.approvals.smeUsers || []) {
+        const normalized = normalizedIdentity(smeUser);
+        if (normalized && sqa.has(normalized)) {
+            messages.push("Same identity appears in both SME and SQA lists.");
+            break;
+        }
+    }
+    return messages;
+}
+
+function unresolvedIdentityCount(project, role) {
+    return (roleUsers(project, role) || []).filter((user) => !isResolvableIdentityValue(user)).length;
+}
+
+function userInitials(option) {
+    const label = String(option?.displayName || option?.value || "").trim();
+    const words = label.replace(/<[^>]+>/g, "").split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+        return "?";
+    }
+    return words.slice(0, 2).map((word) => word[0].toUpperCase()).join("");
+}
+
+function addUserToRole(project, role, value) {
+    const normalized = normalizedIdentity(value);
+    if (!normalized) {
+        return false;
+    }
+    const users = roleUsers(project, role) || [];
+    if (users.map(normalizedIdentity).includes(normalized)) {
+        return false;
+    }
+    setRoleUsers(project, role, [...users, normalized]);
+    return true;
+}
+
+function removeUserFromRole(project, role, value) {
+    const normalized = normalizedIdentity(value);
+    setRoleUsers(project, role, (roleUsers(project, role) || []).filter((user) => normalizedIdentity(user) !== normalized));
+}
+
+function identitySearchStatus(index, role, project) {
+    const stateForRole = ensureIdentitySearchState(index, role);
+    const selectedCount = (roleUsers(project, role) || []).length;
+    const unresolvedCount = unresolvedIdentityCount(project, role);
+    const warnings = duplicateIdentityMessages(project).length;
+    updateSelectorDiagnostics(`${role}Users`, {
+        status: stateForRole.lookup.status || "NOT_CHECKED",
+        backendOptionCount: lookupOptionCount(stateForRole.lookup),
+        receivedLength: rawOptionItems(stateForRole.lookup).length,
+        normalizedLength: renderedOptionCount(stateForRole.lookup),
+        renderedOptionCount: renderedOptionCount(stateForRole.lookup),
+        domOptionCount: renderedOptionCount(stateForRole.lookup),
+        lastQueryLength: stateForRole.query.length,
+        resultCount: renderedOptionCount(stateForRole.lookup),
+        selectedCount,
+        unresolvedCount,
+        identityWarnings: warnings,
+        enabled: true,
+        message: sanitizeMessage(stateForRole.lookup.message)
+    });
+}
+
+function selectedUserChips(project, role) {
+    const users = roleUsers(project, role) || [];
+    if (users.length === 0) {
+        return `<p class="note compact">No ${role.toUpperCase()} users selected.</p>`;
+    }
+    return `<div class="identity-chip-list">${users.map((user) => `
+        <span class="identity-chip">
+            <span>${escapeHtml(user)}</span>
+            <button type="button" data-action="remove-user" data-role="${role}" data-user-value="${escapeHtml(user)}" aria-label="Remove ${escapeHtml(user)}">x</button>
+        </span>
+    `).join("")}</div>`;
+}
+
+function identitySearchResults(project, role, lookup) {
+    const options = selectorOptions(lookup);
+    if (lookup?.status === "VALID" && options.length === 0) {
+        return `<p class="lookup-status">${validationBadge("WARNING")} No selectable identities returned.</p>`;
+    }
+    if (lookup?.status && lookup.status !== "VALID" && lookup.status !== "NOT_CHECKED") {
+        return lookupBadge(lookup);
+    }
+    if (options.length === 0) {
+        return "";
+    }
+    const selected = new Set((roleUsers(project, role) || []).map(normalizedIdentity));
+    return `<div class="identity-results">${options.map((option) => {
+        const normalized = normalizedIdentity(option.value);
+        const disabled = !normalized || selected.has(normalized) ? "disabled" : "";
+        const email = option.description && option.description !== option.displayName ? option.description : option.value;
+        return `
+            <button type="button" class="identity-result" data-action="add-user" data-role="${role}" data-user-value="${escapeHtml(option.value)}" ${disabled}>
+                <span class="identity-avatar">${escapeHtml(userInitials(option))}</span>
+                <span class="identity-result-text">
+                    <strong>${escapeHtml(option.displayName || option.value)}</strong>
+                    <small>${escapeHtml(email)}</small>
+                </span>
+            </button>
+        `;
+    }).join("")}</div>`;
+}
+
+function identityUserPicker(project, index, role, enabled) {
+    const searchState = ensureIdentitySearchState(index, role);
+    const disabled = enabled ? "" : "disabled";
+    identitySearchStatus(index, role, project);
+    return `
+        <div class="identity-picker">
+            <label>${role.toUpperCase()} users
+                <input type="search" data-action="identity-search" data-role="${role}" value="${escapeHtml(searchState.query)}" placeholder="Search by email, login, or name" ${disabled}>
+            </label>
+            ${selectedUserChips(project, role)}
+            ${identitySearchResults(project, role, searchState.lookup)}
+        </div>
+    `;
 }
 
 function renderedOptionCount(lookup) {
@@ -793,8 +979,12 @@ function renderProjects() {
         const projectSelectorDisabled = projectSelectorEnabled ? "" : "disabled";
         const fieldLookups = filteredFieldLookups(project, discovery.fields);
         const fieldDuplicateMessages = duplicateFieldMessages(project);
+        const identityMessages = duplicateIdentityMessages(project);
         const fieldDuplicateStatus = fieldDuplicateMessages.length
                 ? `<span class="lookup-status">${validationBadge("ERROR")} ${escapeHtml(fieldDuplicateMessages.join(" "))}</span>`
+                : "";
+        const identityStatus = identityMessages.length
+                ? `<span class="lookup-status">${validationBadge("WARNING")} ${escapeHtml(identityMessages.join(" "))}</span>`
                 : "";
         debugDiscovery("selector-state", {
             index,
@@ -891,14 +1081,11 @@ function renderProjects() {
             ${lookupBadge(discovery.fields)}
             ${fieldDuplicateStatus}
             <div class="grid-2">
-                <label>SME users (email/login)
-                    <textarea data-field="approvals.smeUsers">${escapeHtml((project.approvals.smeUsers || []).join("\n"))}</textarea>
-                </label>
-                <label>SQA users (email/login)
-                    <textarea data-field="approvals.sqaUsers">${escapeHtml((project.approvals.sqaUsers || []).join("\n"))}</textarea>
-                </label>
+                ${identityUserPicker(project, index, "sme", projectVerified)}
+                ${identityUserPicker(project, index, "sqa", projectVerified)}
             </div>
-            <p class="note compact">User identity lookup remains warning-only unless ADO returns selectable identities.</p>
+            ${identityStatus}
+            <p class="note compact">Display names are shown for selection only. YAML stores normalized email/login values.</p>
         `;
 
         card.addEventListener("input", (event) => {
@@ -919,6 +1106,26 @@ function renderProjects() {
         card.querySelector("[data-action='load-project']").addEventListener("click", async () => {
             await loadProject(index);
         });
+        for (const input of card.querySelectorAll("[data-action='identity-search']")) {
+            input.addEventListener("input", (event) => {
+                handleIdentitySearchInput(index, event.target.getAttribute("data-role"), event.target.value);
+            });
+        }
+        for (const button of card.querySelectorAll("[data-action='add-user']")) {
+            button.addEventListener("click", () => {
+                if (addUserToRole(project, button.getAttribute("data-role"), button.getAttribute("data-user-value"))) {
+                    renderProjects();
+                    schedulePreview();
+                }
+            });
+        }
+        for (const button of card.querySelectorAll("[data-action='remove-user']")) {
+            button.addEventListener("click", () => {
+                removeUserFromRole(project, button.getAttribute("data-role"), button.getAttribute("data-user-value"));
+                renderProjects();
+                schedulePreview();
+            });
+        }
 
         projectsEl.appendChild(card);
     });
@@ -967,17 +1174,6 @@ function handleProjectInput(project, index, event) {
         schedulePreview();
         return;
     }
-    if (field === "approvals.smeUsers") {
-        project.approvals.smeUsers = splitLines(event.target.value);
-        schedulePreview();
-        return;
-    }
-    if (field === "approvals.sqaUsers") {
-        project.approvals.sqaUsers = splitLines(event.target.value);
-        schedulePreview();
-        return;
-    }
-
     const parts = field.split(".");
     if (parts.length === 1) {
         project[parts[0]] = event.target.value;
@@ -989,6 +1185,23 @@ function handleProjectInput(project, index, event) {
         renderProjects();
     }
     schedulePreview();
+}
+
+function handleIdentitySearchInput(index, role, query) {
+    const stateForRole = ensureIdentitySearchState(index, role);
+    stateForRole.query = query || "";
+    stateForRole.lookup = stateForRole.query.trim().length < 2
+            ? { status: "NOT_CHECKED", message: "Type at least 2 characters to search ADO identities.", values: [], optionCount: 0 }
+            : stateForRole.lookup;
+    identitySearchStatus(index, role, state.ado.projects[index]);
+    clearTimeout(identitySearchTimers[identityKey(index, role)]);
+    if (stateForRole.query.trim().length < 2) {
+        renderProjects();
+        return;
+    }
+    identitySearchTimers[identityKey(index, role)] = setTimeout(() => {
+        loadIdentityOptions(index, role, stateForRole.query.trim()).catch((error) => setStatus(error.message, true));
+    }, 300);
 }
 
 function readFormToState() {
@@ -1209,6 +1422,46 @@ async function loadFieldAndStateOptions(index) {
     });
     renderProjects();
     schedulePreview();
+}
+
+async function loadIdentityOptions(index, role, query) {
+    readFormToState();
+    ensureDiscovery();
+    const project = state.ado.projects[index];
+    const discovery = projectDiscovery[index];
+    if (!project || !isProjectVerified(discovery, project)) {
+        const searchState = ensureIdentitySearchState(index, role);
+        searchState.lookup = { status: "NOT_CHECKED", message: "Verify the project before searching users.", values: [], optionCount: 0 };
+        renderProjects();
+        return;
+    }
+    const searchState = ensureIdentitySearchState(index, role);
+    const requestQuery = query || "";
+    searchState.searching = true;
+    const result = await discover("search-users", "/api/config-ui/discovery/users/search", {
+        organization: state.ado.organization,
+        project: project.name,
+        query: requestQuery
+    });
+    if (ensureIdentitySearchState(index, role).query.trim() !== requestQuery) {
+        incrementStaleIgnored(`${role}Users`, "identity-query-changed");
+        return;
+    }
+    searchState.lookup = normalizeOptionsLookup(
+            result,
+            "No selectable ADO identities were returned for the search.",
+            `${role}Users`
+    );
+    searchState.searching = false;
+    debugDiscovery("selector-populated", {
+        index,
+        selector: `${role}Users`,
+        status: searchState.lookup.status,
+        backendOptionCount: lookupOptionCount(result),
+        renderedOptionCount: renderedOptionCount(searchState.lookup),
+        queryLength: requestQuery.length
+    });
+    renderProjects();
 }
 
 async function previewDraft(showStatus = true) {

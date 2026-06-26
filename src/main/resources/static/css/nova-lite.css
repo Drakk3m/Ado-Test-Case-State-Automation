@@ -255,6 +255,80 @@ button.remove {
     border-radius: 6px;
 }
 
+.identity-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.identity-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.identity-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--nova-border);
+    border-radius: 999px;
+    background: #0b1220;
+    color: var(--nova-text);
+    padding: 4px 6px 4px 10px;
+    max-width: 100%;
+}
+
+.identity-chip span {
+    overflow-wrap: anywhere;
+}
+
+.identity-chip button {
+    border-radius: 999px;
+    padding: 0 6px;
+    min-height: 22px;
+}
+
+.identity-results {
+    display: grid;
+    gap: 6px;
+}
+
+.identity-result {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    text-align: left;
+}
+
+.identity-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--nova-primary);
+    color: #0b1220;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.identity-result-text {
+    display: grid;
+    min-width: 0;
+}
+
+.identity-result-text strong,
+.identity-result-text small {
+    overflow-wrap: anywhere;
+}
+
+.identity-result-text small {
+    color: var(--nova-muted);
+}
+
 .badge {
     border-radius: 999px;
     border: 1px solid var(--nova-border);

@@ -108,6 +108,15 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
+    void urlBuilderCreatesIdentitySearchUrlOnVsspsHost() {
+        var url = new AzureDevOpsUrlBuilder().identitySearchUrl("my org", "SME User");
+
+        assertThat(url)
+                .isEqualTo("https://vssps.dev.azure.com/my%20org/_apis/identities?searchFilter=General&filterValue=SME%20User&queryMembership=None&api-version=7.1")
+                .doesNotContain("%2520");
+    }
+
+    @Test
     void urlBuilderRejectsNullWorkItemKeyWithClearMessage() {
         assertThatThrownBy(() -> new AzureDevOpsUrlBuilder().workItemUrl(null))
                 .isInstanceOf(IllegalArgumentException.class)

@@ -122,12 +122,13 @@ public class ConfigUiApiController {
         } catch (RuntimeException ex) {
             var result = ConfigLookupResult.<T>error("Config UI discovery request failed.");
             LOGGER.warn(
-                    "Config UI discovery failed operation={} requestId={} organization={} project={} workItemType={} status={} optionCount={} durationMs={} failureCategory={} message={}",
+                    "Config UI discovery failed operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} durationMs={} failureCategory={} message={}",
                     operation,
                     requestId,
                     safe(request.organization()),
                     safe(request.project()),
                     safe(request.workItemType()),
+                    queryLength(request),
                     result.status(),
                     result.optionCount(),
                     elapsedMillis(started),
@@ -149,12 +150,13 @@ public class ConfigUiApiController {
         var message = safeMessage(result.message());
         if (result.status() == ConfigValidationStatus.VALID && result.optionCount() > 0) {
             LOGGER.info(
-                    "Config UI discovery completed operation={} requestId={} organization={} project={} workItemType={} status={} optionCount={} durationMs={} failureCategory={} message={}",
+                    "Config UI discovery completed operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} durationMs={} failureCategory={} message={}",
                     operation,
                     requestId,
                     safe(request.organization()),
                     safe(request.project()),
                     safe(request.workItemType()),
+                    queryLength(request),
                     result.status(),
                     result.optionCount(),
                     durationMs,
@@ -164,12 +166,13 @@ public class ConfigUiApiController {
             return;
         }
         LOGGER.warn(
-                "Config UI discovery needs attention operation={} requestId={} organization={} project={} workItemType={} status={} optionCount={} durationMs={} failureCategory={} message={}",
+                "Config UI discovery needs attention operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} durationMs={} failureCategory={} message={}",
                 operation,
                 requestId,
                 safe(request.organization()),
                 safe(request.project()),
                 safe(request.workItemType()),
+                queryLength(request),
                 result.status(),
                 result.optionCount(),
                 durationMs,
@@ -196,6 +199,10 @@ public class ConfigUiApiController {
 
     private String safe(String value) {
         return value == null || value.isBlank() ? "" : value.strip();
+    }
+
+    private int queryLength(ConfigDiscoveryRequest request) {
+        return request == null || request.query() == null ? 0 : request.query().strip().length();
     }
 
     private String safeMessage(String message) {

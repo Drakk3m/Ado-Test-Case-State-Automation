@@ -332,9 +332,85 @@ class AzureDevOpsConfigDiscoveryServiceTest {
 
         var result = service.resolveUsers("STMN-Group", java.util.List.of("sme@example.test"));
 
-        assertThat(result.status()).isEqualTo(ConfigValidationStatus.WARNING);
-        assertThat(result.message()).contains("email/login");
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.ERROR);
+        assertThat(result.message()).contains("not resolved");
     }
+
+    @Test
+    void identitySearchMapsUniqueNameToSelectableNormalizedOption() {
+        var exchange = new RecordingExchangeFunction("""
+                {"count":1,"value":[{"displayName":"SME Sandbox","uniqueName":"SME@Example.Test","subjectDescriptor":"aad.user-1"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+
+        var result = service.searchIdentityOptions("STMN-Group", "sme");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.values()).singleElement()
+                .satisfies(option -> {
+                    assertThat(option.value()).isEqualTo("sme@example.test");
+                    assertThat(option.displayName()).contains("SME Sandbox").contains("sme@example.test");
+                    assertThat(option.description()).isEqualTo("sme@example.test");
+                    assertThat(option.referenceName()).isEqualTo("aad.user-1");
+                });
+        assertThat(exchange.requests.getFirst().url().toString())
+                .contains("filterValue=sme")
+                .contains("vssps.dev.azure.com");
+    }
+
+    @Test
+    void identitySearchFallsBackToMailPropertyAndNeverUsesDisplayNameAsValue() {
+        var service = discovery(new RecordingExchangeFunction("""
+                {"identities":[{"displayName":"Display Only","properties":{"Mail":{"$value":"mail@example.test"}}}]}
+                """, HttpStatus.OK));
+
+        var result = service.searchIdentityOptions("STMN-Group", "Display");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.values()).singleElement()
+                .satisfies(option -> {
+                    assertThat(option.value()).isEqualTo("mail@example.test");
+                    assertThat(option.displayName()).contains("Display Only");
+                    assertThat(option.value()).isNotEqualTo("Display Only");
+                });
+    }
+
+    @Test
+    void identityWithoutEmailLoginOrUniqueNameIsNotSelectable() {
+        var service = discovery(new RecordingExchangeFunction("""
+                {"count":1,"value":[{"displayName":"Display Only"}]}
+                """, HttpStatus.OK));
+
+        var result = service.searchIdentityOptions("STMN-Group", "Display");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.WARNING);
+        assertThat(result.optionCount()).isZero();
+    }
+
+    @Test
+    void resolveUsersReturnsNormalizedEmailsOnlyWhenAdoSearchMatches() {
+        var exchange = new RecordingExchangeFunction("""
+                {"value":[{"displayName":"SME Sandbox","uniqueName":"SME@Example.Test"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+
+        var result = service.resolveUsers("STMN-Group", java.util.List.of("SME@Example.Test"));
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.values()).containsExactly("sme@example.test");
+    }
+
+    @Test
+    void shortIdentitySearchIsNotCheckedAndDoesNotCallAdo() {
+        var exchange = new RecordingExchangeFunction("{}", HttpStatus.OK);
+        var service = discovery(exchange);
+
+        var result = service.searchIdentityOptions("STMN-Group", "a");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.NOT_CHECKED);
+        assertThat(exchange.requests).isEmpty();
+    }
+
 
     private AzureDevOpsConfigDiscoveryService discovery(RecordingExchangeFunction exchange) {
         return new AzureDevOpsConfigDiscoveryService("secret-pat", exchange, new AzureDevOpsUrlBuilder());

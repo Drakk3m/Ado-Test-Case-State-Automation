@@ -102,8 +102,65 @@ class AdoConfigDraftValidationServiceTest {
         assertThat(result.fields())
                 .anySatisfy(field -> {
                     assertThat(field.field()).contains("sme-users");
-                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.WARNING);
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
                     assertThat(field.message()).contains("displayName-only");
+                });
+    }
+
+    @Test
+    void duplicateSmeUserBlocksFinalYaml() {
+        var service = ApplicationLocalConfigServiceTest.validatingService(ApplicationLocalConfigServiceTest.validDiscovery());
+        var model = ApplicationLocalConfigServiceTest.validModel();
+        model.getAdo().getProjects().getFirst().getApprovals().getSmeUsers().add("SME@EXAMPLE.TEST");
+
+        var result = service.validate(model);
+
+        assertThat(result.canGenerateFinalYaml()).isFalse();
+        assertThat(result.fields())
+                .anySatisfy(field -> {
+                    assertThat(field.field()).contains("sme-users");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
+                    assertThat(field.message()).contains("duplicate identities");
+                });
+    }
+
+    @Test
+    void duplicateSqaUserBlocksFinalYaml() {
+        var service = ApplicationLocalConfigServiceTest.validatingService(ApplicationLocalConfigServiceTest.validDiscovery());
+        var model = ApplicationLocalConfigServiceTest.validModel();
+        model.getAdo().getProjects().getFirst().getApprovals().getSqaUsers().add("SQA@EXAMPLE.TEST");
+
+        var result = service.validate(model);
+
+        assertThat(result.canGenerateFinalYaml()).isFalse();
+        assertThat(result.fields())
+                .anySatisfy(field -> {
+                    assertThat(field.field()).contains("sqa-users");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
+                    assertThat(field.message()).contains("duplicate identities");
+                });
+    }
+
+    @Test
+    void sameIdentityAcrossSmeAndSqaIsVisibleWarning() {
+        var discovery = new ApplicationLocalConfigServiceTest.FixedDiscovery(
+                List.of("ADOnis 2.0 Test Project"),
+                List.of("Test Case"),
+                List.of("System.Title", "Custom.ApproverTech", "Custom.ApproverTest"),
+                List.of("Design", "In Review", "Approval"),
+                List.of("sme@example.test", "sqa@example.test")
+        );
+        var service = ApplicationLocalConfigServiceTest.validatingService(discovery);
+        var model = ApplicationLocalConfigServiceTest.validModel();
+        model.getAdo().getProjects().getFirst().getApprovals().getSqaUsers().add("sme@example.test");
+
+        var result = service.validate(model);
+
+        assertThat(result.fields())
+                .anySatisfy(field -> {
+                    assertThat(field.field()).contains(".approvals");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.WARNING);
+                    assertThat(field.message()).contains("both SME and SQA");
                 });
     }
 
