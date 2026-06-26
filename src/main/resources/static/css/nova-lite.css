@@ -216,6 +216,8 @@ button.remove {
 
 .diagnostics-panel {
     background: #0b1220;
+    max-width: 100%;
+    overflow-x: auto;
 }
 
 .diagnostics-table {
@@ -275,12 +277,22 @@ button.remove {
     border-radius: 999px;
     background: #0b1220;
     color: var(--nova-text);
-    padding: 4px 6px 4px 10px;
+    padding: 4px 6px;
     max-width: 100%;
 }
 
-.identity-chip span {
+.identity-chip-text {
+    display: grid;
+    min-width: 0;
+}
+
+.identity-chip-text strong,
+.identity-chip-text small {
     overflow-wrap: anywhere;
+}
+
+.identity-chip-text small {
+    color: var(--nova-muted);
 }
 
 .identity-chip button {
@@ -292,6 +304,10 @@ button.remove {
 .identity-results {
     display: grid;
     gap: 6px;
+    border: 1px solid var(--nova-border);
+    border-radius: 8px;
+    padding: 8px;
+    background: #111827;
 }
 
 .identity-result {
@@ -302,9 +318,39 @@ button.remove {
     text-align: left;
 }
 
+.identity-result.selected {
+    border-color: var(--nova-primary);
+}
+
+.identity-pending {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    border: 1px dashed var(--nova-border);
+    border-radius: 8px;
+    padding: 8px;
+    background: #0b1220;
+}
+
+.identity-pending-user {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+}
+
+.identity-add {
+    width: 38px;
+    height: 38px;
+    font-weight: 700;
+}
+
 .identity-avatar {
     display: inline-flex;
     align-items: center;
+    flex: 0 0 auto;
     justify-content: center;
     width: 28px;
     height: 28px;

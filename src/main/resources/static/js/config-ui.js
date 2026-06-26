@@ -16,6 +16,7 @@ let discoveryRequestSequence = 0;
 let selectorDiagnostics = {};
 let identitySearchState = {};
 let identitySearchTimers = {};
+let identityOptionCache = {};
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -92,6 +93,7 @@ function ensureSelectorDiagnostic(selectorName) {
             duplicateErrors: "",
             lastQueryLength: "",
             resultCount: "",
+            pendingIdentityStatus: "",
             selectedCount: "",
             unresolvedCount: "",
             identityWarnings: "",
@@ -150,6 +152,7 @@ function renderDiagnosticsPanel() {
                 <td>${escapeHtml(item.duplicateErrors)}</td>
                 <td>${escapeHtml(item.lastQueryLength)}</td>
                 <td>${escapeHtml(item.resultCount)}</td>
+                <td>${escapeHtml(item.pendingIdentityStatus)}</td>
                 <td>${escapeHtml(item.selectedCount)}</td>
                 <td>${escapeHtml(item.unresolvedCount)}</td>
                 <td>${escapeHtml(item.identityWarnings)}</td>
@@ -176,6 +179,7 @@ function renderDiagnosticsPanel() {
                     <th>duplicate errors</th>
                     <th>query length</th>
                     <th>user results</th>
+                    <th>pending identity</th>
                     <th>selected users</th>
                     <th>unresolved users</th>
                     <th>identity warnings</th>
@@ -185,7 +189,7 @@ function renderDiagnosticsPanel() {
                     <th>message</th>
                 </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="20">No selector diagnostics captured yet.</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="21">No selector diagnostics captured yet.</td></tr>`}</tbody>
         </table>
     `;
 }
@@ -455,6 +459,7 @@ function ensureIdentitySearchState(index, role) {
         identitySearchState[key] = {
             query: "",
             lookup: { status: "NOT_CHECKED", message: "Type at least 2 characters to search ADO identities.", values: [], optionCount: 0 },
+            pending: null,
             searching: false
         };
     }
@@ -510,12 +515,64 @@ function unresolvedIdentityCount(project, role) {
 }
 
 function userInitials(option) {
-    const label = String(option?.displayName || option?.value || "").trim();
+    const label = identityDisplayName(option);
     const words = label.replace(/<[^>]+>/g, "").split(/\s+/).filter(Boolean);
     if (words.length === 0) {
         return "?";
     }
     return words.slice(0, 2).map((word) => word[0].toUpperCase()).join("");
+}
+
+function identityDisplayName(optionOrValue) {
+    if (typeof optionOrValue === "string") {
+        return identityOptionCache[normalizedIdentity(optionOrValue)]?.displayNameOnly || optionOrValue;
+    }
+    const option = optionOrValue || {};
+    const value = option.value || "";
+    const display = option.displayName || value;
+    const bracketIndex = display.indexOf(" <");
+    if (bracketIndex > 0) {
+        return display.slice(0, bracketIndex);
+    }
+    return display || value;
+}
+
+function identityEmail(optionOrValue) {
+    if (typeof optionOrValue === "string") {
+        return normalizedIdentity(optionOrValue);
+    }
+    const option = optionOrValue || {};
+    return normalizedIdentity(option.description || option.value);
+}
+
+function cacheIdentityOptions(options) {
+    for (const option of options || []) {
+        const value = normalizedIdentity(option.value);
+        if (!value) {
+            continue;
+        }
+        identityOptionCache[value] = {
+            ...option,
+            displayNameOnly: identityDisplayName(option),
+            email: identityEmail(option)
+        };
+    }
+}
+
+function identityContainsQuery(option, query) {
+    const normalizedQuery = normalizedIdentity(query);
+    if (!normalizedQuery) {
+        return true;
+    }
+    return normalizedIdentity(`${option.displayName || ""} ${option.value || ""} ${option.description || ""}`)
+            .includes(normalizedQuery);
+}
+
+function identityOptionsForSearch(searchState) {
+    const options = selectorOptions(searchState.lookup);
+    const filtered = options.filter((option) => identityContainsQuery(option, searchState.query));
+    cacheIdentityOptions(filtered);
+    return filtered;
 }
 
 function addUserToRole(project, role, value) {
@@ -531,6 +588,30 @@ function addUserToRole(project, role, value) {
     return true;
 }
 
+function pendingIdentityValue(index, role) {
+    return ensureIdentitySearchState(index, role).pending?.value || "";
+}
+
+function setPendingIdentity(index, role, value) {
+    const searchState = ensureIdentitySearchState(index, role);
+    const normalized = normalizedIdentity(value);
+    searchState.pending = identityOptionsForSearch(searchState)
+            .find((option) => normalizedIdentity(option.value) === normalized) || null;
+}
+
+function clearIdentitySearch(index, role) {
+    const searchState = ensureIdentitySearchState(index, role);
+    searchState.query = "";
+    searchState.pending = null;
+    searchState.lookup = { status: "NOT_CHECKED", message: "Type at least 2 characters to search ADO identities.", values: [], optionCount: 0 };
+    const picker = identityPickerElement(index, role);
+    const input = picker?.querySelector("[data-action='identity-search']");
+    if (input) {
+        input.value = "";
+        input.focus();
+    }
+}
+
 function removeUserFromRole(project, role, value) {
     const normalized = normalizedIdentity(value);
     setRoleUsers(project, role, (roleUsers(project, role) || []).filter((user) => normalizedIdentity(user) !== normalized));
@@ -541,21 +622,61 @@ function identitySearchStatus(index, role, project) {
     const selectedCount = (roleUsers(project, role) || []).length;
     const unresolvedCount = unresolvedIdentityCount(project, role);
     const warnings = duplicateIdentityMessages(project).length;
+    const resultCount = identityOptionsForSearch(stateForRole).length;
+    const pendingIdentityStatus = stateForRole.pending
+            ? (isResolvableIdentityValue(stateForRole.pending.value) ? "resolved" : "unresolved")
+            : "none";
     updateSelectorDiagnostics(`${role}Users`, {
         status: stateForRole.lookup.status || "NOT_CHECKED",
         backendOptionCount: lookupOptionCount(stateForRole.lookup),
         receivedLength: rawOptionItems(stateForRole.lookup).length,
-        normalizedLength: renderedOptionCount(stateForRole.lookup),
-        renderedOptionCount: renderedOptionCount(stateForRole.lookup),
-        domOptionCount: renderedOptionCount(stateForRole.lookup),
+        normalizedLength: resultCount,
+        renderedOptionCount: resultCount,
+        domOptionCount: resultCount,
         lastQueryLength: stateForRole.query.length,
-        resultCount: renderedOptionCount(stateForRole.lookup),
+        resultCount,
+        pendingIdentityStatus,
         selectedCount,
         unresolvedCount,
         identityWarnings: warnings,
         enabled: true,
         message: sanitizeMessage(stateForRole.lookup.message)
     });
+}
+
+function identityPickerElement(index, role) {
+    return projectsEl.querySelector(`[data-identity-picker][data-index="${index}"][data-role="${role}"]`);
+}
+
+function updateIdentityPicker(index, role) {
+    const project = state.ado.projects[index];
+    if (!project) {
+        return;
+    }
+    const picker = identityPickerElement(index, role);
+    if (!picker) {
+        identitySearchStatus(index, role, project);
+        return;
+    }
+    const searchState = ensureIdentitySearchState(index, role);
+    const pendingEl = picker.querySelector("[data-identity-pending]");
+    const resultsEl = picker.querySelector("[data-identity-results]");
+    const selectedEl = picker.querySelector("[data-identity-selected]");
+    if (pendingEl) {
+        pendingEl.innerHTML = pendingIdentityPreview(project, role, searchState.pending);
+    }
+    if (resultsEl) {
+        resultsEl.innerHTML = identitySearchResults(project, role, searchState);
+    }
+    if (selectedEl) {
+        selectedEl.innerHTML = selectedUserChips(project, role);
+    }
+    identitySearchStatus(index, role, project);
+}
+
+function updateIdentityPickers(index) {
+    updateIdentityPicker(index, "sme");
+    updateIdentityPicker(index, "sqa");
 }
 
 function selectedUserChips(project, role) {
@@ -565,14 +686,38 @@ function selectedUserChips(project, role) {
     }
     return `<div class="identity-chip-list">${users.map((user) => `
         <span class="identity-chip">
-            <span>${escapeHtml(user)}</span>
+            <span class="identity-avatar">${escapeHtml(userInitials(user))}</span>
+            <span class="identity-chip-text">
+                <strong>${escapeHtml(identityDisplayName(user))}</strong>
+                <small>${escapeHtml(identityEmail(user))}</small>
+            </span>
             <button type="button" data-action="remove-user" data-role="${role}" data-user-value="${escapeHtml(user)}" aria-label="Remove ${escapeHtml(user)}">x</button>
         </span>
     `).join("")}</div>`;
 }
 
-function identitySearchResults(project, role, lookup) {
-    const options = selectorOptions(lookup);
+function pendingIdentityPreview(project, role, pending) {
+    const normalized = normalizedIdentity(pending?.value);
+    const selected = new Set((roleUsers(project, role) || []).map(normalizedIdentity));
+    const canAdd = normalized && isResolvableIdentityValue(normalized) && !selected.has(normalized);
+    const pendingBody = pending ? `
+        <span class="identity-avatar">${escapeHtml(userInitials(pending))}</span>
+        <span class="identity-result-text">
+            <strong>${escapeHtml(identityDisplayName(pending))}</strong>
+            <small>${escapeHtml(identityEmail(pending))}</small>
+        </span>
+    ` : `<span class="note compact">Select a search result before adding.</span>`;
+    return `
+        <div class="identity-pending">
+            <div class="identity-pending-user">${pendingBody}</div>
+            <button type="button" class="identity-add" data-action="add-pending-user" data-role="${role}" ${canAdd ? "" : "disabled"}>+</button>
+        </div>
+    `;
+}
+
+function identitySearchResults(project, role, searchState) {
+    const options = identityOptionsForSearch(searchState);
+    const lookup = searchState.lookup;
     if (lookup?.status === "VALID" && options.length === 0) {
         return `<p class="lookup-status">${validationBadge("WARNING")} No selectable identities returned.</p>`;
     }
@@ -586,12 +731,13 @@ function identitySearchResults(project, role, lookup) {
     return `<div class="identity-results">${options.map((option) => {
         const normalized = normalizedIdentity(option.value);
         const disabled = !normalized || selected.has(normalized) ? "disabled" : "";
-        const email = option.description && option.description !== option.displayName ? option.description : option.value;
+        const selectedClass = searchState.pending && normalizedIdentity(searchState.pending.value) === normalized ? " selected" : "";
+        const email = identityEmail(option);
         return `
-            <button type="button" class="identity-result" data-action="add-user" data-role="${role}" data-user-value="${escapeHtml(option.value)}" ${disabled}>
+            <button type="button" class="identity-result${selectedClass}" data-action="select-pending-user" data-role="${role}" data-user-value="${escapeHtml(option.value)}" ${disabled}>
                 <span class="identity-avatar">${escapeHtml(userInitials(option))}</span>
                 <span class="identity-result-text">
-                    <strong>${escapeHtml(option.displayName || option.value)}</strong>
+                    <strong>${escapeHtml(identityDisplayName(option))}</strong>
                     <small>${escapeHtml(email)}</small>
                 </span>
             </button>
@@ -604,12 +750,13 @@ function identityUserPicker(project, index, role, enabled) {
     const disabled = enabled ? "" : "disabled";
     identitySearchStatus(index, role, project);
     return `
-        <div class="identity-picker">
+        <div class="identity-picker" data-identity-picker data-index="${index}" data-role="${role}">
             <label>${role.toUpperCase()} users
                 <input type="search" data-action="identity-search" data-role="${role}" value="${escapeHtml(searchState.query)}" placeholder="Search by email, login, or name" ${disabled}>
             </label>
-            ${selectedUserChips(project, role)}
-            ${identitySearchResults(project, role, searchState.lookup)}
+            <div data-identity-pending>${pendingIdentityPreview(project, role, searchState.pending)}</div>
+            <div data-identity-results>${identitySearchResults(project, role, searchState)}</div>
+            <div data-identity-selected>${selectedUserChips(project, role)}</div>
         </div>
     `;
 }
@@ -1110,22 +1257,32 @@ function renderProjects() {
             input.addEventListener("input", (event) => {
                 handleIdentitySearchInput(index, event.target.getAttribute("data-role"), event.target.value);
             });
-        }
-        for (const button of card.querySelectorAll("[data-action='add-user']")) {
-            button.addEventListener("click", () => {
-                if (addUserToRole(project, button.getAttribute("data-role"), button.getAttribute("data-user-value"))) {
-                    renderProjects();
-                    schedulePreview();
+            input.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    addPendingIdentity(index, event.target.getAttribute("data-role"));
                 }
             });
         }
-        for (const button of card.querySelectorAll("[data-action='remove-user']")) {
-            button.addEventListener("click", () => {
-                removeUserFromRole(project, button.getAttribute("data-role"), button.getAttribute("data-user-value"));
-                renderProjects();
-                schedulePreview();
-            });
-        }
+        card.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-action='select-pending-user'], [data-action='add-pending-user'], [data-action='remove-user']");
+            if (!button) {
+                return;
+            }
+            const role = button.getAttribute("data-role");
+            if (button.getAttribute("data-action") === "select-pending-user") {
+                setPendingIdentity(index, role, button.getAttribute("data-user-value"));
+                updateIdentityPicker(index, role);
+                return;
+            }
+            if (button.getAttribute("data-action") === "add-pending-user") {
+                addPendingIdentity(index, role);
+                return;
+            }
+            removeUserFromRole(project, role, button.getAttribute("data-user-value"));
+            updateIdentityPickers(index);
+            schedulePreview();
+        });
 
         projectsEl.appendChild(card);
     });
@@ -1190,18 +1347,38 @@ function handleProjectInput(project, index, event) {
 function handleIdentitySearchInput(index, role, query) {
     const stateForRole = ensureIdentitySearchState(index, role);
     stateForRole.query = query || "";
+    stateForRole.pending = null;
     stateForRole.lookup = stateForRole.query.trim().length < 2
             ? { status: "NOT_CHECKED", message: "Type at least 2 characters to search ADO identities.", values: [], optionCount: 0 }
             : stateForRole.lookup;
-    identitySearchStatus(index, role, state.ado.projects[index]);
+    if (stateForRole.query.trim().length < 2) {
+        stateForRole.searching = false;
+    }
+    updateIdentityPicker(index, role);
     clearTimeout(identitySearchTimers[identityKey(index, role)]);
     if (stateForRole.query.trim().length < 2) {
-        renderProjects();
         return;
     }
     identitySearchTimers[identityKey(index, role)] = setTimeout(() => {
         loadIdentityOptions(index, role, stateForRole.query.trim()).catch((error) => setStatus(error.message, true));
     }, 300);
+}
+
+function addPendingIdentity(index, role) {
+    const project = state.ado.projects[index];
+    if (!project) {
+        return;
+    }
+    const value = pendingIdentityValue(index, role);
+    if (!isResolvableIdentityValue(value)) {
+        updateIdentityPicker(index, role);
+        return;
+    }
+    if (addUserToRole(project, role, value)) {
+        clearIdentitySearch(index, role);
+        updateIdentityPickers(index);
+        schedulePreview();
+    }
 }
 
 function readFormToState() {
@@ -1432,12 +1609,13 @@ async function loadIdentityOptions(index, role, query) {
     if (!project || !isProjectVerified(discovery, project)) {
         const searchState = ensureIdentitySearchState(index, role);
         searchState.lookup = { status: "NOT_CHECKED", message: "Verify the project before searching users.", values: [], optionCount: 0 };
-        renderProjects();
+        updateIdentityPicker(index, role);
         return;
     }
     const searchState = ensureIdentitySearchState(index, role);
     const requestQuery = query || "";
     searchState.searching = true;
+    updateIdentityPicker(index, role);
     const result = await discover("search-users", "/api/config-ui/discovery/users/search", {
         organization: state.ado.organization,
         project: project.name,
@@ -1452,6 +1630,7 @@ async function loadIdentityOptions(index, role, query) {
             "No selectable ADO identities were returned for the search.",
             `${role}Users`
     );
+    cacheIdentityOptions(selectorOptions(searchState.lookup));
     searchState.searching = false;
     debugDiscovery("selector-populated", {
         index,
@@ -1461,7 +1640,7 @@ async function loadIdentityOptions(index, role, query) {
         renderedOptionCount: renderedOptionCount(searchState.lookup),
         queryLength: requestQuery.length
     });
-    renderProjects();
+    updateIdentityPicker(index, role);
 }
 
 async function previewDraft(showStatus = true) {

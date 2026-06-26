@@ -217,6 +217,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("duplicate errors")
                 .contains("query length")
                 .contains("user results")
+                .contains("pending identity")
                 .contains("selected users")
                 .contains("unresolved users")
                 .contains("identity warnings")
@@ -232,13 +233,16 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("function identityUserPicker(project, index, role, enabled)")
                 .contains("data-action=\"identity-search\"")
-                .contains("data-action=\"add-user\"")
+                .contains("data-action=\"select-pending-user\"")
+                .contains("data-action=\"add-pending-user\"")
                 .contains("data-action=\"remove-user\"")
                 .contains("function loadIdentityOptions(index, role, query)")
+                .contains("function updateIdentityPicker(index, role)")
+                .contains("function pendingIdentityPreview(project, role, pending)")
                 .contains("Type at least 2 characters to search ADO identities.")
                 .contains("Display names are shown for selection only. YAML stores normalized email/login values.")
-                .contains("addUserToRole(project, button.getAttribute(\"data-role\"), button.getAttribute(\"data-user-value\"))")
-                .contains("removeUserFromRole(project, button.getAttribute(\"data-role\"), button.getAttribute(\"data-user-value\"))")
+                .contains("addPendingIdentity(index, role)")
+                .contains("removeUserFromRole(project, role, button.getAttribute(\"data-user-value\"))")
                 .doesNotContain("textarea data-field=\"approvals.smeUsers\"")
                 .doesNotContain("textarea data-field=\"approvals.sqaUsers\"");
     }
@@ -250,13 +254,40 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("function normalizedIdentity(value)")
                 .contains("setRoleUsers(project, role, [...users, normalized])")
+                .contains("function setPendingIdentity(index, role, value)")
                 .contains("function duplicateIdentityMessages(project)")
                 .contains("Same identity appears in both SME and SQA lists.")
                 .contains("unresolvedIdentityCount(project, role)")
                 .contains("lookupOptionCount(stateForRole.lookup)")
                 .contains("lastQueryLength: stateForRole.query.length")
+                .contains("pendingIdentityStatus")
                 .contains("selectedCount")
                 .contains("unresolvedCount");
+    }
+
+    @Test
+    void javascriptKeepsIdentitySearchInputStableWhileTyping() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("handleIdentitySearchInput(index, role, query)")
+                .contains("updateIdentityPicker(index, role)")
+                .contains("clearTimeout(identitySearchTimers[identityKey(index, role)])")
+                .contains("}, 300)")
+                .contains("input.focus()")
+                .doesNotContain("if (stateForRole.query.trim().length < 2) {\n        renderProjects();");
+    }
+
+    @Test
+    void javascriptClientFiltersIdentityResultsByDisplayNameOrEmail() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function identityContainsQuery(option, query)")
+                .contains("option.displayName || \"\"")
+                .contains("option.value || \"\"")
+                .contains("option.description || \"\"")
+                .contains("identityOptionsForSearch(searchState)");
     }
 
     @Test
@@ -269,6 +300,8 @@ class ConfigUiStaticAssetsTest {
                 .contains(".identity-chip")
                 .contains(".identity-results")
                 .contains(".identity-result")
+                .contains(".identity-pending")
+                .contains(".identity-add")
                 .contains(".identity-avatar");
     }
 
