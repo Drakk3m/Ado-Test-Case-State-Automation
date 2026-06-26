@@ -3,6 +3,9 @@ const yamlOutputEl = document.getElementById("yamlOutput");
 const projectsEl = document.getElementById("projects");
 const validationSummaryEl = document.getElementById("validationSummary");
 const saveBtn = document.getElementById("saveBtn");
+const diagnosticsPanelEl = document.getElementById("configUiDiagnosticsPanel");
+const diagnosticsContentEl = document.getElementById("configUiDiagnosticsContent");
+const discoveredProjectsDebugEl = document.getElementById("discoveredProjectsDebug");
 
 let state = { ado: { projects: [] } };
 let lastPreview = null;
@@ -10,6 +13,7 @@ let previewTimer = null;
 let projectOptionLookup = { status: "NOT_CHECKED", message: "", values: [] };
 let projectDiscovery = [];
 let discoveryRequestSequence = 0;
+let selectorDiagnostics = {};
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -50,12 +54,111 @@ function errorDiscovery(event, details = {}) {
 function safeDiscoveryDetails(details) {
     const safe = {};
     for (const [key, value] of Object.entries(details || {})) {
-        if (["authorization", "pat", "sharedSecret", "secret", "yaml"].includes(key)) {
+        if (["authorization", "pat", "sharedSecret", "secret", "yaml", "generatedYaml"].includes(key)) {
             continue;
         }
         safe[key] = value;
     }
     return safe;
+}
+
+function nowTimestamp() {
+    return new Date().toLocaleTimeString();
+}
+
+function sanitizeMessage(message) {
+    return String(message ?? "")
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 240);
+}
+
+function ensureSelectorDiagnostic(selectorName) {
+    if (!selectorDiagnostics[selectorName]) {
+        selectorDiagnostics[selectorName] = {
+            selector: selectorName,
+            status: "NOT_CHECKED",
+            backendOptionCount: 0,
+            receivedLength: 0,
+            normalizedLength: 0,
+            renderedOptionCount: 0,
+            domOptionCount: "",
+            enabled: false,
+            message: "",
+            staleIgnoredCount: 0,
+            lastUpdated: ""
+        };
+    }
+    return selectorDiagnostics[selectorName];
+}
+
+function updateSelectorDiagnostics(selectorName, updates = {}) {
+    const current = ensureSelectorDiagnostic(selectorName);
+    selectorDiagnostics[selectorName] = {
+        ...current,
+        ...safeDiscoveryDetails(updates),
+        lastUpdated: nowTimestamp()
+    };
+    renderDiagnosticsPanel();
+}
+
+function incrementStaleIgnored(selectorName, reason) {
+    const current = ensureSelectorDiagnostic(selectorName);
+    updateSelectorDiagnostics(selectorName, {
+        staleIgnoredCount: current.staleIgnoredCount + 1,
+        message: reason ? `Stale response ignored: ${reason}.` : "Stale response ignored."
+    });
+}
+
+function renderDiagnosticsPanel() {
+    const debugEnabled = isConfigUiDebugEnabled();
+    if (diagnosticsPanelEl) {
+        diagnosticsPanelEl.hidden = !debugEnabled;
+    }
+    if (discoveredProjectsDebugEl) {
+        discoveredProjectsDebugEl.hidden = !debugEnabled;
+    }
+    if (!debugEnabled || !diagnosticsContentEl) {
+        return;
+    }
+    const rows = Object.values(selectorDiagnostics)
+        .sort((left, right) => left.selector.localeCompare(right.selector))
+        .map((item) => `
+            <tr>
+                <td>${escapeHtml(item.selector)}</td>
+                <td>${escapeHtml(item.status)}</td>
+                <td>${escapeHtml(item.backendOptionCount)}</td>
+                <td>${escapeHtml(item.receivedLength)}</td>
+                <td>${escapeHtml(item.normalizedLength)}</td>
+                <td>${escapeHtml(item.renderedOptionCount)}</td>
+                <td>${escapeHtml(item.domOptionCount)}</td>
+                <td>${item.enabled ? "enabled" : "disabled"}</td>
+                <td>${escapeHtml(item.staleIgnoredCount)}</td>
+                <td>${escapeHtml(item.lastUpdated)}</td>
+                <td>${escapeHtml(item.message)}</td>
+            </tr>
+        `).join("");
+    diagnosticsContentEl.innerHTML = `
+        <table class="diagnostics-table">
+            <thead>
+                <tr>
+                    <th>selector</th>
+                    <th>status</th>
+                    <th>backend optionCount</th>
+                    <th>received length</th>
+                    <th>normalized length</th>
+                    <th>rendered count</th>
+                    <th>DOM options</th>
+                    <th>decision</th>
+                    <th>stale ignored</th>
+                    <th>updated</th>
+                    <th>message</th>
+                </tr>
+            </thead>
+            <tbody>${rows || `<tr><td colspan="11">No selector diagnostics captured yet.</td></tr>`}</tbody>
+        </table>
+    `;
 }
 
 function lookupOptionCount(lookup) {
@@ -179,10 +282,34 @@ function clearDiscovery(index, level) {
         discovery.workItemTypes = { status: "NOT_CHECKED", message: "Load the project again.", values: [] };
         discovery.fields = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
         discovery.states = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
+        for (const selector of ["workItemType", "approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields", "designState", "inReviewState", "approvedState"]) {
+            updateSelectorDiagnostics(selector, {
+                status: "NOT_CHECKED",
+                backendOptionCount: 0,
+                receivedLength: 0,
+                normalizedLength: 0,
+                renderedOptionCount: 0,
+                domOptionCount: "",
+                enabled: false,
+                message: "Cleared after Project selection changed."
+            });
+        }
     }
     if (level === "type") {
         discovery.fields = { status: "NOT_CHECKED", message: "Work Item type changed.", values: [] };
         discovery.states = { status: "NOT_CHECKED", message: "Work Item type changed.", values: [] };
+        for (const selector of ["approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields", "designState", "inReviewState", "approvedState"]) {
+            updateSelectorDiagnostics(selector, {
+                status: "NOT_CHECKED",
+                backendOptionCount: 0,
+                receivedLength: 0,
+                normalizedLength: 0,
+                renderedOptionCount: 0,
+                domOptionCount: "",
+                enabled: false,
+                message: "Cleared after Work Item Type changed."
+            });
+        }
     }
 }
 
@@ -251,26 +378,61 @@ function lookupHasOptions(lookup) {
 
 function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector") {
     const backendOptionCount = lookupOptionCount(lookup);
+    const receivedLength = rawOptionItems(lookup).length;
     const renderedOptions = selectorOptions(lookup);
+    const status = lookup?.status || "NOT_CHECKED";
+    const countMismatch = backendOptionCount !== receivedLength || backendOptionCount !== renderedOptions.length;
+    const message = sanitizeMessage(
+            lookup?.message || (countMismatch ? "Backend optionCount differs from received or normalized option count." : "")
+    );
     debugDiscovery("discovery-response-received", {
         selector: selectorName,
-        status: lookup?.status,
+        status,
         backendOptionCount,
+        receivedLength,
         renderedOptionCount: renderedOptions.length
+    });
+    updateSelectorDiagnostics(selectorName, {
+        status,
+        backendOptionCount,
+        receivedLength,
+        normalizedLength: renderedOptions.length,
+        renderedOptionCount: renderedOptions.length,
+        enabled: status === "VALID" && renderedOptions.length > 0,
+        message
     });
     if (backendOptionCount > 0 && renderedOptions.length === 0) {
         const message = `${selectorName} selector could not be populated from the ADO discovery response.`;
         errorDiscovery("selector-render-failed", {
             selector: selectorName,
-            status: lookup?.status,
+            status,
             backendOptionCount,
+            receivedLength,
             renderedOptionCount: renderedOptions.length,
             reason: "backend-count-without-renderable-options"
         });
         setStatus(message, true);
+        updateSelectorDiagnostics(selectorName, {
+            status: "ERROR",
+            backendOptionCount,
+            receivedLength,
+            normalizedLength: 0,
+            renderedOptionCount: 0,
+            enabled: false,
+            message
+        });
         return { status: "ERROR", message, values: [], optionCount: 0 };
     }
     if (lookup?.status === "VALID" && renderedOptions.length === 0) {
+        updateSelectorDiagnostics(selectorName, {
+            status: "WARNING",
+            backendOptionCount,
+            receivedLength,
+            normalizedLength: 0,
+            renderedOptionCount: 0,
+            enabled: false,
+            message: emptyMessage
+        });
         return { status: "WARNING", message: emptyMessage, values: [], optionCount: 0 };
     }
     return { ...(lookup || {}), values: renderedOptions, optionCount: renderedOptions.length };
@@ -281,14 +443,18 @@ function isCurrentDiscoveryRequest(index, requestToken, projectName, workItemTyp
     const discovery = projectDiscovery[index];
     if (!project || !discovery || discovery.requestToken !== requestToken) {
         debugDiscovery("stale-response-ignored", { index, projectName, workItemType, reason: "request-token" });
+        incrementStaleIgnored(workItemType === undefined ? "workItemType" : "fields", "request-token");
         return false;
     }
     if ((project.name || "").trim() !== projectName) {
         debugDiscovery("stale-response-ignored", { index, projectName, workItemType, reason: "project-changed" });
+        incrementStaleIgnored(workItemType === undefined ? "workItemType" : "fields", "project-changed");
         return false;
     }
     if (workItemType !== undefined && (project.supportedWorkItemTypes?.[0] || "") !== workItemType) {
         debugDiscovery("stale-response-ignored", { index, projectName, workItemType, reason: "work-item-type-changed" });
+        incrementStaleIgnored("fields", "work-item-type-changed");
+        incrementStaleIgnored("states", "work-item-type-changed");
         return false;
     }
     return true;
@@ -339,7 +505,7 @@ function isUiAdoDiscoveryCurrent() {
         && state.ado.projects.every((project, index) => isProjectDiscoveryCurrent(project, projectDiscovery[index]));
 }
 
-function selectOptions(selectorName, lookup, selected, placeholder) {
+function selectOptions(selectorName, lookup, selected, placeholder, enabled = false) {
     const options = selectorOptions(lookup);
     const hasSelected = options.some((option) => option.value === selected);
     const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
@@ -354,7 +520,16 @@ function selectOptions(selectorName, lookup, selected, placeholder) {
         selector: selectorName,
         renderedOptionCount: options.length,
         selected,
-        enabled: options.length > 0
+        enabled: enabled && options.length > 0
+    });
+    updateSelectorDiagnostics(selectorName, {
+        status: lookup?.status || "NOT_CHECKED",
+        backendOptionCount: lookupOptionCount(lookup),
+        receivedLength: rawOptionItems(lookup).length,
+        normalizedLength: options.length,
+        renderedOptionCount: options.length,
+        enabled: enabled && options.length > 0,
+        message: sanitizeMessage(lookup?.message)
     });
     return rows.join("");
 }
@@ -375,6 +550,8 @@ function renderProjects() {
         const dependentOptionsReady = areFieldsAndStatesReady(discovery, project);
         const workItemTypeDisabled = projectVerified && lookupHasOptions(discovery.workItemTypes) ? "" : "disabled";
         const fieldAndStateDisabled = dependentOptionsReady ? "" : "disabled";
+        const workItemTypeEnabled = !workItemTypeDisabled;
+        const fieldAndStateEnabled = !fieldAndStateDisabled;
         debugDiscovery("selector-state", {
             index,
             project: project.name,
@@ -387,6 +564,15 @@ function renderProjects() {
             fieldRenderedOptionCount: renderedOptionCount(discovery.fields),
             stateOptionCount: lookupOptionCount(discovery.states),
             stateRenderedOptionCount: renderedOptionCount(discovery.states)
+        });
+        updateSelectorDiagnostics("reversibleBusinessFields", {
+            status: discovery.fields?.status || "NOT_CHECKED",
+            backendOptionCount: lookupOptionCount(discovery.fields),
+            receivedLength: rawOptionItems(discovery.fields).length,
+            normalizedLength: renderedOptionCount(discovery.fields),
+            renderedOptionCount: renderedOptionCount(discovery.fields),
+            enabled: fieldAndStateEnabled && renderedOptionCount(discovery.fields) > 0,
+            message: sanitizeMessage(discovery.fields?.message)
         });
         const card = document.createElement("div");
         card.className = "project-card";
@@ -405,37 +591,37 @@ function renderProjects() {
             <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> Enabled</label>
             <label>Work Item Type
                 <select data-field="supportedWorkItemTypes.0" ${workItemTypeDisabled}>
-                    ${selectOptions("work-item-types", discovery.workItemTypes, selectedType, "Select a discovered Work Item type")}
+                    ${selectOptions("workItemType", discovery.workItemTypes, selectedType, "Select a discovered Work Item type", workItemTypeEnabled)}
                 </select>
             </label>
             ${lookupBadge(discovery.workItemTypes)}
             <div class="grid-2">
                 <label>State design
                     <select data-field="states.design" ${fieldAndStateDisabled}>
-                        ${selectOptions("state-design", discovery.states, project.states.design || "", "Select a discovered state")}
+                        ${selectOptions("designState", discovery.states, project.states.design || "", "Select a discovered state", fieldAndStateEnabled)}
                     </select>
                 </label>
                 <label>State in-review
                     <select data-field="states.inReview" ${fieldAndStateDisabled}>
-                        ${selectOptions("state-in-review", discovery.states, project.states.inReview || "", "Select a discovered state")}
+                        ${selectOptions("inReviewState", discovery.states, project.states.inReview || "", "Select a discovered state", fieldAndStateEnabled)}
                     </select>
                 </label>
             </div>
             <label>State approved
                 <select data-field="states.approved" ${fieldAndStateDisabled}>
-                    ${selectOptions("state-approved", discovery.states, project.states.approved || "", "Select a discovered final state")}
+                    ${selectOptions("approvedState", discovery.states, project.states.approved || "", "Select a discovered final state", fieldAndStateEnabled)}
                 </select>
             </label>
             ${lookupBadge(discovery.states)}
             <div class="grid-2">
                 <label>Field approved-by-sme
                     <select data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
-                        ${selectOptions("field-approved-by-sme", discovery.fields, project.fields.approvedBySme || "", "Select a discovered field")}
+                        ${selectOptions("approvedBySmeField", discovery.fields, project.fields.approvedBySme || "", "Select a discovered field", fieldAndStateEnabled)}
                     </select>
                 </label>
                 <label>Field approved-by-sqa
                     <select data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
-                        ${selectOptions("field-approved-by-sqa", discovery.fields, project.fields.approvedBySqa || "", "Select a discovered field")}
+                        ${selectOptions("approvedBySqaField", discovery.fields, project.fields.approvedBySqa || "", "Select a discovered field", fieldAndStateEnabled)}
                     </select>
                 </label>
             </div>
@@ -692,11 +878,11 @@ async function loadProject(index) {
         discovery.workItemTypes = normalizeOptionsLookup(
                 workItemTypes,
                 "No Work Item Types were returned for the verified project.",
-                "work-item-types"
+                "workItemType"
         );
         debugDiscovery("selector-populated", {
             index,
-            selector: "work-item-types",
+            selector: "workItemType",
             status: discovery.workItemTypes.status,
             backendOptionCount: lookupOptionCount(workItemTypes),
             renderedOptionCount: renderedOptionCount(discovery.workItemTypes)
@@ -778,16 +964,65 @@ async function previewDraft(showStatus = true) {
 }
 
 function renderProjectDatalist() {
-    const renderedCount = renderedOptionCount(projectOptionLookup);
-    document.getElementById("adoProjectOptions").innerHTML = projectDatalist();
+    const options = selectorOptions(projectOptionLookup);
+    const datalist = document.getElementById("adoProjectOptions");
+    datalist.innerHTML = projectDatalist();
+    const domOptionCount = datalist.querySelectorAll("option").length;
     document.getElementById("projectLookupStatus").innerHTML = lookupBadge(projectOptionLookup);
     debugDiscovery("selector-rendered", {
-        selector: "projects",
+        selector: "project",
         status: projectOptionLookup.status,
         backendOptionCount: lookupOptionCount(projectOptionLookup),
-        renderedOptionCount: renderedCount,
-        enabled: renderedCount > 0
+        renderedOptionCount: options.length,
+        domOptionCount,
+        enabled: options.length > 0
     });
+    updateSelectorDiagnostics("project", {
+        status: projectOptionLookup.status || "NOT_CHECKED",
+        backendOptionCount: lookupOptionCount(projectOptionLookup),
+        receivedLength: rawOptionItems(projectOptionLookup).length,
+        normalizedLength: options.length,
+        renderedOptionCount: options.length,
+        domOptionCount,
+        enabled: options.length > 0,
+        message: sanitizeMessage(projectOptionLookup.message || "Browser datalist suggestions may be filtered by the current Project input text.")
+    });
+    renderDiscoveredProjectsDebug(options);
+}
+
+function renderDiscoveredProjectsDebug(options) {
+    if (!discoveredProjectsDebugEl) {
+        return;
+    }
+    if (!isConfigUiDebugEnabled()) {
+        discoveredProjectsDebugEl.hidden = true;
+        discoveredProjectsDebugEl.innerHTML = "";
+        return;
+    }
+    discoveredProjectsDebugEl.hidden = false;
+    const rows = options.map((option) => `
+        <li>
+            <button type="button" data-project-value="${escapeHtml(option.value)}">${escapeHtml(optionLabel(option))}</button>
+        </li>
+    `).join("");
+    discoveredProjectsDebugEl.innerHTML = `
+        <strong>Discovered projects</strong>
+        <p class="note compact">These are all Project datalist options rendered in the DOM. The browser dropdown may show fewer while it filters by typed text.</p>
+        <ul>${rows || "<li>No projects rendered.</li>"}</ul>
+    `;
+    for (const button of discoveredProjectsDebugEl.querySelectorAll("[data-project-value]")) {
+        button.addEventListener("click", () => {
+            if (state.ado.projects.length === 0) {
+                state.ado.projects.push(createProjectModel());
+                projectDiscovery.push(createDiscoveryState());
+            }
+            state.ado.projects[0].name = button.getAttribute("data-project-value") || "";
+            clearChildSelections(state.ado.projects[0]);
+            clearDiscovery(0, "project");
+            renderProjects();
+            schedulePreview();
+        });
+    }
 }
 
 function handleGlobalInput() {
@@ -809,6 +1044,7 @@ function handleOrganizationChanged() {
 
 async function initialize() {
     setStatus("Cargando configuracion...");
+    renderDiagnosticsPanel();
     const response = await fetch("/api/config-ui/model");
     state = await response.json();
     if (!Array.isArray(state.ado.projects)) {

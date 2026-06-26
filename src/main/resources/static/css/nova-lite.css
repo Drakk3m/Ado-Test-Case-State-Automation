@@ -214,6 +214,47 @@ button.remove {
     padding: 6px 0;
 }
 
+.diagnostics-panel {
+    background: #0b1220;
+}
+
+.diagnostics-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.diagnostics-table th,
+.diagnostics-table td {
+    border-bottom: 1px solid var(--nova-border);
+    padding: 6px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.diagnostics-table th {
+    color: var(--nova-muted);
+    font-weight: 700;
+}
+
+.debug-project-list {
+    border: 1px dashed var(--nova-border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 10px;
+    background: #0b1220;
+}
+
+.debug-project-list ul {
+    margin: 8px 0 0;
+    padding-left: 18px;
+}
+
+.debug-project-list button {
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
 .badge {
     border-radius: 999px;
     border: 1px solid var(--nova-border);
@@ -256,6 +297,12 @@ pre {
     .selector-grid,
     .validation-summary li {
         grid-template-columns: 1fr;
+    }
+
+    .diagnostics-table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
     }
 
     .selector-grid button {

@@ -72,14 +72,14 @@ class ConfigUiStaticAssetsTest {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("selectOptions(selectorName, lookup, selected, placeholder)")
+                .contains("selectOptions(selectorName, lookup, selected, placeholder, enabled = false)")
                 .contains("option.value === selected")
                 .contains("optionLabel(option) + description")
                 .contains("projectDatalist()")
                 .contains("selectorOptions(projectOptionLookup)")
-                .contains("selectOptions(\"work-item-types\", discovery.workItemTypes")
-                .contains("selectOptions(\"field-approved-by-sme\", discovery.fields")
-                .contains("selectOptions(\"state-approved\", discovery.states");
+                .contains("selectOptions(\"workItemType\", discovery.workItemTypes")
+                .contains("selectOptions(\"approvedBySmeField\", discovery.fields")
+                .contains("selectOptions(\"approvedState\", discovery.states");
     }
 
     @Test
@@ -103,7 +103,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("localStorage.getItem(\"configUiDebug\") === \"true\"")
                 .contains("console.debug(\"[config-ui-discovery]\"")
                 .contains("console.error(\"[config-ui-discovery]\"")
-                .contains("\"authorization\", \"pat\", \"sharedSecret\", \"secret\", \"yaml\"");
+                .contains("\"authorization\", \"pat\", \"sharedSecret\", \"secret\", \"yaml\", \"generatedYaml\"");
     }
 
     @Test
@@ -122,6 +122,77 @@ class ConfigUiStaticAssetsTest {
                 .contains("verify-project-clicked")
                 .contains("backendOptionCount")
                 .contains("renderedOptionCount");
+    }
+
+    @Test
+    void pageDefinesVisibleDiagnosticsPanelHiddenByDefault() throws Exception {
+        var html = read("src/main/resources/templates/index.html");
+        var css = read("src/main/resources/static/css/nova-lite.css");
+
+        assertThat(html)
+                .contains("id=\"configUiDiagnosticsPanel\"")
+                .contains("class=\"card diagnostics-panel\" hidden")
+                .contains("id=\"configUiDiagnosticsContent\"")
+                .contains("id=\"discoveredProjectsDebug\"")
+                .contains("browser datalist");
+        assertThat(css)
+                .contains(".diagnostics-panel")
+                .contains(".diagnostics-table")
+                .contains(".debug-project-list");
+    }
+
+    @Test
+    void javascriptShowsDiagnosticsPanelWhenDebugIsEnabled() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("diagnosticsPanelEl.hidden = !debugEnabled")
+                .contains("discoveredProjectsDebugEl.hidden = !debugEnabled")
+                .contains("debugConfigUi")
+                .contains("localStorage.getItem(\"configUiDebug\") === \"true\"")
+                .contains("renderDiagnosticsPanel()");
+    }
+
+    @Test
+    void javascriptDiagnosticsPanelShowsSelectorHydrationCounts() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("backend optionCount")
+                .contains("received length")
+                .contains("normalized length")
+                .contains("rendered count")
+                .contains("DOM options")
+                .contains("stale ignored")
+                .contains("lastUpdated")
+                .contains("selectorDiagnostics");
+    }
+
+    @Test
+    void javascriptMeasuresProjectDatalistDomOptionsAndExplainsFiltering() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("datalist.querySelectorAll(\"option\").length")
+                .contains("selector: \"project\"")
+                .contains("renderDiscoveredProjectsDebug(options)")
+                .contains("browser dropdown may show fewer while it filters by typed text")
+                .contains("Discovered projects");
+    }
+
+    @Test
+    void javascriptTracksSelectorNamesRequiredForSandboxDiagnostics() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("selector: \"project\"")
+                .contains("workItemType")
+                .contains("approvedBySmeField")
+                .contains("approvedBySqaField")
+                .contains("designState")
+                .contains("inReviewState")
+                .contains("approvedState")
+                .contains("reversibleBusinessFields");
     }
 
     @Test

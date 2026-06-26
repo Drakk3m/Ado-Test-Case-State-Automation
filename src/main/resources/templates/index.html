@@ -46,7 +46,17 @@
             <h2>Projects</h2>
             <button id="addProject" type="button">+ Agregar proyecto</button>
         </div>
+        <div id="discoveredProjectsDebug" class="debug-project-list" hidden></div>
         <div id="projects"></div>
+    </section>
+
+    <section id="configUiDiagnosticsPanel" class="card diagnostics-panel" hidden>
+        <div class="row-between">
+            <h2>Config UI diagnostics</h2>
+            <span class="note compact">Visible only when config UI debug is enabled.</span>
+        </div>
+        <p class="note compact">Project suggestions use a browser datalist. The browser may visually filter suggestions by the current Project input text even when more options exist in the DOM.</p>
+        <div id="configUiDiagnosticsContent"></div>
     </section>
 
     <section class="card grid-2">
