@@ -87,6 +87,25 @@ class AzureDevOpsConfigDiscoveryServiceTest {
     }
 
     @Test
+    void listProjectOptionsUsesProjectNameOnlyForNormalVisibleLabel() {
+        var exchange = new RecordingExchangeFunction("""
+                {"value":[{"id":"project-guid-1","name":"ADOnis 2.0 Test Project"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+
+        var result = service.listProjectOptions("STMN-Group");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.values()).singleElement()
+                .satisfies(option -> {
+                    assertThat(option.value()).isEqualTo("ADOnis 2.0 Test Project");
+                    assertThat(option.displayName()).isEqualTo("ADOnis 2.0 Test Project");
+                    assertThat(option.description()).isEmpty();
+                    assertThat(option.referenceName()).isEmpty();
+                });
+    }
+
+    @Test
     void emptyAdoDiscoveryResponseReturnsWarningWithOptionCountZero() {
         var service = discovery(processDiscoveryExchange("""
                 {"value":[]}

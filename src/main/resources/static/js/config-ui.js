@@ -84,6 +84,10 @@ function ensureSelectorDiagnostic(selectorName) {
             normalizedLength: 0,
             renderedOptionCount: 0,
             domOptionCount: "",
+            rawFieldCount: "",
+            approvalFieldCount: "",
+            reversibleFieldCount: "",
+            duplicateErrors: "",
             enabled: false,
             message: "",
             staleIgnoredCount: 0,
@@ -133,6 +137,10 @@ function renderDiagnosticsPanel() {
                 <td>${escapeHtml(item.normalizedLength)}</td>
                 <td>${escapeHtml(item.renderedOptionCount)}</td>
                 <td>${escapeHtml(item.domOptionCount)}</td>
+                <td>${escapeHtml(item.rawFieldCount)}</td>
+                <td>${escapeHtml(item.approvalFieldCount)}</td>
+                <td>${escapeHtml(item.reversibleFieldCount)}</td>
+                <td>${escapeHtml(item.duplicateErrors)}</td>
                 <td>${item.enabled ? "enabled" : "disabled"}</td>
                 <td>${escapeHtml(item.staleIgnoredCount)}</td>
                 <td>${escapeHtml(item.lastUpdated)}</td>
@@ -150,13 +158,17 @@ function renderDiagnosticsPanel() {
                     <th>normalized length</th>
                     <th>rendered count</th>
                     <th>DOM options</th>
+                    <th>raw fields</th>
+                    <th>approval fields</th>
+                    <th>reversible fields</th>
+                    <th>duplicate errors</th>
                     <th>decision</th>
                     <th>stale ignored</th>
                     <th>updated</th>
                     <th>message</th>
                 </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="11">No selector diagnostics captured yet.</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="15">No selector diagnostics captured yet.</td></tr>`}</tbody>
         </table>
     `;
 }
@@ -198,7 +210,8 @@ function normalizeSelectorOption(item) {
         value,
         displayName,
         description: String(item.description ?? item.type ?? "").trim(),
-        source: String(item.source ?? "").trim()
+        source: String(item.source ?? "").trim(),
+        referenceName: String(item.referenceName ?? value).trim()
     };
 }
 
@@ -206,6 +219,213 @@ function selectorOptions(lookup) {
     return rawOptionItems(lookup)
         .map(normalizeSelectorOption)
         .filter((option) => option && option.value);
+}
+
+const ALWAYS_REVERSIBLE_FIELDS = new Set([
+    "system.title",
+    "system.description",
+    "microsoft.vsts.tcm.steps",
+    "microsoft.vsts.tcm.localdatasource"
+]);
+
+const INTERNAL_FIELD_PARTS = [
+    ".id",
+    ".rev",
+    ".revised",
+    ".changed",
+    ".created",
+    ".authorized",
+    ".watermark",
+    ".external",
+    ".node",
+    ".area",
+    ".iteration",
+    ".reason",
+    ".state",
+    ".workitemtype",
+    ".assignedto",
+    ".tags",
+    ".history",
+    ".board",
+    ".stackrank",
+    ".priority",
+    ".severity"
+];
+
+function normalizedText(value) {
+    return String(value || "").trim().toLowerCase();
+}
+
+function optionText(option) {
+    return normalizedText(`${option?.value || ""} ${option?.displayName || ""} ${option?.description || ""}`);
+}
+
+function isInternalFieldOption(option) {
+    const value = normalizedText(option?.value);
+    const text = optionText(option);
+    return value.startsWith("system.") && INTERNAL_FIELD_PARTS.some((part) => value.includes(part))
+        || text.includes("readonly")
+        || text.includes("read only")
+        || text.includes("audit")
+        || text.includes("watermark");
+}
+
+function isApprovalFieldOption(option) {
+    const value = normalizedText(option?.value);
+    const text = optionText(option);
+    if (isInternalFieldOption(option)) {
+        return false;
+    }
+    return value === "custom.approvertech"
+        || value === "custom.approvertest"
+        || text.includes("approver")
+        || text.includes("approval")
+        || text.includes("reviewer")
+        || text.includes("sme")
+        || text.includes("sqa")
+        || text.includes("identity")
+        || text.includes("person");
+}
+
+function isReversibleBusinessFieldOption(option) {
+    const value = normalizedText(option?.value);
+    if (ALWAYS_REVERSIBLE_FIELDS.has(value)) {
+        return true;
+    }
+    if (isInternalFieldOption(option) || isApprovalFieldOption(option)) {
+        return false;
+    }
+    return value.startsWith("custom.")
+        || value === "system.description"
+        || value === "system.title"
+        || value.startsWith("microsoft.vsts.tcm.");
+}
+
+function uniqueOptions(options) {
+    const seen = new Set();
+    return options.filter((option) => {
+        const key = normalizedText(option.value);
+        if (!key || seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+}
+
+function lookupWithOptions(lookup, options) {
+    return { ...(lookup || {}), values: options, optionCount: options.length };
+}
+
+function filteredFieldLookups(project, fieldsLookup) {
+    const rawOptions = selectorOptions(fieldsLookup);
+    const sme = normalizedText(project.fields.approvedBySme);
+    const sqa = normalizedText(project.fields.approvedBySqa);
+    const reversible = new Set((project.fields.reversibleBusinessFields || []).map(normalizedText));
+    const duplicateErrors = duplicateFieldMessages(project).length;
+    const approvalOptions = uniqueOptions(rawOptions.filter(isApprovalFieldOption));
+    const reversibleOptions = uniqueOptions(rawOptions.filter(isReversibleBusinessFieldOption));
+    const smeOptions = approvalOptions.filter((option) => {
+        const value = normalizedText(option.value);
+        return value === sme || (value !== sqa && !reversible.has(value));
+    });
+    const sqaOptions = approvalOptions.filter((option) => {
+        const value = normalizedText(option.value);
+        return value === sqa || (value !== sme && !reversible.has(value));
+    });
+    const reversibleFiltered = reversibleOptions.filter((option) => {
+        const value = normalizedText(option.value);
+        return value !== sme && value !== sqa;
+    });
+
+    return {
+        rawFieldCount: rawOptions.length,
+        approvalFieldCount: approvalOptions.length,
+        reversibleFieldCount: reversibleFiltered.length,
+        approvalOptions,
+        reversibleOptions: reversibleFiltered,
+        smeLookup: {
+            ...lookupWithOptions(fieldsLookup, smeOptions),
+            rawFieldCount: rawOptions.length,
+            approvalFieldCount: approvalOptions.length,
+            reversibleFieldCount: reversibleFiltered.length,
+            duplicateErrors
+        },
+        sqaLookup: {
+            ...lookupWithOptions(fieldsLookup, sqaOptions),
+            rawFieldCount: rawOptions.length,
+            approvalFieldCount: approvalOptions.length,
+            reversibleFieldCount: reversibleFiltered.length,
+            duplicateErrors
+        },
+        reversibleLookup: {
+            ...lookupWithOptions(fieldsLookup, reversibleFiltered),
+            rawFieldCount: rawOptions.length,
+            approvalFieldCount: approvalOptions.length,
+            reversibleFieldCount: reversibleFiltered.length,
+            duplicateErrors
+        }
+    };
+}
+
+function duplicateFieldMessages(project) {
+    const messages = [];
+    const sme = normalizedText(project.fields.approvedBySme);
+    const sqa = normalizedText(project.fields.approvedBySqa);
+    const reversible = (project.fields.reversibleBusinessFields || []).map((field) => ({
+        value: field,
+        normalized: normalizedText(field)
+    })).filter((field) => field.normalized);
+    if (sme && sqa && sme === sqa) {
+        messages.push("SME and SQA approval fields must be different.");
+    }
+    const seen = new Set();
+    for (const field of reversible) {
+        if (seen.has(field.normalized)) {
+            messages.push(`Duplicate reversible field: ${field.value}.`);
+        }
+        seen.add(field.normalized);
+        if (sme && field.normalized === sme) {
+            messages.push("SME approval field cannot also be reversible.");
+        }
+        if (sqa && field.normalized === sqa) {
+            messages.push("SQA approval field cannot also be reversible.");
+        }
+    }
+    return messages;
+}
+
+function removeValue(values, value) {
+    const normalized = normalizedText(value);
+    return (values || []).filter((item) => normalizedText(item) !== normalized);
+}
+
+function uniqueValues(values) {
+    const seen = new Set();
+    const result = [];
+    for (const value of values || []) {
+        const normalized = normalizedText(value);
+        if (!normalized || seen.has(normalized)) {
+            continue;
+        }
+        seen.add(normalized);
+        result.push(value);
+    }
+    return result;
+}
+
+function cleanFieldConflicts(project, changedField) {
+    const sme = project.fields.approvedBySme || "";
+    const sqa = project.fields.approvedBySqa || "";
+    if (changedField === "fields.approvedBySme" && sme && normalizedText(sme) === normalizedText(sqa)) {
+        project.fields.approvedBySqa = "";
+    }
+    if (changedField === "fields.approvedBySqa" && sqa && normalizedText(sqa) === normalizedText(sme)) {
+        project.fields.approvedBySme = "";
+    }
+    project.fields.reversibleBusinessFields = uniqueValues(project.fields.reversibleBusinessFields);
+    project.fields.reversibleBusinessFields = removeValue(project.fields.reversibleBusinessFields, project.fields.approvedBySme);
+    project.fields.reversibleBusinessFields = removeValue(project.fields.reversibleBusinessFields, project.fields.approvedBySqa);
 }
 
 function renderedOptionCount(lookup) {
@@ -369,12 +589,13 @@ function renderValidation(preview) {
     `;
 }
 
-function optionLabel(option) {
+function optionLabel(option, selectorName = "") {
     if (!option) {
         return "";
     }
+    const fieldSelector = ["approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields"].includes(selectorName);
     if (option.displayName && option.displayName !== option.value) {
-        return `${option.displayName} (${option.value})`;
+        return fieldSelector ? `${option.displayName} - ${option.value}` : option.displayName;
     }
     return option.value;
 }
@@ -494,6 +715,7 @@ function allValuesInLookup(values, lookup) {
 
 function isProjectDiscoveryCurrent(project, discovery) {
     const selectedType = project.supportedWorkItemTypes?.[0] || "";
+    const fieldLookups = filteredFieldLookups(project, discovery?.fields || {});
     const requiredFields = [
         project.fields.approvedBySme,
         project.fields.approvedBySqa,
@@ -509,6 +731,10 @@ function isProjectDiscoveryCurrent(project, discovery) {
         && lookupContainsValue(discovery.workItemTypes, selectedType)
         && areFieldsAndStatesReady(discovery, project)
         && allValuesInLookup(requiredFields, discovery.fields)
+        && duplicateFieldMessages(project).length === 0
+        && lookupContainsValue(fieldLookups.smeLookup, project.fields.approvedBySme)
+        && lookupContainsValue(fieldLookups.sqaLookup, project.fields.approvedBySqa)
+        && allValuesInLookup(project.fields.reversibleBusinessFields || [], fieldLookups.reversibleLookup)
         && allValuesInLookup(requiredStates, discovery.states);
 }
 
@@ -526,8 +752,7 @@ function selectOptions(selectorName, lookup, selected, placeholder, enabled = fa
         rows.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} - unchecked/manual</option>`);
     }
     for (const option of options) {
-        const description = option.description ? ` - ${option.description}` : "";
-        rows.push(`<option value="${escapeHtml(option.value)}" ${option.value === selected ? "selected" : ""}>${escapeHtml(optionLabel(option) + description)}</option>`);
+        rows.push(`<option value="${escapeHtml(option.value)}" ${option.value === selected ? "selected" : ""}>${escapeHtml(optionLabel(option, selectorName))}</option>`);
     }
     debugDiscovery("selector-rendered", {
         selector: selectorName,
@@ -542,6 +767,10 @@ function selectOptions(selectorName, lookup, selected, placeholder, enabled = fa
         normalizedLength: options.length,
         renderedOptionCount: options.length,
         domOptionCount: rows.length,
+        rawFieldCount: lookup?.rawFieldCount ?? "",
+        approvalFieldCount: lookup?.approvalFieldCount ?? "",
+        reversibleFieldCount: lookup?.reversibleFieldCount ?? "",
+        duplicateErrors: lookup?.duplicateErrors ?? "",
         enabled: enabled && options.length > 0,
         message: sanitizeMessage(lookup?.message)
     });
@@ -562,6 +791,11 @@ function renderProjects() {
         const fieldAndStateEnabled = !fieldAndStateDisabled;
         const projectSelectorEnabled = lookupHasOptions(projectOptionLookup);
         const projectSelectorDisabled = projectSelectorEnabled ? "" : "disabled";
+        const fieldLookups = filteredFieldLookups(project, discovery.fields);
+        const fieldDuplicateMessages = duplicateFieldMessages(project);
+        const fieldDuplicateStatus = fieldDuplicateMessages.length
+                ? `<span class="lookup-status">${validationBadge("ERROR")} ${escapeHtml(fieldDuplicateMessages.join(" "))}</span>`
+                : "";
         debugDiscovery("selector-state", {
             index,
             project: project.name,
@@ -582,11 +816,15 @@ function renderProjects() {
             status: discovery.fields?.status || "NOT_CHECKED",
             backendOptionCount: lookupOptionCount(discovery.fields),
             receivedLength: rawOptionItems(discovery.fields).length,
-            normalizedLength: renderedOptionCount(discovery.fields),
-            renderedOptionCount: renderedOptionCount(discovery.fields),
-            domOptionCount: renderedOptionCount(discovery.fields),
-            enabled: fieldAndStateEnabled && renderedOptionCount(discovery.fields) > 0,
-            message: sanitizeMessage(discovery.fields?.message)
+            normalizedLength: fieldLookups.reversibleFieldCount,
+            renderedOptionCount: fieldLookups.reversibleFieldCount,
+            domOptionCount: fieldLookups.reversibleFieldCount,
+            rawFieldCount: fieldLookups.rawFieldCount,
+            approvalFieldCount: fieldLookups.approvalFieldCount,
+            reversibleFieldCount: fieldLookups.reversibleFieldCount,
+            duplicateErrors: fieldDuplicateMessages.length,
+            enabled: fieldAndStateEnabled && fieldLookups.reversibleFieldCount > 0,
+            message: sanitizeMessage(fieldDuplicateMessages.join(" ") || discovery.fields?.message)
         });
         const card = document.createElement("div");
         card.className = "project-card";
@@ -632,25 +870,26 @@ function renderProjects() {
             <div class="grid-2">
                 <label>Field approved-by-sme
                     <select data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
-                        ${selectOptions("approvedBySmeField", discovery.fields, project.fields.approvedBySme || "", "Select a discovered field", fieldAndStateEnabled)}
+                        ${selectOptions("approvedBySmeField", fieldLookups.smeLookup, project.fields.approvedBySme || "", "Select a discovered approval field", fieldAndStateEnabled)}
                     </select>
                 </label>
                 <label>Field approved-by-sqa
                     <select data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
-                        ${selectOptions("approvedBySqaField", discovery.fields, project.fields.approvedBySqa || "", "Select a discovered field", fieldAndStateEnabled)}
+                        ${selectOptions("approvedBySqaField", fieldLookups.sqaLookup, project.fields.approvedBySqa || "", "Select a discovered approval field", fieldAndStateEnabled)}
                     </select>
                 </label>
             </div>
             <label>Reversible business fields
                 <select data-field="fields.reversibleBusinessFields" multiple size="6" ${fieldAndStateDisabled}>
-                    ${selectorOptions(discovery.fields).map((option) => `
+                    ${selectorOptions(fieldLookups.reversibleLookup).map((option) => `
                         <option value="${escapeHtml(option.value)}" ${(project.fields.reversibleBusinessFields || []).includes(option.value) ? "selected" : ""}>
-                            ${escapeHtml(optionLabel(option))}
+                            ${escapeHtml(optionLabel(option, "reversibleBusinessFields"))}
                         </option>
                     `).join("")}
                 </select>
             </label>
             ${lookupBadge(discovery.fields)}
+            ${fieldDuplicateStatus}
             <div class="grid-2">
                 <label>SME users (email/login)
                     <textarea data-field="approvals.smeUsers">${escapeHtml((project.approvals.smeUsers || []).join("\n"))}</textarea>
@@ -722,7 +961,9 @@ function handleProjectInput(project, index, event) {
     }
 
     if (field === "fields.reversibleBusinessFields") {
-        project.fields.reversibleBusinessFields = Array.from(event.target.selectedOptions).map((option) => option.value);
+        project.fields.reversibleBusinessFields = uniqueValues(Array.from(event.target.selectedOptions).map((option) => option.value));
+        cleanFieldConflicts(project, field);
+        renderProjects();
         schedulePreview();
         return;
     }
@@ -742,6 +983,10 @@ function handleProjectInput(project, index, event) {
         project[parts[0]] = event.target.value;
     } else {
         project[parts[0]][parts[1]] = event.target.value;
+    }
+    if (field === "fields.approvedBySme" || field === "fields.approvedBySqa") {
+        cleanFieldConflicts(project, field);
+        renderProjects();
     }
     schedulePreview();
 }

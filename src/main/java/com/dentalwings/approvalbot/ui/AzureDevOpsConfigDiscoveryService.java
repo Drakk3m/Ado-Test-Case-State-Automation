@@ -75,7 +75,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 () -> urlBuilder.projectsUrl(organization),
                 AdoRestProjectListResponse.class,
                 response -> response.value().stream()
-                        .map(project -> new ConfigSelectorOption(project.name(), project.name(), project.id(), "ADO"))
+                        .map(project -> new ConfigSelectorOption(project.name(), project.name(), "", "ADO"))
                         .toList()
         );
     }

@@ -74,12 +74,58 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("selectOptions(selectorName, lookup, selected, placeholder, enabled = false)")
                 .contains("option.value === selected")
-                .contains("optionLabel(option) + description")
+                .contains("optionLabel(option, selectorName)")
                 .contains("selectorOptions(projectOptionLookup)")
                 .contains("select data-field=\"name\" data-selector-name=\"project\"")
                 .contains("selectOptions(\"workItemType\", discovery.workItemTypes")
-                .contains("selectOptions(\"approvedBySmeField\", discovery.fields")
+                .contains("selectOptions(\"approvedBySmeField\", fieldLookups.smeLookup")
                 .contains("selectOptions(\"approvedState\", discovery.states");
+    }
+
+    @Test
+    void javascriptFormatsProjectAndFieldOptionLabelsForHumans() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function optionLabel(option, selectorName = \"\")")
+                .contains("[\"approvedBySmeField\", \"approvedBySqaField\", \"reversibleBusinessFields\"].includes(selectorName)")
+                .contains("return fieldSelector ? `${option.displayName} - ${option.value}` : option.displayName")
+                .doesNotContain("option.description ? ` - ${option.description}`");
+    }
+
+    @Test
+    void javascriptFiltersFieldSelectorsByPurposeAndKnownSandboxFields() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function isApprovalFieldOption(option)")
+                .contains("value === \"custom.approvertech\"")
+                .contains("value === \"custom.approvertest\"")
+                .contains("text.includes(\"identity\")")
+                .contains("text.includes(\"person\")")
+                .contains("function isReversibleBusinessFieldOption(option)")
+                .contains("\"system.title\"")
+                .contains("\"system.description\"")
+                .contains("\"microsoft.vsts.tcm.steps\"")
+                .contains("\"microsoft.vsts.tcm.localdatasource\"")
+                .contains("function isInternalFieldOption(option)");
+    }
+
+    @Test
+    void javascriptHidesIncompatibleFieldOptionsAndBlocksDuplicateSelections() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function filteredFieldLookups(project, fieldsLookup)")
+                .contains("smeLookup")
+                .contains("sqaLookup")
+                .contains("reversibleLookup")
+                .contains("function duplicateFieldMessages(project)")
+                .contains("SME and SQA approval fields must be different.")
+                .contains("SME approval field cannot also be reversible.")
+                .contains("SQA approval field cannot also be reversible.")
+                .contains("cleanFieldConflicts(project, field)")
+                .contains("saveBtn.disabled = !preview?.finalYamlAllowed || !uiAdoDiscoveryCurrent");
     }
 
     @Test
@@ -164,6 +210,10 @@ class ConfigUiStaticAssetsTest {
                 .contains("normalized length")
                 .contains("rendered count")
                 .contains("DOM options")
+                .contains("raw fields")
+                .contains("approval fields")
+                .contains("reversible fields")
+                .contains("duplicate errors")
                 .contains("stale ignored")
                 .contains("lastUpdated")
                 .contains("selectorDiagnostics");

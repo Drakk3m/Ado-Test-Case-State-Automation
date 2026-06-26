@@ -143,10 +143,38 @@ public class AdoConfigDraftValidationService {
     private void validateFields(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix, ConfigValidationResult result) {
         var firstType = project.getSupportedWorkItemTypes().isEmpty() ? "" : project.getSupportedWorkItemTypes().get(0);
         var lookup = discoveryService.listFieldReferenceNames(model.getAdo().getOrganization(), project.getName(), firstType);
+        validateFieldUniqueness(project, prefix, result);
         validateRequiredField(prefix + ".fields.approved-by-sme", project.getFields().getApprovedBySme(), lookup, result);
         validateRequiredField(prefix + ".fields.approved-by-sqa", project.getFields().getApprovedBySqa(), lookup, result);
         for (var field : project.getFields().getReversibleBusinessFields()) {
             validateRequiredField(prefix + ".fields.reversible-business-fields", field, lookup, result);
+        }
+    }
+
+    private void validateFieldUniqueness(ConfigUiModel.ProjectConfig project, String prefix, ConfigValidationResult result) {
+        var smeField = project.getFields().getApprovedBySme();
+        var sqaField = project.getFields().getApprovedBySqa();
+        var reversibleFields = project.getFields().getReversibleBusinessFields();
+
+        if (!isBlank(smeField) && !isBlank(sqaField) && normalize(smeField).equals(normalize(sqaField))) {
+            result.add(prefix + ".fields.approved-by-sqa", ConfigValidationStatus.ERROR, "SME and SQA approval fields must be different.");
+        }
+
+        var seenReversible = new HashSet<String>();
+        for (var field : reversibleFields) {
+            var normalizedField = normalize(field);
+            if (normalizedField.isBlank()) {
+                continue;
+            }
+            if (!seenReversible.add(normalizedField)) {
+                result.add(prefix + ".fields.reversible-business-fields", ConfigValidationStatus.ERROR, "Reversible business fields must not contain duplicates.");
+            }
+            if (!isBlank(smeField) && normalizedField.equals(normalize(smeField))) {
+                result.add(prefix + ".fields.reversible-business-fields", ConfigValidationStatus.ERROR, "SME approval field must not also be reversible.");
+            }
+            if (!isBlank(sqaField) && normalizedField.equals(normalize(sqaField))) {
+                result.add(prefix + ".fields.reversible-business-fields", ConfigValidationStatus.ERROR, "SQA approval field must not also be reversible.");
+            }
         }
     }
 
