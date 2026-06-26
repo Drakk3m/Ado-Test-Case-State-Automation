@@ -29,12 +29,12 @@ class ConfigUiStaticAssetsTest {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("Verify Project")
+                .contains("button.verifyProject")
                 .contains("isProjectVerified(discovery, project)")
                 .contains("const workItemTypeDisabled = projectVerified && lookupHasOptions(discovery.workItemTypes) ? \"\" : \"disabled\"")
                 .contains("const fieldAndStateDisabled = dependentOptionsReady ? \"\" : \"disabled\"")
                 .contains("if (isProjectVerified(discovery, project))")
-                .contains("Verify the project before selecting a Work Item type");
+                .contains("message.verifyBeforeType");
     }
 
     @Test
@@ -48,9 +48,9 @@ class ConfigUiStaticAssetsTest {
                 .contains("normalizeOptionsLookup(lookup, emptyMessage, selectorName = \"selector\")")
                 .contains("backend-count-without-renderable-options")
                 .contains("selector-render-failed")
-                .contains("No Work Item Types were returned for the verified project.")
-                .contains("No fields were returned for the selected Work Item Type.")
-                .contains("No states were returned for the selected Work Item Type.");
+                .contains("message.noWorkItemTypes")
+                .contains("message.noFields")
+                .contains("message.noStates");
     }
 
     @Test
@@ -122,9 +122,9 @@ class ConfigUiStaticAssetsTest {
                 .contains("sqaLookup")
                 .contains("reversibleLookup")
                 .contains("function duplicateFieldMessages(project)")
-                .contains("SME and SQA approval fields must be different.")
-                .contains("SME approval field cannot also be reversible.")
-                .contains("SQA approval field cannot also be reversible.")
+                .contains("message.sameApprovalFields")
+                .contains("message.smeFieldAlsoReversible")
+                .contains("message.sqaFieldAlsoReversible")
                 .contains("cleanFieldConflicts(project, field)")
                 .contains("saveBtn.disabled = !preview?.finalYamlAllowed || !uiAdoDiscoveryCurrent");
     }
@@ -232,6 +232,56 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
+    void pageProvidesLanguageSelectorAndSupportedLanguages() throws Exception {
+        var html = read("src/main/resources/templates/index.html");
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(html)
+                .contains("id=\"languageSelector\"")
+                .contains("<option value=\"en\">English</option>")
+                .contains("<option value=\"fr\">Français</option>")
+                .contains("<option value=\"es\">Español</option>")
+                .contains("data-i18n=\"language.label\"");
+        assertThat(javascript)
+                .contains("const LANGUAGE_STORAGE_KEY = \"configUiLanguage\"")
+                .contains("localStorage.getItem(LANGUAGE_STORAGE_KEY)")
+                .contains("localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage)")
+                .contains("function setLanguage(language)")
+                .contains("function applyStaticTranslations()");
+    }
+
+    @Test
+    void javascriptDefinesEnglishFrenchAndSpanishTranslations() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("const I18N = {")
+                .contains("en: {")
+                .contains("fr: {")
+                .contains("es: {")
+                .contains("\"app.title\": \"Approval Bot configuration\"")
+                .contains("\"app.title\": \"Configuration Approval Bot\"")
+                .contains("\"app.title\": \"Configuración de Approval Bot\"")
+                .contains("\"button.verifyProject\"")
+                .contains("\"identity.searchPlaceholder\"")
+                .contains("\"status.saveBlocked\"");
+    }
+
+    @Test
+    void changingLanguageRerendersUiWithoutClearingFormStateOrYamlKeys() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("readFormToState();")
+                .contains("applyStaticTranslations();")
+                .contains("renderProjects();")
+                .contains("renderValidation(lastPreview);")
+                .contains("state.ado.organization = document.getElementById(\"adoOrganization\").value.trim()")
+                .contains("yamlOutputEl.textContent = payload.yaml || \"\"")
+                .contains("states: { design: \"Design\", inReview: \"In Review\", approved: \"Approved\" }");
+    }
+
+    @Test
     void javascriptSupportsCollapsibleProjectSections() throws Exception {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
@@ -239,7 +289,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("let projectLayoutState = []")
                 .contains("function projectLayout(index)")
                 .contains("function projectSummary(project, index, selectedType, status)")
-                .contains("Project: ${escapeHtml(projectDisplayName(project, index))}")
+                .contains("project.title")
                 .contains("data-action=\"toggle-project\"")
                 .contains("data-action=\"collapse-project\"")
                 .contains("project-card${collapsed ? \" collapsed\" : \"\"}")
@@ -255,7 +305,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("function projectCanCollapse(project, discovery, fieldDuplicateMessages, identityMessages)")
                 .contains("isProjectDiscoveryCurrent(project, discovery)")
                 .contains("const collapseDisabled = canCollapse ? \"\" : \"disabled\"")
-                .contains("Resolve project validation before collapsing this section.")
+                .contains("status.resolveBeforeCollapse")
                 .contains("projectLayout(index).collapsed = false;")
                 .contains("projectLayoutState.splice(index, 1)");
     }
@@ -289,8 +339,8 @@ class ConfigUiStaticAssetsTest {
                 .contains("function loadIdentityOptions(index, role, query)")
                 .contains("function updateIdentityPicker(index, role)")
                 .contains("function pendingIdentityPreview(project, role, pending)")
-                .contains("Type at least 2 characters to search ADO identities.")
-                .contains("Display names are shown for selection only. YAML stores normalized email/login values.")
+                .contains("identity.typeToSearch")
+                .contains("identity.selectionNote")
                 .contains("addPendingIdentity(index, role)")
                 .contains("removeUserFromRole(project, role, button.getAttribute(\"data-user-value\"))")
                 .doesNotContain("textarea data-field=\"approvals.smeUsers\"")
@@ -306,7 +356,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("setRoleUsers(project, role, [...users, normalized])")
                 .contains("function setPendingIdentity(index, role, value)")
                 .contains("function duplicateIdentityMessages(project)")
-                .contains("Same identity appears in both SME and SQA lists.")
+                .contains("message.crossRoleIdentity")
                 .contains("unresolvedIdentityCount(project, role)")
                 .contains("lookupOptionCount(stateForRole.lookup)")
                 .contains("lastQueryLength: stateForRole.query.length")
@@ -362,10 +412,10 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("selector: \"project\"")
                 .contains("data-selector-name=\"project\"")
-                .contains("Project selector renders all discovered project options.")
+                .contains("message.projectSelectorRendered")
                 .contains("renderDiscoveredProjectsDebug(options)")
-                .contains("These are the same discovered project options rendered by the Project selector.")
-                .contains("Discovered projects")
+                .contains("diagnostics.discoveredProjectsNote")
+                .contains("diagnostics.discoveredProjects")
                 .doesNotContain("datalist")
                 .doesNotContain("browser dropdown may show fewer");
     }
@@ -405,7 +455,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("isUiAdoDiscoveryCurrent()")
                 .contains("isProjectDiscoveryCurrent(project, discovery)")
                 .contains("saveBtn.disabled = !preview?.finalYamlAllowed || !uiAdoDiscoveryCurrent")
-                .contains("Verify project and select current ADO-backed values before saving final YAML.");
+                .contains("status.saveBlocked");
     }
 
     @Test

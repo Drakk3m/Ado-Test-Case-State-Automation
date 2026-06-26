@@ -30,6 +30,19 @@ body {
     margin-bottom: 16px;
 }
 
+.hero-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.language-selector {
+    display: grid;
+    gap: 6px;
+    min-width: 150px;
+}
+
 .note {
     color: var(--nova-muted);
 }
@@ -518,6 +531,10 @@ pre {
 
     .project-card-actions {
         width: 100%;
+    }
+
+    .hero-heading {
+        flex-direction: column;
     }
 
     .selector-grid button {
