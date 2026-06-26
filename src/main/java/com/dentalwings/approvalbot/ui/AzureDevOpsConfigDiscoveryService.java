@@ -4,6 +4,7 @@ import com.dentalwings.approvalbot.ado.http.AzureDevOpsAuth;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsUrlBuilder;
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URI;
 import java.util.List;
 import java.util.function.Function;
@@ -24,6 +25,11 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private static final Logger LOGGER = LoggerFactory.getLogger(AzureDevOpsConfigDiscoveryService.class);
     private static final String MISSING_PAT_MESSAGE = "ADO_PERSONAL_ACCESS_TOKEN is required for read-only ADO discovery.";
     private static final int MAX_SAFE_DETAIL_LENGTH = 1000;
+    private static final List<String> PROCESS_ID_PROPERTY_PREFERENCE = List.of(
+            "System.CurrentProcessTemplateId",
+            "System.ProcessTemplateType",
+            "System.Process Template"
+    );
 
     private final WebClient webClient;
     private final AzureDevOpsUrlBuilder urlBuilder;
@@ -69,7 +75,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 () -> urlBuilder.projectsUrl(organization),
                 AdoRestProjectListResponse.class,
                 response -> response.value().stream()
-                        .map(project -> new ConfigSelectorOption(project.name(), project.name(), "", "ADO"))
+                        .map(project -> new ConfigSelectorOption(project.name(), project.name(), project.id(), "ADO"))
                         .toList()
         );
     }
@@ -89,24 +95,111 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     @Override
     public ConfigLookupResult<String> listWorkItemTypes(String organization, String project) {
-        return readList(
-                "listWorkItemTypes",
-                () -> urlBuilder.workItemTypesUrl(organization, project),
-                AdoRestWorkItemTypeListResponse.class,
-                response -> response.value().stream().map(AdoRestWorkItemTypeResponse::name).toList()
+        var options = listWorkItemTypeOptions(organization, project);
+        return new ConfigLookupResult<>(
+                options.status(),
+                options.message(),
+                options.values().stream().map(ConfigSelectorOption::value).toList()
         );
     }
 
     @Override
     public ConfigLookupResult<ConfigSelectorOption> listWorkItemTypeOptions(String organization, String project) {
-        return readList(
-                "listWorkItemTypeOptions",
-                () -> urlBuilder.workItemTypesUrl(organization, project),
-                AdoRestWorkItemTypeListResponse.class,
-                response -> response.value().stream()
-                        .map(type -> new ConfigSelectorOption(type.name(), type.name(), "", "ADO"))
-                        .toList()
+        var started = System.nanoTime();
+        if (isBlank(project)) {
+            return ConfigLookupResult.error("Project name is required.");
+        }
+        var projectFetch = fetchBody(
+                "resolveProjectForWorkItemTypes",
+                () -> urlBuilder.projectUrl(organization, project),
+                AdoRestProjectResponse.class
         );
+        if (!projectFetch.successful()) {
+            return failedLookup(projectFetch);
+        }
+        var projectId = projectFetch.body().id();
+        if (isBlank(projectId)) {
+            return ConfigLookupResult.error("ADO project id was not returned by project discovery.");
+        }
+
+        var propertiesFetch = fetchBody(
+                "loadProjectProcessProperties",
+                () -> urlBuilder.projectPropertiesUrl(organization, projectId),
+                AdoRestProjectPropertiesResponse.class
+        );
+        if (!propertiesFetch.successful()) {
+            logProcessDiscoveryFailure("listWorkItemTypeOptions", organization, project, projectId, "", "", propertiesFetch, started);
+            return failedLookup(propertiesFetch);
+        }
+
+        var candidates = processIdCandidates(propertiesFetch.body());
+        LOGGER.info(
+                "ADO config discovery process properties loaded operation={} organization={} project={} projectId={} path={} httpStatus={} candidateCount={} durationMs={}",
+                "listWorkItemTypeOptions",
+                organization,
+                project,
+                projectId,
+                propertiesFetch.safePath(),
+                propertiesFetch.httpStatus(),
+                candidates.size(),
+                elapsedMillis(started)
+        );
+        if (candidates.isEmpty()) {
+            LOGGER.warn(
+                    "ADO config discovery failed operation={} organization={} project={} projectId={} processPropertyUsed={} processId={} path={} failureCategory={} message={} durationMs={}",
+                    "listWorkItemTypeOptions",
+                    organization,
+                    project,
+                    projectId,
+                    "",
+                    "",
+                    propertiesFetch.safePath(),
+                    "missing-process-id",
+                    "No usable process id property was returned by ADO.",
+                    elapsedMillis(started)
+            );
+            return ConfigLookupResult.error("ADO project process id could not be resolved from project properties.");
+        }
+
+        ConfigLookupResult<ConfigSelectorOption> lastFailure = ConfigLookupResult.error("ADO project process id could not be resolved.");
+        for (var candidate : candidates) {
+            var processFetch = fetchBody(
+                    "listProcessWorkItemTypes",
+                    () -> urlBuilder.processWorkItemTypesUrl(organization, candidate.processId()),
+                    AdoRestWorkItemTypeListResponse.class
+            );
+            if (processFetch.successful()) {
+                var values = processFetch.body().value().stream()
+                        .map(type -> new ConfigSelectorOption(
+                                type.name(),
+                                type.name(),
+                                type.description(),
+                                "ADO",
+                                type.referenceName()
+                        ))
+                        .toList();
+                var result = ConfigLookupResult.valid(values);
+                LOGGER.info(
+                        "ADO config discovery completed operation={} organization={} project={} projectId={} processPropertyUsed={} processId={} path={} httpStatus={} rawAdoCount={} mappedOptionCount={} finalOptionCount={} durationMs={}",
+                        "listWorkItemTypeOptions",
+                        organization,
+                        project,
+                        projectId,
+                        candidate.propertyName(),
+                        candidate.processId(),
+                        processFetch.safePath(),
+                        processFetch.httpStatus(),
+                        rawAdoCount(processFetch.body()),
+                        values.size(),
+                        result.optionCount(),
+                        elapsedMillis(started)
+                );
+                return result;
+            }
+            logProcessDiscoveryFailure("listWorkItemTypeOptions", organization, project, projectId, candidate.propertyName(), candidate.processId(), processFetch, started);
+            lastFailure = failedLookup(processFetch);
+        }
+        return ConfigLookupResult.error("ADO process Work Item Types could not be discovered. " + lastFailure.message());
     }
 
     @Override
@@ -204,6 +297,57 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         }
     }
 
+    private <T> AdoFetchResult<T> fetchBody(
+            String operation,
+            Supplier<String> url,
+            Class<T> responseType
+    ) {
+        if (isBlank(personalAccessToken)) {
+            return AdoFetchResult.failure(ConfigLookupResult.error(MISSING_PAT_MESSAGE), 0, "");
+        }
+        try {
+            var targetUrl = url.get();
+            var safePath = safePath(targetUrl);
+            return webClient.get()
+                    .uri(URI.create(targetUrl))
+                    .header(HttpHeaders.AUTHORIZATION, new AzureDevOpsAuth().basicAuthHeader(personalAccessToken))
+                    .exchangeToMono(response -> handleFetchResponse(operation, safePath, response, responseType))
+                    .onErrorResume(error -> Mono.just(AdoFetchResult.failure(
+                            handleTransportError(operation, safePath, error),
+                            0,
+                            safePath
+                    )))
+                    .block();
+        } catch (IllegalArgumentException ex) {
+            return AdoFetchResult.failure(ConfigLookupResult.error(ex.getMessage()), 0, "");
+        }
+    }
+
+    private <T> Mono<AdoFetchResult<T>> handleFetchResponse(
+            String operation,
+            String safePath,
+            ClientResponse response,
+            Class<T> responseType
+    ) {
+        var status = response.statusCode().value();
+        if (response.statusCode().is2xxSuccessful()) {
+            return response.bodyToMono(responseType)
+                    .map(body -> AdoFetchResult.success(body, status, safePath))
+                    .defaultIfEmpty(AdoFetchResult.failure(ConfigLookupResult.warning("ADO discovery returned no response body."), status, safePath));
+        }
+        return response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .map(body -> AdoFetchResult.failure(handleHttpFailure(operation, safePath, status, body), status, safePath));
+    }
+
+    private <R> ConfigLookupResult<R> failedLookup(AdoFetchResult<?> fetchResult) {
+        return new ConfigLookupResult<>(
+                fetchResult.failure().status(),
+                fetchResult.failure().message(),
+                List.of()
+        );
+    }
+
     private <R, T> Mono<ConfigLookupResult<R>> handleResponse(
             String operation,
             String safePath,
@@ -295,6 +439,47 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         return null;
     }
 
+    private List<ProcessIdCandidate> processIdCandidates(AdoRestProjectPropertiesResponse response) {
+        return PROCESS_ID_PROPERTY_PREFERENCE.stream()
+                .flatMap(propertyName -> response.value().stream()
+                        .filter(property -> propertyName.equals(property.name()))
+                        .map(property -> new ProcessIdCandidate(property.name(), property.valueAsString()))
+                )
+                .filter(candidate -> !isBlank(candidate.processId()))
+                .distinct()
+                .toList();
+    }
+
+    private void logProcessDiscoveryFailure(
+            String operation,
+            String organization,
+            String project,
+            String projectId,
+            String processPropertyUsed,
+            String processId,
+            AdoFetchResult<?> fetchResult,
+            long started
+    ) {
+        LOGGER.warn(
+                "ADO config discovery failed operation={} organization={} project={} projectId={} processPropertyUsed={} processId={} path={} httpStatus={} failureCategory={} message={} durationMs={}",
+                operation,
+                organization,
+                project,
+                projectId,
+                processPropertyUsed,
+                processId,
+                fetchResult.safePath(),
+                fetchResult.httpStatus(),
+                fetchResult.failure().status(),
+                sanitize(fetchResult.failure().message()),
+                elapsedMillis(started)
+        );
+    }
+
+    private long elapsedMillis(long started) {
+        return (System.nanoTime() - started) / 1_000_000;
+    }
+
     private String safePath(String url) {
         var uri = URI.create(url);
         var query = uri.getRawQuery();
@@ -336,8 +521,25 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         }
     }
 
+    record AdoFetchResult<T>(T body, ConfigLookupResult<?> failure, int httpStatus, String safePath) {
+        static <T> AdoFetchResult<T> success(T body, int httpStatus, String safePath) {
+            return new AdoFetchResult<>(body, null, httpStatus, safePath);
+        }
+
+        static <T> AdoFetchResult<T> failure(ConfigLookupResult<?> failure, int httpStatus, String safePath) {
+            return new AdoFetchResult<>(null, failure, httpStatus, safePath);
+        }
+
+        boolean successful() {
+            return failure == null;
+        }
+    }
+
+    record ProcessIdCandidate(String propertyName, String processId) {
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record AdoRestProjectResponse(String name) {
+    record AdoRestProjectResponse(String id, String name) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -352,7 +554,33 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record AdoRestWorkItemTypeResponse(String name) {
+    record AdoRestWorkItemTypeResponse(String name, String referenceName, String description) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record AdoRestProjectPropertiesResponse(Integer count, List<AdoRestProjectPropertyResponse> value) {
+        AdoRestProjectPropertiesResponse {
+            value = value == null ? List.of() : List.copyOf(value);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record AdoRestProjectPropertyResponse(String name, JsonNode value) {
+        String valueAsString() {
+            if (value == null || value.isNull()) {
+                return "";
+            }
+            if (value.isTextual()) {
+                return value.asText();
+            }
+            if (value.has("id")) {
+                return value.get("id").asText();
+            }
+            if (value.has("value")) {
+                return value.get("value").asText();
+            }
+            return "";
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

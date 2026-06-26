@@ -842,7 +842,7 @@ async function loadProjects() {
     readFormToState();
     projectOptionLookup = normalizeOptionsLookup(await discover("list-projects", "/api/config-ui/discovery/projects", {
         organization: state.ado.organization
-    }), "No projects were returned for the configured organization.", "projects");
+    }), "No projects were returned for the configured organization.", "project");
     renderProjectDatalist();
     renderProjects();
     schedulePreview();
