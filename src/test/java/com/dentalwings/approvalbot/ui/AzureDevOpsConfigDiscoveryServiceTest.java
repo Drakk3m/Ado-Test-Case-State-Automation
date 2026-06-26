@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.reactive.function.client.ClientRequest;
@@ -47,16 +48,18 @@ class AzureDevOpsConfigDiscoveryServiceTest {
         assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
         assertThat(result.values()).containsExactly("Bug", "Test Case");
         assertThat(exchange.requests.getFirst().url().toString())
-                .isEqualTo("https://dev.azure.com/STMN-Group/ADOnis%202.0%20Test%20Project/_apis/wit/workitemtypes?api-version=7.1")
+                .isEqualTo("https://dev.azure.com/STMN-Group/ADOnis%202.0%20Test%20Project/_apis/wit/workitemtypes?$expand=None&api-version=7.1")
+                .contains("$expand=None")
                 .contains("ADOnis%202.0%20Test%20Project")
-                .doesNotContain("%2520");
+                .doesNotContain("%24expand", "%2520");
     }
 
     @Test
     void listWorkItemTypeOptionsMapsAdoValueArrayToSelectorOptions() {
-        var service = discovery(new RecordingExchangeFunction("""
+        var exchange = new RecordingExchangeFunction("""
                 {"count":1,"values":[{"name":"Wrong"}],"value":[{"name":"Test Case"}]}
-                """, HttpStatus.OK));
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
 
         var result = service.listWorkItemTypeOptions("STMN-Group", "ADOnis 2.0 Test Project");
 
@@ -68,6 +71,10 @@ class AzureDevOpsConfigDiscoveryServiceTest {
                     assertThat(option.displayName()).isEqualTo("Test Case");
                     assertThat(option.source()).isEqualTo("ADO");
                 });
+        assertThat(exchange.requests).hasSize(1);
+        assertThat(exchange.requests.getFirst().url().toString())
+                .contains("/_apis/wit/workitemtypes?$expand=None&api-version=7.1")
+                .doesNotContain("/fields");
     }
 
     @Test
@@ -180,6 +187,24 @@ class AzureDevOpsConfigDiscoveryServiceTest {
         assertThat(result.message())
                 .contains("transport error")
                 .contains("IllegalStateException")
+                .doesNotContain("secret-pat");
+    }
+
+    @Test
+    void dataBufferLimitFailureMapsToErrorBecauseDiscoveryWasAttempted() {
+        var service = new AzureDevOpsConfigDiscoveryService(
+                "secret-pat",
+                request -> Mono.error(new DataBufferLimitException("Exceeded limit on max bytes to buffer : 262144")),
+                new AzureDevOpsUrlBuilder()
+        );
+
+        var result = service.listWorkItemTypeOptions("STMN-Group", "ADOnis 2.0 Test Project");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.ERROR);
+        assertThat(result.message())
+                .contains("transport error")
+                .contains("DataBufferLimitException")
+                .contains("262144")
                 .doesNotContain("secret-pat");
     }
 
