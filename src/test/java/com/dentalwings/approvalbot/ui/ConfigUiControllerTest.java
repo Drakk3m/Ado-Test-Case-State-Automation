@@ -64,6 +64,32 @@ class ConfigUiControllerTest {
     }
 
     @Test
+    void projectDiscoveryEndpointReturnsSelectorOptionShapeUsedByJavascript() throws Exception {
+        when(discoveryService.listProjectOptions(any()))
+                .thenReturn(ConfigLookupResult.valid(List.of(
+                        new ConfigSelectorOption("Project Alpha", "Project Alpha", "", "ADO"),
+                        new ConfigSelectorOption("ADOnis 2.0 Test Project", "ADOnis 2.0 Test Project", "", "ADO")
+                )));
+
+        mockMvc.perform(post("/api/config-ui/discovery/projects")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organization": "STMN-Group"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"status\":\"VALID\"")))
+                .andExpect(content().string(containsString("\"values\"")))
+                .andExpect(content().string(containsString("\"value\":\"Project Alpha\"")))
+                .andExpect(content().string(containsString("\"displayName\":\"Project Alpha\"")))
+                .andExpect(content().string(containsString("\"value\":\"ADOnis 2.0 Test Project\"")))
+                .andExpect(content().string(containsString("\"optionCount\":2")))
+                .andExpect(content().string(not(containsString("secret-pat"))))
+                .andExpect(content().string(not(containsString("Authorization"))));
+    }
+
+    @Test
     void workItemTypeDiscoveryEndpointReturnsSelectorOptionShapeUsedByJavascript() throws Exception {
         when(discoveryService.listWorkItemTypeOptions(any(), any()))
                 .thenReturn(ConfigLookupResult.valid(List.of(

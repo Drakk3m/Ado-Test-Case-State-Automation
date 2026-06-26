@@ -43,10 +43,43 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("lookupHasOptions(lookup)")
                 .contains("lookupOptionCount(lookup)")
-                .contains("normalizeOptionsLookup(lookup, emptyMessage)")
+                .contains("renderedOptionCount(lookup)")
+                .contains("normalizeOptionsLookup(lookup, emptyMessage, selectorName = \"selector\")")
+                .contains("backend-count-without-renderable-options")
+                .contains("selector-render-failed")
                 .contains("No Work Item Types were returned for the verified project.")
                 .contains("No fields were returned for the selected Work Item Type.")
                 .contains("No states were returned for the selected Work Item Type.");
+    }
+
+    @Test
+    void javascriptNormalizesBackendSelectorResponseShapesBeforeRendering() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("rawOptionItems(lookup)")
+                .contains("Array.isArray(lookup?.values)")
+                .contains("Array.isArray(lookup?.options)")
+                .contains("Array.isArray(lookup?.items)")
+                .contains("normalizeSelectorOption(item)")
+                .contains("item.value ?? item.referenceName ?? item.name")
+                .contains("item.displayName ?? item.name ?? value")
+                .contains("selectorOptions(lookup)");
+    }
+
+    @Test
+    void javascriptRendersSelectorsFromValueAndDisplayName() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("selectOptions(selectorName, lookup, selected, placeholder)")
+                .contains("option.value === selected")
+                .contains("optionLabel(option) + description")
+                .contains("projectDatalist()")
+                .contains("selectorOptions(projectOptionLookup)")
+                .contains("selectOptions(\"work-item-types\", discovery.workItemTypes")
+                .contains("selectOptions(\"field-approved-by-sme\", discovery.fields")
+                .contains("selectOptions(\"state-approved\", discovery.states");
     }
 
     @Test
@@ -81,10 +114,14 @@ class ConfigUiStaticAssetsTest {
                 .contains("request-started")
                 .contains("request-completed")
                 .contains("request-failed")
+                .contains("discovery-response-received")
                 .contains("selector-populated")
+                .contains("selector-rendered")
                 .contains("selector-state")
                 .contains("dependent-selectors-cleared")
-                .contains("verify-project-clicked");
+                .contains("verify-project-clicked")
+                .contains("backendOptionCount")
+                .contains("renderedOptionCount");
     }
 
     @Test
