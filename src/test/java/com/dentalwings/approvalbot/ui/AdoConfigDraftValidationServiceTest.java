@@ -108,6 +108,59 @@ class AdoConfigDraftValidationServiceTest {
     }
 
     @Test
+    void duplicateApprovalFieldsAreBlockingErrors() {
+        var service = ApplicationLocalConfigServiceTest.validatingService(ApplicationLocalConfigServiceTest.validDiscovery());
+        var model = ApplicationLocalConfigServiceTest.validModel();
+        var fields = model.getAdo().getProjects().getFirst().getFields();
+        fields.setApprovedBySqa("Custom.ApproverTech");
+
+        var result = service.validate(model);
+
+        assertThat(result.canGenerateFinalYaml()).isFalse();
+        assertThat(result.fields())
+                .anySatisfy(field -> {
+                    assertThat(field.field()).contains("approved-by-sqa");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
+                    assertThat(field.message()).contains("must be different");
+                });
+    }
+
+    @Test
+    void reversibleBusinessFieldsMustNotDuplicateApprovalFieldsOrEachOther() {
+        var service = ApplicationLocalConfigServiceTest.validatingService(ApplicationLocalConfigServiceTest.validDiscovery());
+        var model = ApplicationLocalConfigServiceTest.validModel();
+        var reversibleFields = model.getAdo().getProjects().getFirst().getFields().getReversibleBusinessFields();
+        reversibleFields.add("System.Title");
+        reversibleFields.add("Custom.ApproverTech");
+
+        var result = service.validate(model);
+
+        assertThat(result.canGenerateFinalYaml()).isFalse();
+        assertThat(result.fields())
+                .anySatisfy(field -> {
+                    assertThat(field.field()).contains("reversible-business-fields");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
+                    assertThat(field.message()).contains("duplicates");
+                })
+                .anySatisfy(field -> {
+                    assertThat(field.field()).contains("reversible-business-fields");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
+                    assertThat(field.message()).contains("SME approval field");
+                });
+    }
+
+    @Test
+    void validDistinctFieldsRemainAccepted() {
+        var service = ApplicationLocalConfigServiceTest.validatingService(ApplicationLocalConfigServiceTest.validDiscovery());
+
+        var result = service.validate(ApplicationLocalConfigServiceTest.validModel());
+
+        assertThat(result.fields())
+                .filteredOn(field -> field.field().contains(".fields."))
+                .noneSatisfy(field -> assertThat(field.message()).contains("duplicate", "must be different", "also be reversible"));
+    }
+
+    @Test
     void missingPatEnvironmentVariableBlocksAdoBackedValidation() {
         var service = new AdoConfigDraftValidationService(ApplicationLocalConfigServiceTest.validDiscovery(), java.util.Map.of(
                 "ADO_WEBHOOK_SHARED_SECRET", "real-secret"
