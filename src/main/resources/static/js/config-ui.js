@@ -59,7 +59,54 @@ function safeDiscoveryDetails(details) {
 }
 
 function lookupOptionCount(lookup) {
-    return lookup?.optionCount ?? (lookup?.values || []).length;
+    return lookup?.optionCount ?? rawOptionItems(lookup).length;
+}
+
+function rawOptionItems(lookup) {
+    if (Array.isArray(lookup)) {
+        return lookup;
+    }
+    if (Array.isArray(lookup?.values)) {
+        return lookup.values;
+    }
+    if (Array.isArray(lookup?.options)) {
+        return lookup.options;
+    }
+    if (Array.isArray(lookup?.items)) {
+        return lookup.items;
+    }
+    return [];
+}
+
+function normalizeSelectorOption(item) {
+    if (item == null) {
+        return null;
+    }
+    if (typeof item === "string") {
+        const value = item.trim();
+        return value ? { value, displayName: value, description: "", source: "" } : null;
+    }
+    const value = String(item.value ?? item.referenceName ?? item.name ?? "").trim();
+    if (!value) {
+        return null;
+    }
+    const displayName = String(item.displayName ?? item.name ?? value).trim() || value;
+    return {
+        value,
+        displayName,
+        description: String(item.description ?? item.type ?? "").trim(),
+        source: String(item.source ?? "").trim()
+    };
+}
+
+function selectorOptions(lookup) {
+    return rawOptionItems(lookup)
+        .map(normalizeSelectorOption)
+        .filter((option) => option && option.value);
+}
+
+function renderedOptionCount(lookup) {
+    return selectorOptions(lookup).length;
 }
 
 function createProjectModel() {
@@ -194,19 +241,39 @@ function optionLabel(option) {
 
 function lookupContainsValue(lookup, value) {
     const normalized = String(value || "").trim().toLowerCase();
-    return normalized.length > 0 && (lookup?.values || [])
-        .some((option) => String(option?.value ?? option ?? "").trim().toLowerCase() === normalized);
+    return normalized.length > 0 && selectorOptions(lookup)
+        .some((option) => option.value.trim().toLowerCase() === normalized);
 }
 
 function lookupHasOptions(lookup) {
-    return lookup?.status === "VALID" && lookupOptionCount(lookup) > 0;
+    return lookup?.status === "VALID" && renderedOptionCount(lookup) > 0;
 }
 
-function normalizeOptionsLookup(lookup, emptyMessage) {
-    if (lookup?.status === "VALID" && lookupOptionCount(lookup) === 0) {
+function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector") {
+    const backendOptionCount = lookupOptionCount(lookup);
+    const renderedOptions = selectorOptions(lookup);
+    debugDiscovery("discovery-response-received", {
+        selector: selectorName,
+        status: lookup?.status,
+        backendOptionCount,
+        renderedOptionCount: renderedOptions.length
+    });
+    if (backendOptionCount > 0 && renderedOptions.length === 0) {
+        const message = `${selectorName} selector could not be populated from the ADO discovery response.`;
+        errorDiscovery("selector-render-failed", {
+            selector: selectorName,
+            status: lookup?.status,
+            backendOptionCount,
+            renderedOptionCount: renderedOptions.length,
+            reason: "backend-count-without-renderable-options"
+        });
+        setStatus(message, true);
+        return { status: "ERROR", message, values: [], optionCount: 0 };
+    }
+    if (lookup?.status === "VALID" && renderedOptions.length === 0) {
         return { status: "WARNING", message: emptyMessage, values: [], optionCount: 0 };
     }
-    return lookup;
+    return { ...(lookup || {}), values: renderedOptions, optionCount: renderedOptions.length };
 }
 
 function isCurrentDiscoveryRequest(index, requestToken, projectName, workItemType) {
@@ -272,7 +339,8 @@ function isUiAdoDiscoveryCurrent() {
         && state.ado.projects.every((project, index) => isProjectDiscoveryCurrent(project, projectDiscovery[index]));
 }
 
-function selectOptions(options, selected, placeholder) {
+function selectOptions(selectorName, lookup, selected, placeholder) {
+    const options = selectorOptions(lookup);
     const hasSelected = options.some((option) => option.value === selected);
     const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
     if (selected && !hasSelected) {
@@ -282,11 +350,17 @@ function selectOptions(options, selected, placeholder) {
         const description = option.description ? ` - ${option.description}` : "";
         rows.push(`<option value="${escapeHtml(option.value)}" ${option.value === selected ? "selected" : ""}>${escapeHtml(optionLabel(option) + description)}</option>`);
     }
+    debugDiscovery("selector-rendered", {
+        selector: selectorName,
+        renderedOptionCount: options.length,
+        selected,
+        enabled: options.length > 0
+    });
     return rows.join("");
 }
 
 function projectDatalist() {
-    return (projectOptionLookup.values || [])
+    return selectorOptions(projectOptionLookup)
         .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(optionLabel(option))}</option>`)
         .join("");
 }
@@ -308,8 +382,11 @@ function renderProjects() {
             workItemTypeDisabled: !!workItemTypeDisabled,
             fieldAndStateDisabled: !!fieldAndStateDisabled,
             workItemTypeOptionCount: lookupOptionCount(discovery.workItemTypes),
+            workItemTypeRenderedOptionCount: renderedOptionCount(discovery.workItemTypes),
             fieldOptionCount: lookupOptionCount(discovery.fields),
-            stateOptionCount: lookupOptionCount(discovery.states)
+            fieldRenderedOptionCount: renderedOptionCount(discovery.fields),
+            stateOptionCount: lookupOptionCount(discovery.states),
+            stateRenderedOptionCount: renderedOptionCount(discovery.states)
         });
         const card = document.createElement("div");
         card.className = "project-card";
@@ -328,43 +405,43 @@ function renderProjects() {
             <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> Enabled</label>
             <label>Work Item Type
                 <select data-field="supportedWorkItemTypes.0" ${workItemTypeDisabled}>
-                    ${selectOptions(discovery.workItemTypes.values || [], selectedType, "Select a discovered Work Item type")}
+                    ${selectOptions("work-item-types", discovery.workItemTypes, selectedType, "Select a discovered Work Item type")}
                 </select>
             </label>
             ${lookupBadge(discovery.workItemTypes)}
             <div class="grid-2">
                 <label>State design
                     <select data-field="states.design" ${fieldAndStateDisabled}>
-                        ${selectOptions(discovery.states.values || [], project.states.design || "", "Select a discovered state")}
+                        ${selectOptions("state-design", discovery.states, project.states.design || "", "Select a discovered state")}
                     </select>
                 </label>
                 <label>State in-review
                     <select data-field="states.inReview" ${fieldAndStateDisabled}>
-                        ${selectOptions(discovery.states.values || [], project.states.inReview || "", "Select a discovered state")}
+                        ${selectOptions("state-in-review", discovery.states, project.states.inReview || "", "Select a discovered state")}
                     </select>
                 </label>
             </div>
             <label>State approved
                 <select data-field="states.approved" ${fieldAndStateDisabled}>
-                    ${selectOptions(discovery.states.values || [], project.states.approved || "", "Select a discovered final state")}
+                    ${selectOptions("state-approved", discovery.states, project.states.approved || "", "Select a discovered final state")}
                 </select>
             </label>
             ${lookupBadge(discovery.states)}
             <div class="grid-2">
                 <label>Field approved-by-sme
                     <select data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
-                        ${selectOptions(discovery.fields.values || [], project.fields.approvedBySme || "", "Select a discovered field")}
+                        ${selectOptions("field-approved-by-sme", discovery.fields, project.fields.approvedBySme || "", "Select a discovered field")}
                     </select>
                 </label>
                 <label>Field approved-by-sqa
                     <select data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
-                        ${selectOptions(discovery.fields.values || [], project.fields.approvedBySqa || "", "Select a discovered field")}
+                        ${selectOptions("field-approved-by-sqa", discovery.fields, project.fields.approvedBySqa || "", "Select a discovered field")}
                     </select>
                 </label>
             </div>
             <label>Reversible business fields
                 <select data-field="fields.reversibleBusinessFields" multiple size="6" ${fieldAndStateDisabled}>
-                    ${(discovery.fields.values || []).map((option) => `
+                    ${selectorOptions(discovery.fields).map((option) => `
                         <option value="${escapeHtml(option.value)}" ${(project.fields.reversibleBusinessFields || []).includes(option.value) ? "selected" : ""}>
                             ${escapeHtml(optionLabel(option))}
                         </option>
@@ -577,9 +654,9 @@ async function discover(operation, url, body) {
 
 async function loadProjects() {
     readFormToState();
-    projectOptionLookup = await discover("list-projects", "/api/config-ui/discovery/projects", {
+    projectOptionLookup = normalizeOptionsLookup(await discover("list-projects", "/api/config-ui/discovery/projects", {
         organization: state.ado.organization
-    });
+    }), "No projects were returned for the configured organization.", "projects");
     renderProjectDatalist();
     renderProjects();
     schedulePreview();
@@ -614,13 +691,15 @@ async function loadProject(index) {
         }
         discovery.workItemTypes = normalizeOptionsLookup(
                 workItemTypes,
-                "No Work Item Types were returned for the verified project."
+                "No Work Item Types were returned for the verified project.",
+                "work-item-types"
         );
         debugDiscovery("selector-populated", {
             index,
             selector: "work-item-types",
             status: discovery.workItemTypes.status,
-            optionCount: lookupOptionCount(discovery.workItemTypes)
+            backendOptionCount: lookupOptionCount(workItemTypes),
+            renderedOptionCount: renderedOptionCount(discovery.workItemTypes)
         });
     } else {
         discovery.workItemTypes = { status: "NOT_CHECKED", message: "Verify the project before selecting a Work Item type.", values: [], optionCount: 0 };
@@ -664,19 +743,21 @@ async function loadFieldAndStateOptions(index) {
     if (!isCurrentDiscoveryRequest(index, requestToken, projectName, type)) {
         return;
     }
-    discovery.fields = normalizeOptionsLookup(fields, "No fields were returned for the selected Work Item Type.");
-    discovery.states = normalizeOptionsLookup(states, "No states were returned for the selected Work Item Type.");
+    discovery.fields = normalizeOptionsLookup(fields, "No fields were returned for the selected Work Item Type.", "fields");
+    discovery.states = normalizeOptionsLookup(states, "No states were returned for the selected Work Item Type.", "states");
     debugDiscovery("selector-populated", {
         index,
         selector: "fields",
         status: discovery.fields.status,
-        optionCount: lookupOptionCount(discovery.fields)
+        backendOptionCount: lookupOptionCount(fields),
+        renderedOptionCount: renderedOptionCount(discovery.fields)
     });
     debugDiscovery("selector-populated", {
         index,
         selector: "states",
         status: discovery.states.status,
-        optionCount: lookupOptionCount(discovery.states)
+        backendOptionCount: lookupOptionCount(states),
+        renderedOptionCount: renderedOptionCount(discovery.states)
     });
     renderProjects();
     schedulePreview();
@@ -697,8 +778,16 @@ async function previewDraft(showStatus = true) {
 }
 
 function renderProjectDatalist() {
+    const renderedCount = renderedOptionCount(projectOptionLookup);
     document.getElementById("adoProjectOptions").innerHTML = projectDatalist();
     document.getElementById("projectLookupStatus").innerHTML = lookupBadge(projectOptionLookup);
+    debugDiscovery("selector-rendered", {
+        selector: "projects",
+        status: projectOptionLookup.status,
+        backendOptionCount: lookupOptionCount(projectOptionLookup),
+        renderedOptionCount: renderedCount,
+        enabled: renderedCount > 0
+    });
 }
 
 function handleGlobalInput() {
