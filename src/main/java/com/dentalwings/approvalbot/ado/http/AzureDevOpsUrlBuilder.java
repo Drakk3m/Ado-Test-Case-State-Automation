@@ -8,6 +8,7 @@ public class AzureDevOpsUrlBuilder {
 
     public static final String WORK_ITEM_API_VERSION = "7.1";
     public static final String COMMENTS_API_VERSION = "7.1-preview";
+    public static final String PROJECT_PROPERTIES_API_VERSION = "7.1-preview.1";
 
     public String workItemUrl(AdoWorkItemKey key) {
         validateKey(key);
@@ -70,14 +71,25 @@ public class AzureDevOpsUrlBuilder {
                 + WORK_ITEM_API_VERSION;
     }
 
-    public String workItemTypesUrl(String organization, String project) {
+    public String projectPropertiesUrl(String organization, String projectId) {
         requireComponent("organization", organization);
-        requireComponent("project", project);
+        requireComponent("project id", projectId);
         return "https://dev.azure.com/"
                 + encode(organization)
-                + "/"
-                + encode(project)
-                + "/_apis/wit/workitemtypes?$expand=None&api-version="
+                + "/_apis/projects/"
+                + encode(projectId)
+                + "/properties?keys=System.ProcessTemplateType,System.CurrentProcessTemplateId,System.Process%20Template&api-version="
+                + PROJECT_PROPERTIES_API_VERSION;
+    }
+
+    public String processWorkItemTypesUrl(String organization, String processId) {
+        requireComponent("organization", organization);
+        requireComponent("process id", processId);
+        return "https://dev.azure.com/"
+                + encode(organization)
+                + "/_apis/work/processes/"
+                + encode(processId)
+                + "/workitemtypes?api-version="
                 + WORK_ITEM_API_VERSION;
     }
 

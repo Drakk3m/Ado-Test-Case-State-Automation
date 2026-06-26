@@ -74,13 +74,22 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
-    void urlBuilderCreatesMinimalWorkItemTypesDiscoveryUrl() {
-        var url = new AzureDevOpsUrlBuilder().workItemTypesUrl("my org", "Project A");
+    void urlBuilderCreatesProjectPropertiesDiscoveryUrl() {
+        var url = new AzureDevOpsUrlBuilder().projectPropertiesUrl("my org", "11111111-2222-3333-4444-555555555555");
 
         assertThat(url)
-                .isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workitemtypes?$expand=None&api-version=7.1")
-                .contains("$expand=None")
-                .doesNotContain("%24expand")
+                .isEqualTo("https://dev.azure.com/my%20org/_apis/projects/11111111-2222-3333-4444-555555555555/properties?keys=System.ProcessTemplateType,System.CurrentProcessTemplateId,System.Process%20Template&api-version=7.1-preview.1")
+                .contains("System.Process%20Template")
+                .doesNotContain("%2520");
+    }
+
+    @Test
+    void urlBuilderCreatesProcessWorkItemTypesDiscoveryUrl() {
+        var url = new AzureDevOpsUrlBuilder().processWorkItemTypesUrl("my org", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+
+        assertThat(url)
+                .isEqualTo("https://dev.azure.com/my%20org/_apis/work/processes/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/workitemtypes?api-version=7.1")
+                .doesNotContain("/_apis/wit/workitemtypes")
                 .doesNotContain("%2520");
     }
 
