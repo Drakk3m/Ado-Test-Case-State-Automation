@@ -17,6 +17,7 @@ let selectorDiagnostics = {};
 let identitySearchState = {};
 let identitySearchTimers = {};
 let identityOptionCache = {};
+let projectLayoutState = [];
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -135,62 +136,86 @@ function renderDiagnosticsPanel() {
     if (!debugEnabled || !diagnosticsContentEl) {
         return;
     }
-    const rows = Object.values(selectorDiagnostics)
-        .sort((left, right) => left.selector.localeCompare(right.selector))
-        .map((item) => `
-            <tr>
-                <td>${escapeHtml(item.selector)}</td>
-                <td>${escapeHtml(item.status)}</td>
-                <td>${escapeHtml(item.backendOptionCount)}</td>
-                <td>${escapeHtml(item.receivedLength)}</td>
-                <td>${escapeHtml(item.normalizedLength)}</td>
-                <td>${escapeHtml(item.renderedOptionCount)}</td>
-                <td>${escapeHtml(item.domOptionCount)}</td>
-                <td>${escapeHtml(item.rawFieldCount)}</td>
-                <td>${escapeHtml(item.approvalFieldCount)}</td>
-                <td>${escapeHtml(item.reversibleFieldCount)}</td>
-                <td>${escapeHtml(item.duplicateErrors)}</td>
-                <td>${escapeHtml(item.lastQueryLength)}</td>
-                <td>${escapeHtml(item.resultCount)}</td>
-                <td>${escapeHtml(item.pendingIdentityStatus)}</td>
-                <td>${escapeHtml(item.selectedCount)}</td>
-                <td>${escapeHtml(item.unresolvedCount)}</td>
-                <td>${escapeHtml(item.identityWarnings)}</td>
-                <td>${item.enabled ? "enabled" : "disabled"}</td>
-                <td>${escapeHtml(item.staleIgnoredCount)}</td>
-                <td>${escapeHtml(item.lastUpdated)}</td>
-                <td>${escapeHtml(item.message)}</td>
-            </tr>
-        `).join("");
-    diagnosticsContentEl.innerHTML = `
-        <table class="diagnostics-table">
-            <thead>
-                <tr>
-                    <th>selector</th>
-                    <th>status</th>
-                    <th>backend optionCount</th>
-                    <th>received length</th>
-                    <th>normalized length</th>
-                    <th>rendered count</th>
-                    <th>DOM options</th>
-                    <th>raw fields</th>
-                    <th>approval fields</th>
-                    <th>reversible fields</th>
-                    <th>duplicate errors</th>
-                    <th>query length</th>
-                    <th>user results</th>
-                    <th>pending identity</th>
-                    <th>selected users</th>
-                    <th>unresolved users</th>
-                    <th>identity warnings</th>
-                    <th>decision</th>
-                    <th>stale ignored</th>
-                    <th>updated</th>
-                    <th>message</th>
-                </tr>
-            </thead>
-            <tbody>${rows || `<tr><td colspan="21">No selector diagnostics captured yet.</td></tr>`}</tbody>
-        </table>
+    const groups = diagnosticGroups();
+    diagnosticsContentEl.innerHTML = `<div class="diagnostics-groups">${groups.map((group) => diagnosticGroupMarkup(group)).join("")}</div>`;
+}
+
+function diagnosticGroups() {
+    const diagnostics = Object.values(selectorDiagnostics)
+        .sort((left, right) => left.selector.localeCompare(right.selector));
+    const groups = [
+        { title: "Projects", selectors: ["project"], items: [] },
+        { title: "Work Item Types", selectors: ["workItemType"], items: [] },
+        { title: "Fields", selectors: ["approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields"], items: [] },
+        { title: "Identities", selectors: ["smeUsers", "sqaUsers"], items: [] },
+        { title: "States", selectors: ["designState", "inReviewState", "approvedState"], items: [] },
+        { title: "YAML/Validation", selectors: [], items: [] }
+    ];
+    for (const item of diagnostics) {
+        const group = groups.find((candidate) => candidate.selectors.includes(item.selector)) || groups[groups.length - 1];
+        group.items.push(item);
+    }
+    return groups;
+}
+
+function diagnosticGroupMarkup(group) {
+    const rows = group.items.map((item) => diagnosticItemMarkup(item)).join("");
+    return `
+        <details class="diagnostic-group" open>
+            <summary>
+                <strong>${escapeHtml(group.title)}</strong>
+                <span>${escapeHtml(group.items.length)} item${group.items.length === 1 ? "" : "s"}</span>
+            </summary>
+            <div class="diagnostic-grid">
+                ${rows || `<p class="note compact">No diagnostics captured yet.</p>`}
+            </div>
+        </details>
+    `;
+}
+
+function diagnosticItemMarkup(item) {
+    const metrics = [
+        ["backend optionCount", item.backendOptionCount],
+        ["received length", item.receivedLength],
+        ["normalized length", item.normalizedLength],
+        ["rendered count", item.renderedOptionCount],
+        ["DOM options", item.domOptionCount],
+        ["raw fields", item.rawFieldCount],
+        ["approval fields", item.approvalFieldCount],
+        ["reversible fields", item.reversibleFieldCount],
+        ["duplicate errors", item.duplicateErrors],
+        ["query length", item.lastQueryLength],
+        ["user results", item.resultCount],
+        ["pending identity", item.pendingIdentityStatus],
+        ["selected users", item.selectedCount],
+        ["unresolved users", item.unresolvedCount],
+        ["identity warnings", item.identityWarnings],
+        ["stale ignored", item.staleIgnoredCount]
+    ].filter((metric) => metric[1] !== "" && metric[1] !== null && metric[1] !== undefined);
+    return `
+        <section class="diagnostic-item">
+            <div class="diagnostic-item-heading">
+                <strong>${escapeHtml(item.selector)}</strong>
+                ${validationBadge(item.status || "NOT_CHECKED")}
+            </div>
+            <dl>
+                ${metrics.map(([label, value]) => `
+                    <div>
+                        <dt>${escapeHtml(label)}</dt>
+                        <dd>${escapeHtml(value)}</dd>
+                    </div>
+                `).join("")}
+                <div>
+                    <dt>decision</dt>
+                    <dd>${item.enabled ? "enabled" : "disabled"}</dd>
+                </div>
+                <div>
+                    <dt>updated</dt>
+                    <dd>${escapeHtml(item.lastUpdated)}</dd>
+                </div>
+            </dl>
+            ${item.message ? `<p class="note compact">${escapeHtml(item.message)}</p>` : ""}
+        </section>
     `;
 }
 
@@ -793,6 +818,17 @@ function ensureDiscovery() {
     if (projectDiscovery.length > state.ado.projects.length) {
         projectDiscovery = projectDiscovery.slice(0, state.ado.projects.length);
     }
+    while (projectLayoutState.length < state.ado.projects.length) {
+        projectLayoutState.push({ collapsed: false });
+    }
+    if (projectLayoutState.length > state.ado.projects.length) {
+        projectLayoutState = projectLayoutState.slice(0, state.ado.projects.length);
+    }
+}
+
+function projectLayout(index) {
+    ensureDiscovery();
+    return projectLayoutState[index] || { collapsed: false };
 }
 
 function invalidatePreview() {
@@ -881,6 +917,53 @@ function clearDiscovery(index, level) {
 
 function validationBadge(label) {
     return `<span class="badge badge-${label.toLowerCase().replace("_", "-")}">${label}</span>`;
+}
+
+function projectDisplayName(project, index) {
+    return (project.name || "").trim() || `Project ${index + 1}`;
+}
+
+function projectSectionStatus(project, discovery, fieldDuplicateMessages, identityMessages) {
+    if (fieldDuplicateMessages.length > 0) {
+        return "ERROR";
+    }
+    if (identityMessages.length > 0) {
+        return "WARNING";
+    }
+    if (isProjectDiscoveryCurrent(project, discovery)) {
+        return "VALID";
+    }
+    return discovery?.projectStatus?.status || "NOT_CHECKED";
+}
+
+function projectSummary(project, index, selectedType, status) {
+    const selectedTypes = (project.supportedWorkItemTypes || []).filter((type) => type && type.trim());
+    const typeLabel = selectedTypes.length ? selectedTypes.join(", ") : "No Work Item Type selected";
+    const fieldCount = [
+        project.fields.approvedBySme,
+        project.fields.approvedBySqa,
+        ...(project.fields.reversibleBusinessFields || [])
+    ].filter((field) => field && field.trim()).length;
+    const userCount = (project.approvals.smeUsers || []).length + (project.approvals.sqaUsers || []).length;
+    return `
+        <div class="project-summary">
+            <div>
+                <h3>Project: ${escapeHtml(projectDisplayName(project, index))}</h3>
+                <p class="note compact">${escapeHtml(typeLabel)}</p>
+            </div>
+            <div class="project-summary-meta">
+                ${validationBadge(status)}
+                <span>${escapeHtml(fieldCount)} field${fieldCount === 1 ? "" : "s"}</span>
+                <span>${escapeHtml(userCount)} user${userCount === 1 ? "" : "s"}</span>
+            </div>
+        </div>
+    `;
+}
+
+function projectCanCollapse(project, discovery, fieldDuplicateMessages, identityMessages) {
+    return isProjectDiscoveryCurrent(project, discovery)
+        && fieldDuplicateMessages.length === 0
+        && identityMessages.length === 0;
 }
 
 function lookupBadge(lookup) {
@@ -1133,6 +1216,11 @@ function renderProjects() {
         const identityStatus = identityMessages.length
                 ? `<span class="lookup-status">${validationBadge("WARNING")} ${escapeHtml(identityMessages.join(" "))}</span>`
                 : "";
+        const layout = projectLayout(index);
+        const collapsed = !!layout.collapsed;
+        const sectionStatus = projectSectionStatus(project, discovery, fieldDuplicateMessages, identityMessages);
+        const canCollapse = projectCanCollapse(project, discovery, fieldDuplicateMessages, identityMessages);
+        const collapseDisabled = canCollapse ? "" : "disabled";
         debugDiscovery("selector-state", {
             index,
             project: project.name,
@@ -1164,75 +1252,91 @@ function renderProjects() {
             message: sanitizeMessage(fieldDuplicateMessages.join(" ") || discovery.fields?.message)
         });
         const card = document.createElement("div");
-        card.className = "project-card";
+        card.className = `project-card${collapsed ? " collapsed" : ""}`;
         card.innerHTML = `
-            <div class="row-between">
-                <h3>Proyecto ${index + 1}</h3>
-                <button type="button" class="remove" data-action="remove">Eliminar</button>
+            <div class="project-card-header">
+                ${projectSummary(project, index, selectedType, sectionStatus)}
+                <div class="project-card-actions">
+                    <button type="button" data-action="toggle-project" ${!collapsed && !canCollapse ? "disabled" : ""}>${collapsed ? "Edit" : "Collapse"}</button>
+                    <button type="button" class="remove" data-action="remove">Eliminar</button>
+                </div>
             </div>
-            <div class="selector-grid">
-                <label>Project
-                    <select data-field="name" data-selector-name="project" ${projectSelectorDisabled}>
-                        ${selectOptions("project", projectOptionLookup, project.name || "", "Load and select a discovered project", projectSelectorEnabled)}
-                    </select>
-                </label>
-                <button type="button" data-action="load-project">Verify Project</button>
-            </div>
-            ${lookupBadge(discovery.projectStatus)}
-            <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> Enabled</label>
-            <label>Work Item Type
-                <select data-field="supportedWorkItemTypes.0" ${workItemTypeDisabled}>
-                    ${selectOptions("workItemType", discovery.workItemTypes, selectedType, "Select a discovered Work Item type", workItemTypeEnabled)}
-                </select>
-            </label>
-            ${lookupBadge(discovery.workItemTypes)}
-            <div class="grid-2">
-                <label>State design
-                    <select data-field="states.design" ${fieldAndStateDisabled}>
-                        ${selectOptions("designState", discovery.states, project.states.design || "", "Select a discovered state", fieldAndStateEnabled)}
-                    </select>
-                </label>
-                <label>State in-review
-                    <select data-field="states.inReview" ${fieldAndStateDisabled}>
-                        ${selectOptions("inReviewState", discovery.states, project.states.inReview || "", "Select a discovered state", fieldAndStateEnabled)}
-                    </select>
-                </label>
-            </div>
-            <label>State approved
-                <select data-field="states.approved" ${fieldAndStateDisabled}>
-                    ${selectOptions("approvedState", discovery.states, project.states.approved || "", "Select a discovered final state", fieldAndStateEnabled)}
-                </select>
-            </label>
-            ${lookupBadge(discovery.states)}
-            <div class="grid-2">
-                <label>Field approved-by-sme
-                    <select data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
-                        ${selectOptions("approvedBySmeField", fieldLookups.smeLookup, project.fields.approvedBySme || "", "Select a discovered approval field", fieldAndStateEnabled)}
-                    </select>
-                </label>
-                <label>Field approved-by-sqa
-                    <select data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
-                        ${selectOptions("approvedBySqaField", fieldLookups.sqaLookup, project.fields.approvedBySqa || "", "Select a discovered approval field", fieldAndStateEnabled)}
-                    </select>
-                </label>
-            </div>
-            <label>Reversible business fields
-                <select data-field="fields.reversibleBusinessFields" multiple size="6" ${fieldAndStateDisabled}>
-                    ${selectorOptions(fieldLookups.reversibleLookup).map((option) => `
-                        <option value="${escapeHtml(option.value)}" ${(project.fields.reversibleBusinessFields || []).includes(option.value) ? "selected" : ""}>
-                            ${escapeHtml(optionLabel(option, "reversibleBusinessFields"))}
-                        </option>
-                    `).join("")}
-                </select>
-            </label>
-            ${lookupBadge(discovery.fields)}
-            ${fieldDuplicateStatus}
-            <div class="grid-2">
-                ${identityUserPicker(project, index, "sme", projectVerified)}
-                ${identityUserPicker(project, index, "sqa", projectVerified)}
-            </div>
-            ${identityStatus}
-            <p class="note compact">Display names are shown for selection only. YAML stores normalized email/login values.</p>
+            ${collapsed ? `
+                <div class="project-collapsed-body">
+                    <span>Work Item Types: ${escapeHtml((project.supportedWorkItemTypes || []).length)}</span>
+                    ${fieldDuplicateMessages.length ? `<span>${validationBadge("ERROR")} ${escapeHtml(fieldDuplicateMessages.join(" "))}</span>` : ""}
+                    ${identityMessages.length ? `<span>${validationBadge("WARNING")} ${escapeHtml(identityMessages.join(" "))}</span>` : ""}
+                </div>
+            ` : `
+                <div class="project-card-body">
+                    <div class="selector-grid">
+                        <label>Project
+                            <select data-field="name" data-selector-name="project" ${projectSelectorDisabled}>
+                                ${selectOptions("project", projectOptionLookup, project.name || "", "Load and select a discovered project", projectSelectorEnabled)}
+                            </select>
+                        </label>
+                        <button type="button" data-action="load-project">Verify Project</button>
+                    </div>
+                    ${lookupBadge(discovery.projectStatus)}
+                    <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> Enabled</label>
+                    <label>Work Item Type
+                        <select data-field="supportedWorkItemTypes.0" ${workItemTypeDisabled}>
+                            ${selectOptions("workItemType", discovery.workItemTypes, selectedType, "Select a discovered Work Item type", workItemTypeEnabled)}
+                        </select>
+                    </label>
+                    ${lookupBadge(discovery.workItemTypes)}
+                    <div class="grid-2">
+                        <label>State design
+                            <select data-field="states.design" ${fieldAndStateDisabled}>
+                                ${selectOptions("designState", discovery.states, project.states.design || "", "Select a discovered state", fieldAndStateEnabled)}
+                            </select>
+                        </label>
+                        <label>State in-review
+                            <select data-field="states.inReview" ${fieldAndStateDisabled}>
+                                ${selectOptions("inReviewState", discovery.states, project.states.inReview || "", "Select a discovered state", fieldAndStateEnabled)}
+                            </select>
+                        </label>
+                    </div>
+                    <label>State approved
+                        <select data-field="states.approved" ${fieldAndStateDisabled}>
+                            ${selectOptions("approvedState", discovery.states, project.states.approved || "", "Select a discovered final state", fieldAndStateEnabled)}
+                        </select>
+                    </label>
+                    ${lookupBadge(discovery.states)}
+                    <div class="grid-2">
+                        <label>Field approved-by-sme
+                            <select data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
+                                ${selectOptions("approvedBySmeField", fieldLookups.smeLookup, project.fields.approvedBySme || "", "Select a discovered approval field", fieldAndStateEnabled)}
+                            </select>
+                        </label>
+                        <label>Field approved-by-sqa
+                            <select data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
+                                ${selectOptions("approvedBySqaField", fieldLookups.sqaLookup, project.fields.approvedBySqa || "", "Select a discovered approval field", fieldAndStateEnabled)}
+                            </select>
+                        </label>
+                    </div>
+                    <label>Reversible business fields
+                        <select data-field="fields.reversibleBusinessFields" multiple size="6" ${fieldAndStateDisabled}>
+                            ${selectorOptions(fieldLookups.reversibleLookup).map((option) => `
+                                <option value="${escapeHtml(option.value)}" ${(project.fields.reversibleBusinessFields || []).includes(option.value) ? "selected" : ""}>
+                                    ${escapeHtml(optionLabel(option, "reversibleBusinessFields"))}
+                                </option>
+                            `).join("")}
+                        </select>
+                    </label>
+                    ${lookupBadge(discovery.fields)}
+                    ${fieldDuplicateStatus}
+                    <div class="grid-2">
+                        ${identityUserPicker(project, index, "sme", projectVerified)}
+                        ${identityUserPicker(project, index, "sqa", projectVerified)}
+                    </div>
+                    ${identityStatus}
+                    <div class="row-between">
+                        <p class="note compact">Display names are shown for selection only. YAML stores normalized email/login values.</p>
+                        <button type="button" data-action="collapse-project" ${collapseDisabled}>Collapse</button>
+                    </div>
+                </div>
+            `}
         `;
 
         card.addEventListener("input", (event) => {
@@ -1245,14 +1349,39 @@ function renderProjects() {
         card.querySelector("[data-action='remove']").addEventListener("click", () => {
             state.ado.projects.splice(index, 1);
             projectDiscovery.splice(index, 1);
+            projectLayoutState.splice(index, 1);
             invalidatePreview();
             renderProjects();
             schedulePreview();
         });
 
-        card.querySelector("[data-action='load-project']").addEventListener("click", async () => {
-            await loadProject(index);
+        card.querySelector("[data-action='toggle-project']").addEventListener("click", () => {
+            if (collapsed) {
+                projectLayout(index).collapsed = false;
+            } else if (canCollapse) {
+                projectLayout(index).collapsed = true;
+            }
+            renderProjects();
         });
+        const collapseButton = card.querySelector("[data-action='collapse-project']");
+        if (collapseButton) {
+            collapseButton.addEventListener("click", () => {
+                if (!canCollapse) {
+                    projectLayout(index).collapsed = false;
+                    setStatus("Resolve project validation before collapsing this section.", true);
+                    renderProjects();
+                    return;
+                }
+                projectLayout(index).collapsed = true;
+                renderProjects();
+            });
+        }
+        const loadProjectButton = card.querySelector("[data-action='load-project']");
+        if (loadProjectButton) {
+            loadProjectButton.addEventListener("click", async () => {
+                await loadProject(index);
+            });
+        }
         for (const input of card.querySelectorAll("[data-action='identity-search']")) {
             input.addEventListener("input", (event) => {
                 handleIdentitySearchInput(index, event.target.getAttribute("data-role"), event.target.value);
@@ -1305,6 +1434,7 @@ function handleProjectInput(project, index, event) {
 
     if (field === "name") {
         project.name = event.target.value;
+        projectLayout(index).collapsed = false;
         clearChildSelections(project);
         clearDiscovery(index, "project");
         if (event.type === "change") {
@@ -1316,6 +1446,7 @@ function handleProjectInput(project, index, event) {
 
     if (field === "supportedWorkItemTypes.0") {
         project.supportedWorkItemTypes = event.target.value ? [event.target.value] : [];
+        projectLayout(index).collapsed = false;
         clearTypeSelections(project);
         clearDiscovery(index, "type");
         renderProjects();
@@ -1540,6 +1671,7 @@ async function loadProject(index) {
             renderedOptionCount: renderedOptionCount(discovery.workItemTypes)
         });
     } else {
+        projectLayout(index).collapsed = false;
         discovery.workItemTypes = { status: "NOT_CHECKED", message: "Verify the project before selecting a Work Item type.", values: [], optionCount: 0 };
     }
     renderProjects();
@@ -1727,6 +1859,7 @@ function handleOrganizationChanged() {
         clearChildSelections(project);
     }
     projectDiscovery = state.ado.projects.map(createDiscoveryState);
+    projectLayoutState = state.ado.projects.map(() => ({ collapsed: false }));
     renderProjectSelectors();
     renderProjects();
     schedulePreview();
@@ -1768,6 +1901,7 @@ document.getElementById("idempotencyMaxRecords").addEventListener("input", handl
 document.getElementById("addProject").addEventListener("click", () => {
     state.ado.projects.push(createProjectModel());
     projectDiscovery.push(createDiscoveryState());
+    projectLayoutState.push({ collapsed: false });
     renderProjects();
     schedulePreview();
 });

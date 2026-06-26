@@ -144,6 +144,52 @@ button.remove {
     border-radius: 8px;
     padding: 12px;
     margin-bottom: 12px;
+    background: #0b1220;
+}
+
+.project-card.collapsed {
+    background: #111827;
+}
+
+.project-card-header,
+.project-summary,
+.project-summary-meta,
+.project-card-actions,
+.project-collapsed-body {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.project-card-header {
+    justify-content: space-between;
+}
+
+.project-summary {
+    flex: 1 1 320px;
+    justify-content: space-between;
+    min-width: 0;
+}
+
+.project-summary h3 {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.project-summary-meta,
+.project-card-actions {
+    flex: 0 0 auto;
+}
+
+.project-card-body {
+    margin-top: 12px;
+}
+
+.project-collapsed-body {
+    margin-top: 8px;
+    color: var(--nova-muted);
+    font-size: 13px;
 }
 
 .selector-grid {
@@ -217,26 +263,71 @@ button.remove {
 .diagnostics-panel {
     background: #0b1220;
     max-width: 100%;
-    overflow-x: auto;
 }
 
-.diagnostics-table {
-    width: 100%;
-    border-collapse: collapse;
+.diagnostics-groups {
+    display: grid;
+    gap: 10px;
+}
+
+.diagnostic-group {
+    border: 1px solid var(--nova-border);
+    border-radius: 8px;
+    background: #111827;
+}
+
+.diagnostic-group summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    color: var(--nova-muted);
+}
+
+.diagnostic-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    padding: 0 12px 12px;
+}
+
+.diagnostic-item {
+    border: 1px solid var(--nova-border);
+    border-radius: 8px;
+    padding: 10px;
+    min-width: 0;
+    background: #0b1220;
+}
+
+.diagnostic-item-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.diagnostic-item dl {
+    display: grid;
+    gap: 4px;
+    margin: 0;
     font-size: 12px;
 }
 
-.diagnostics-table th,
-.diagnostics-table td {
-    border-bottom: 1px solid var(--nova-border);
-    padding: 6px;
-    text-align: left;
-    vertical-align: top;
+.diagnostic-item dl div {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr);
+    gap: 8px;
 }
 
-.diagnostics-table th {
+.diagnostic-item dt {
     color: var(--nova-muted);
-    font-weight: 700;
+}
+
+.diagnostic-item dd {
+    margin: 0;
+    overflow-wrap: anywhere;
 }
 
 .debug-project-list {
@@ -419,10 +510,14 @@ pre {
         grid-template-columns: 1fr;
     }
 
-    .diagnostics-table {
-        display: block;
-        overflow-x: auto;
-        white-space: nowrap;
+    .project-card-header,
+    .project-summary {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .project-card-actions {
+        width: 100%;
     }
 
     .selector-grid button {
