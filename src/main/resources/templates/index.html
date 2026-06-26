@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,32 +9,43 @@
 <body>
 <main class="container">
     <header class="hero">
-        <h1>Configuracion Approval Bot</h1>
-        <p>Prepara un borrador de <code>application-local.yml</code> y separa texto sin validar de valores verificados.</p>
-        <p class="note">Los secretos no se guardan en disco: se mantienen como <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> y <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.</p>
-        <p class="note">La validacion ADO read-only carga proyectos, tipos, campos y estados cuando el PAT esta disponible. Hot-load queda diferido: reinicia el servicio despues de cambios YAML.</p>
+        <div class="hero-heading">
+            <div>
+                <h1 data-i18n="app.title">Approval Bot configuration</h1>
+                <p data-i18n-html="app.subtitle">Prepare an <code>application-local.yml</code> draft and separate unchecked text from verified values.</p>
+            </div>
+            <label class="language-selector"><span data-i18n="language.label">Language</span>
+                <select id="languageSelector">
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                    <option value="es">Español</option>
+                </select>
+            </label>
+        </div>
+        <p class="note" data-i18n-html="app.secretNote">Secrets are not written to disk: they stay as <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> and <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.</p>
+        <p class="note" data-i18n="app.discoveryNote">Read-only ADO validation loads projects, types, fields, and states when the PAT is available. Hot-load remains deferred: restart the service after YAML changes.</p>
     </header>
 
     <section class="card grid-2">
         <div>
-            <h2>ADO</h2>
-            <label>Organization
+            <h2 data-i18n="section.ado">ADO</h2>
+            <label><span data-i18n="field.organization">Organization</span>
                 <input id="adoOrganization" type="text">
             </label>
             <div class="row">
-                <button id="loadProjects" type="button">Load Projects</button>
+                <button id="loadProjects" type="button" data-i18n="button.loadProjects">Load Projects</button>
                 <span id="projectLookupStatus"></span>
             </div>
-            <label class="switch-row"><input id="adoHttpClientEnabled" type="checkbox"> HTTP client enabled</label>
-            <label class="switch-row"><input id="adoDryRun" type="checkbox"> Dry run</label>
+            <label class="switch-row"><input id="adoHttpClientEnabled" type="checkbox"> <span data-i18n="field.httpClientEnabled">HTTP client enabled</span></label>
+            <label class="switch-row"><input id="adoDryRun" type="checkbox"> <span data-i18n="field.dryRun">Dry run</span></label>
         </div>
         <div>
-            <h2>Bot / Webhook</h2>
-            <label>Bot identity email
+            <h2 data-i18n="section.botWebhook">Bot / Webhook</h2>
+            <label><span data-i18n="field.botIdentityEmail">Bot identity email</span>
                 <input id="botIdentityEmail" type="email">
             </label>
-            <label class="switch-row"><input id="webhookEnabled" type="checkbox"> Webhook shared secret enabled</label>
-            <label>Webhook header
+            <label class="switch-row"><input id="webhookEnabled" type="checkbox"> <span data-i18n="field.webhookSecretEnabled">Webhook shared secret enabled</span></label>
+            <label><span data-i18n="field.webhookHeader">Webhook header</span>
                 <input id="webhookHeaderName" type="text">
             </label>
         </div>
@@ -42,8 +53,8 @@
 
     <section class="card">
         <div class="row-between">
-            <h2>Projects</h2>
-            <button id="addProject" type="button">+ Agregar proyecto</button>
+            <h2 data-i18n="section.projects">Projects</h2>
+            <button id="addProject" type="button" data-i18n="button.addProject">+ Add project</button>
         </div>
         <div id="discoveredProjectsDebug" class="debug-project-list" hidden></div>
         <div id="projects"></div>
@@ -51,36 +62,36 @@
 
     <section id="configUiDiagnosticsPanel" class="card diagnostics-panel" hidden>
         <div class="row-between">
-            <h2>Config UI diagnostics</h2>
-            <span class="note compact">Visible only when config UI debug is enabled.</span>
+            <h2 data-i18n="section.diagnostics">Config UI diagnostics</h2>
+            <span class="note compact" data-i18n="diagnostics.visibleWhenDebug">Visible only when config UI debug is enabled.</span>
         </div>
-        <p class="note compact">Selector diagnostics show the discovered options normalized and rendered into real selector controls.</p>
+        <p class="note compact" data-i18n="diagnostics.description">Selector diagnostics show the discovered options normalized and rendered into real selector controls.</p>
         <div id="configUiDiagnosticsContent"></div>
     </section>
 
     <section class="card grid-2">
         <div>
-            <h2>Retry</h2>
-            <label>Max attempts
+            <h2 data-i18n="section.retry">Retry</h2>
+            <label><span data-i18n="field.maxAttempts">Max attempts</span>
                 <input id="retryMaxAttempts" type="number" min="1">
             </label>
-            <label>Default backoff seconds
+            <label><span data-i18n="field.defaultBackoffSeconds">Default backoff seconds</span>
                 <input id="retryBackoff" type="number" min="1">
             </label>
-            <label class="switch-row"><input id="retryRespectAfter" type="checkbox"> Respect Retry-After</label>
+            <label class="switch-row"><input id="retryRespectAfter" type="checkbox"> <span data-i18n="field.respectRetryAfter">Respect Retry-After</span></label>
         </div>
         <div>
-            <h2>Idempotency</h2>
-            <label>Type
+            <h2 data-i18n="section.idempotency">Idempotency</h2>
+            <label><span data-i18n="field.idempotencyType">Type</span>
                 <input id="idempotencyType" type="text">
             </label>
-            <label>Sqlite path
+            <label><span data-i18n="field.sqlitePath">SQLite path</span>
                 <input id="idempotencyPath" type="text">
             </label>
-            <label>TTL hours
+            <label><span data-i18n="field.ttlHours">TTL hours</span>
                 <input id="idempotencyTtl" type="number" min="1">
             </label>
-            <label>Max records
+            <label><span data-i18n="field.maxRecords">Max records</span>
                 <input id="idempotencyMaxRecords" type="number" min="1">
             </label>
         </div>
@@ -89,8 +100,8 @@
     <section class="card">
         <div class="row-gap">
             <div class="row">
-                <button id="previewBtn" type="button">Previsualizar YAML</button>
-                <button id="saveBtn" type="button" class="primary">Guardar application-local.yml</button>
+                <button id="previewBtn" type="button" data-i18n="button.previewYaml">Preview YAML</button>
+                <button id="saveBtn" type="button" class="primary" data-i18n="button.saveYaml">Save application-local.yml</button>
             </div>
             <p id="status" class="status"></p>
             <div id="validationSummary" class="validation-summary"></div>

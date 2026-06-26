@@ -6,6 +6,7 @@ const saveBtn = document.getElementById("saveBtn");
 const diagnosticsPanelEl = document.getElementById("configUiDiagnosticsPanel");
 const diagnosticsContentEl = document.getElementById("configUiDiagnosticsContent");
 const discoveredProjectsDebugEl = document.getElementById("discoveredProjectsDebug");
+const languageSelectorEl = document.getElementById("languageSelector");
 
 let state = { ado: { projects: [] } };
 let lastPreview = null;
@@ -18,6 +19,371 @@ let identitySearchState = {};
 let identitySearchTimers = {};
 let identityOptionCache = {};
 let projectLayoutState = [];
+const LANGUAGE_STORAGE_KEY = "configUiLanguage";
+let currentLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en";
+
+const I18N = {
+    en: {
+        "language.label": "Language",
+        "app.title": "Approval Bot configuration",
+        "app.subtitle": "Prepare an <code>application-local.yml</code> draft and separate unchecked text from verified values.",
+        "app.secretNote": "Secrets are not written to disk: they stay as <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> and <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.",
+        "app.discoveryNote": "Read-only ADO validation loads projects, types, fields, and states when the PAT is available. Hot-load remains deferred: restart the service after YAML changes.",
+        "section.ado": "ADO",
+        "section.botWebhook": "Bot / Webhook",
+        "section.projects": "Projects",
+        "section.diagnostics": "Config UI diagnostics",
+        "section.retry": "Retry",
+        "section.idempotency": "Idempotency",
+        "field.organization": "Organization",
+        "field.httpClientEnabled": "HTTP client enabled",
+        "field.dryRun": "Dry run",
+        "field.botIdentityEmail": "Bot identity email",
+        "field.webhookSecretEnabled": "Webhook shared secret enabled",
+        "field.webhookHeader": "Webhook header",
+        "field.maxAttempts": "Max attempts",
+        "field.defaultBackoffSeconds": "Default backoff seconds",
+        "field.respectRetryAfter": "Respect Retry-After",
+        "field.idempotencyType": "Type",
+        "field.sqlitePath": "SQLite path",
+        "field.ttlHours": "TTL hours",
+        "field.maxRecords": "Max records",
+        "button.loadProjects": "Load Projects",
+        "button.addProject": "+ Add project",
+        "button.previewYaml": "Preview YAML",
+        "button.saveYaml": "Save application-local.yml",
+        "button.verifyProject": "Verify Project",
+        "button.edit": "Edit",
+        "button.collapse": "Collapse",
+        "button.remove": "Remove",
+        "project.title": "Project: {name}",
+        "project.fallbackName": "Project {number}",
+        "project.noWorkItemType": "No Work Item Type selected",
+        "project.workItemTypeCount": "Work Item Types: {count}",
+        "project.fieldCount": "{count} field{plural}",
+        "project.userCount": "{count} user{plural}",
+        "project.projectLabel": "Project",
+        "project.enabled": "Enabled",
+        "project.workItemType": "Work Item Type",
+        "project.stateDesign": "Design state",
+        "project.stateInReview": "In-review state",
+        "project.stateApproved": "Approved state",
+        "project.fieldApprovedBySme": "SME approval field",
+        "project.fieldApprovedBySqa": "SQA approval field",
+        "project.reversibleBusinessFields": "Reversible business fields",
+        "identity.smeUsers": "SME users",
+        "identity.sqaUsers": "SQA users",
+        "identity.searchPlaceholder": "Search by email, login, or name",
+        "identity.selectionNote": "Display names are shown for selection only. YAML stores normalized email/login values.",
+        "identity.pendingNone": "Select a resolved identity from the search results.",
+        "identity.pendingUnresolved": "Selected result has no email/login and cannot be added.",
+        "identity.noResults": "No matching users yet.",
+        "identity.searching": "Searching...",
+        "identity.typeToSearch": "Type at least 2 characters to search ADO identities.",
+        "diagnostics.visibleWhenDebug": "Visible only when config UI debug is enabled.",
+        "diagnostics.description": "Selector diagnostics show the discovered options normalized and rendered into real selector controls.",
+        "diagnostics.noItems": "No diagnostics captured yet.",
+        "diagnostics.items": "{count} item{plural}",
+        "diagnostics.projects": "Projects",
+        "diagnostics.workItemTypes": "Work Item Types",
+        "diagnostics.fields": "Fields",
+        "diagnostics.identities": "Identities",
+        "diagnostics.states": "States",
+        "diagnostics.yamlValidation": "YAML/Validation",
+        "diagnostics.decision": "decision",
+        "diagnostics.updated": "updated",
+        "diagnostics.enabled": "enabled",
+        "diagnostics.disabled": "disabled",
+        "diagnostics.discoveredProjects": "Discovered projects",
+        "diagnostics.discoveredProjectsNote": "These are the same discovered project options rendered by the Project selector.",
+        "diagnostics.noProjectsRendered": "No projects rendered.",
+        "validation.heading": "Validation",
+        "validation.finalAllowed": "Final YAML allowed.",
+        "validation.finalBlocked": "Final YAML blocked until errors, Not checked values, and current ADO selector verification are resolved.",
+        "status.loading": "Loading configuration...",
+        "status.loaded": "Configuration loaded. Run ADO discovery to populate selectors.",
+        "status.draftAllowed": "Final YAML allowed.",
+        "status.draftBlocked": "Draft YAML generated; ADO validations are still missing.",
+        "status.yamlBlocked": "Blocking errors: YAML was not generated.",
+        "status.resolveBeforeCollapse": "Resolve project validation before collapsing this section.",
+        "status.saveBlocked": "Verify project and select current ADO-backed values before saving final YAML.",
+        "message.staleIgnored": "Stale response ignored.",
+        "message.staleIgnoredReason": "Stale response ignored: {reason}.",
+        "message.projectNotLoaded": "Project has not been loaded.",
+        "message.loadProjectFirst": "Load a project first.",
+        "message.selectWorkItemTypeFirst": "Select a Work Item type first.",
+        "message.projectSelectionChanged": "Project selection changed.",
+        "message.loadProjectAgain": "Load the project again.",
+        "message.workItemTypeChanged": "Work Item type changed.",
+        "message.clearedProject": "Cleared after Project selection changed.",
+        "message.clearedWorkItemType": "Cleared after Work Item Type changed.",
+        "message.verifyBeforeType": "Verify the project before selecting a Work Item type.",
+        "message.verifyProjectFirst": "Verify the project first.",
+        "message.verifyBeforeUsers": "Verify the project before searching users.",
+        "message.noProjects": "No projects were returned for the configured organization.",
+        "message.noWorkItemTypes": "No Work Item Types were returned for the verified project.",
+        "message.noFields": "No fields were returned for the selected Work Item Type.",
+        "message.noStates": "No states were returned for the selected Work Item Type.",
+        "message.noIdentities": "No selectable ADO identities were returned for the search.",
+        "message.projectSelectorRendered": "Project selector renders all discovered project options.",
+        "message.organizationChanged": "Organization changed; reload projects.",
+        "message.adoDiscoveryError": "ADO discovery returned an error.",
+        "message.adoDiscoveryUnchecked": "ADO discovery was not fully checked.",
+        "message.adoDiscoveryRequestFailed": "ADO discovery request failed.",
+        "message.invalidJson": "Request failed because the response was not valid JSON. HTTP {status}.",
+        "message.httpFailed": "Request failed with HTTP {status}.",
+        "message.selectorCountMismatch": "Backend optionCount differs from received or normalized option count.",
+        "message.selectorEmptyButCount": "Backend optionCount was greater than zero, but no renderable options were found.",
+        "message.manualUncheckedSuffix": "unchecked/manual",
+        "message.sameApprovalFields": "SME and SQA approval fields must be different.",
+        "message.duplicateReversibleField": "Duplicate reversible field: {field}.",
+        "message.smeFieldAlsoReversible": "SME approval field cannot also be reversible.",
+        "message.sqaFieldAlsoReversible": "SQA approval field cannot also be reversible.",
+        "message.duplicateIdentity": "{role} users contain duplicate identity: {identity}.",
+        "message.crossRoleIdentity": "Same identity appears in both SME and SQA lists."
+    },
+    fr: {
+        "language.label": "Langue",
+        "app.title": "Configuration Approval Bot",
+        "app.subtitle": "Préparez un brouillon <code>application-local.yml</code> et séparez le texte non vérifié des valeurs vérifiées.",
+        "app.secretNote": "Les secrets ne sont pas écrits sur disque : ils restent sous la forme <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> et <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.",
+        "app.discoveryNote": "La validation ADO en lecture seule charge les projets, types, champs et états lorsque le PAT est disponible. Le rechargement à chaud reste différé : redémarrez le service après les changements YAML.",
+        "section.ado": "ADO",
+        "section.botWebhook": "Bot / Webhook",
+        "section.projects": "Projets",
+        "section.diagnostics": "Diagnostics de l'UI de configuration",
+        "section.retry": "Nouvelle tentative",
+        "section.idempotency": "Idempotence",
+        "field.organization": "Organisation",
+        "field.httpClientEnabled": "Client HTTP activé",
+        "field.dryRun": "Mode simulation",
+        "field.botIdentityEmail": "E-mail d'identité du bot",
+        "field.webhookSecretEnabled": "Secret partagé du webhook activé",
+        "field.webhookHeader": "En-tête webhook",
+        "field.maxAttempts": "Nombre maximal de tentatives",
+        "field.defaultBackoffSeconds": "Attente par défaut en secondes",
+        "field.respectRetryAfter": "Respecter Retry-After",
+        "field.idempotencyType": "Type",
+        "field.sqlitePath": "Chemin SQLite",
+        "field.ttlHours": "TTL en heures",
+        "field.maxRecords": "Nombre maximal d'enregistrements",
+        "button.loadProjects": "Charger les projets",
+        "button.addProject": "+ Ajouter un projet",
+        "button.previewYaml": "Prévisualiser YAML",
+        "button.saveYaml": "Enregistrer application-local.yml",
+        "button.verifyProject": "Vérifier le projet",
+        "button.edit": "Modifier",
+        "button.collapse": "Réduire",
+        "button.remove": "Supprimer",
+        "project.title": "Projet : {name}",
+        "project.fallbackName": "Projet {number}",
+        "project.noWorkItemType": "Aucun type de Work Item sélectionné",
+        "project.workItemTypeCount": "Types de Work Item : {count}",
+        "project.fieldCount": "{count} champ{plural}",
+        "project.userCount": "{count} utilisateur{plural}",
+        "project.projectLabel": "Projet",
+        "project.enabled": "Activé",
+        "project.workItemType": "Type de Work Item",
+        "project.stateDesign": "État de conception",
+        "project.stateInReview": "État en revue",
+        "project.stateApproved": "État approuvé",
+        "project.fieldApprovedBySme": "Champ d'approbation SME",
+        "project.fieldApprovedBySqa": "Champ d'approbation SQA",
+        "project.reversibleBusinessFields": "Champs métier réversibles",
+        "identity.smeUsers": "Utilisateurs SME",
+        "identity.sqaUsers": "Utilisateurs SQA",
+        "identity.searchPlaceholder": "Rechercher par e-mail, login ou nom",
+        "identity.selectionNote": "Les noms affichés servent uniquement à la sélection. Le YAML stocke les e-mails/logins normalisés.",
+        "identity.pendingNone": "Sélectionnez une identité résolue dans les résultats.",
+        "identity.pendingUnresolved": "Le résultat sélectionné n'a pas d'e-mail/login et ne peut pas être ajouté.",
+        "identity.noResults": "Aucun utilisateur correspondant pour le moment.",
+        "identity.searching": "Recherche...",
+        "identity.typeToSearch": "Saisissez au moins 2 caractères pour rechercher des identités ADO.",
+        "diagnostics.visibleWhenDebug": "Visible uniquement quand le débogage de l'UI de configuration est activé.",
+        "diagnostics.description": "Les diagnostics des sélecteurs montrent les options découvertes, normalisées et rendues dans de vrais sélecteurs.",
+        "diagnostics.noItems": "Aucun diagnostic capturé pour le moment.",
+        "diagnostics.items": "{count} élément{plural}",
+        "diagnostics.projects": "Projets",
+        "diagnostics.workItemTypes": "Types de Work Item",
+        "diagnostics.fields": "Champs",
+        "diagnostics.identities": "Identités",
+        "diagnostics.states": "États",
+        "diagnostics.yamlValidation": "YAML/Validation",
+        "diagnostics.decision": "décision",
+        "diagnostics.updated": "mis à jour",
+        "diagnostics.enabled": "activé",
+        "diagnostics.disabled": "désactivé",
+        "diagnostics.discoveredProjects": "Projets découverts",
+        "diagnostics.discoveredProjectsNote": "Ce sont les mêmes options de projet découvertes que celles rendues par le sélecteur de projet.",
+        "diagnostics.noProjectsRendered": "Aucun projet rendu.",
+        "validation.heading": "Validation",
+        "validation.finalAllowed": "YAML final autorisé.",
+        "validation.finalBlocked": "YAML final bloqué jusqu'à résolution des erreurs, valeurs non vérifiées et validations ADO courantes.",
+        "status.loading": "Chargement de la configuration...",
+        "status.loaded": "Configuration chargée. Lancez la découverte ADO pour remplir les sélecteurs.",
+        "status.draftAllowed": "YAML final autorisé.",
+        "status.draftBlocked": "Brouillon YAML généré ; des validations ADO manquent encore.",
+        "status.yamlBlocked": "Erreurs bloquantes : aucun YAML généré.",
+        "status.resolveBeforeCollapse": "Résolvez la validation du projet avant de réduire cette section.",
+        "status.saveBlocked": "Vérifiez le projet et sélectionnez des valeurs ADO courantes avant d'enregistrer le YAML final.",
+        "message.staleIgnored": "Réponse obsolète ignorée.",
+        "message.staleIgnoredReason": "Réponse obsolète ignorée : {reason}.",
+        "message.projectNotLoaded": "Le projet n'a pas été chargé.",
+        "message.loadProjectFirst": "Chargez d'abord un projet.",
+        "message.selectWorkItemTypeFirst": "Sélectionnez d'abord un type de Work Item.",
+        "message.projectSelectionChanged": "La sélection du projet a changé.",
+        "message.loadProjectAgain": "Rechargez le projet.",
+        "message.workItemTypeChanged": "Le type de Work Item a changé.",
+        "message.clearedProject": "Effacé après changement de sélection du projet.",
+        "message.clearedWorkItemType": "Effacé après changement de type de Work Item.",
+        "message.verifyBeforeType": "Vérifiez le projet avant de sélectionner un type de Work Item.",
+        "message.verifyProjectFirst": "Vérifiez d'abord le projet.",
+        "message.verifyBeforeUsers": "Vérifiez le projet avant de rechercher des utilisateurs.",
+        "message.noProjects": "Aucun projet n'a été retourné pour l'organisation configurée.",
+        "message.noWorkItemTypes": "Aucun type de Work Item n'a été retourné pour le projet vérifié.",
+        "message.noFields": "Aucun champ n'a été retourné pour le type de Work Item sélectionné.",
+        "message.noStates": "Aucun état n'a été retourné pour le type de Work Item sélectionné.",
+        "message.noIdentities": "Aucune identité ADO sélectionnable n'a été retournée par la recherche.",
+        "message.projectSelectorRendered": "Le sélecteur de projet rend toutes les options de projet découvertes.",
+        "message.organizationChanged": "L'organisation a changé ; rechargez les projets.",
+        "message.adoDiscoveryError": "La découverte ADO a retourné une erreur.",
+        "message.adoDiscoveryUnchecked": "La découverte ADO n'a pas été entièrement vérifiée.",
+        "message.adoDiscoveryRequestFailed": "La requête de découverte ADO a échoué.",
+        "message.invalidJson": "La requête a échoué car la réponse n'était pas du JSON valide. HTTP {status}.",
+        "message.httpFailed": "La requête a échoué avec HTTP {status}.",
+        "message.selectorCountMismatch": "Le compteur backend diffère du nombre d'options reçues ou normalisées.",
+        "message.selectorEmptyButCount": "Le compteur backend était supérieur à zéro, mais aucune option rendable n'a été trouvée.",
+        "message.manualUncheckedSuffix": "non vérifié/manuel",
+        "message.sameApprovalFields": "Les champs d'approbation SME et SQA doivent être différents.",
+        "message.duplicateReversibleField": "Champ réversible dupliqué : {field}.",
+        "message.smeFieldAlsoReversible": "Le champ d'approbation SME ne peut pas aussi être réversible.",
+        "message.sqaFieldAlsoReversible": "Le champ d'approbation SQA ne peut pas aussi être réversible.",
+        "message.duplicateIdentity": "Les utilisateurs {role} contiennent une identité dupliquée : {identity}.",
+        "message.crossRoleIdentity": "La même identité apparaît dans les listes SME et SQA."
+    },
+    es: {
+        "language.label": "Idioma",
+        "app.title": "Configuración de Approval Bot",
+        "app.subtitle": "Prepara un borrador de <code>application-local.yml</code> y separa texto no verificado de valores verificados.",
+        "app.secretNote": "Los secretos no se escriben en disco: se mantienen como <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> y <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.",
+        "app.discoveryNote": "La validación ADO de solo lectura carga proyectos, tipos, campos y estados cuando el PAT está disponible. Hot-load queda diferido: reinicia el servicio después de cambios YAML.",
+        "section.ado": "ADO",
+        "section.botWebhook": "Bot / Webhook",
+        "section.projects": "Proyectos",
+        "section.diagnostics": "Diagnósticos del Config UI",
+        "section.retry": "Reintentos",
+        "section.idempotency": "Idempotencia",
+        "field.organization": "Organización",
+        "field.httpClientEnabled": "Cliente HTTP habilitado",
+        "field.dryRun": "Modo dry-run",
+        "field.botIdentityEmail": "Email de identidad del bot",
+        "field.webhookSecretEnabled": "Secreto compartido del webhook habilitado",
+        "field.webhookHeader": "Header del webhook",
+        "field.maxAttempts": "Intentos máximos",
+        "field.defaultBackoffSeconds": "Espera predeterminada en segundos",
+        "field.respectRetryAfter": "Respetar Retry-After",
+        "field.idempotencyType": "Tipo",
+        "field.sqlitePath": "Ruta SQLite",
+        "field.ttlHours": "TTL en horas",
+        "field.maxRecords": "Registros máximos",
+        "button.loadProjects": "Cargar proyectos",
+        "button.addProject": "+ Agregar proyecto",
+        "button.previewYaml": "Previsualizar YAML",
+        "button.saveYaml": "Guardar application-local.yml",
+        "button.verifyProject": "Verificar proyecto",
+        "button.edit": "Editar",
+        "button.collapse": "Colapsar",
+        "button.remove": "Eliminar",
+        "project.title": "Proyecto: {name}",
+        "project.fallbackName": "Proyecto {number}",
+        "project.noWorkItemType": "No hay Work Item Type seleccionado",
+        "project.workItemTypeCount": "Work Item Types: {count}",
+        "project.fieldCount": "{count} campo{plural}",
+        "project.userCount": "{count} usuario{plural}",
+        "project.projectLabel": "Proyecto",
+        "project.enabled": "Habilitado",
+        "project.workItemType": "Work Item Type",
+        "project.stateDesign": "Estado de diseño",
+        "project.stateInReview": "Estado en revisión",
+        "project.stateApproved": "Estado aprobado",
+        "project.fieldApprovedBySme": "Campo de aprobación SME",
+        "project.fieldApprovedBySqa": "Campo de aprobación SQA",
+        "project.reversibleBusinessFields": "Campos de negocio reversibles",
+        "identity.smeUsers": "Usuarios SME",
+        "identity.sqaUsers": "Usuarios SQA",
+        "identity.searchPlaceholder": "Buscar por email, login o nombre",
+        "identity.selectionNote": "Los nombres visibles sólo se muestran para selección. YAML guarda emails/logins normalizados.",
+        "identity.pendingNone": "Selecciona una identidad resuelta desde los resultados.",
+        "identity.pendingUnresolved": "El resultado seleccionado no tiene email/login y no puede agregarse.",
+        "identity.noResults": "Aún no hay usuarios coincidentes.",
+        "identity.searching": "Buscando...",
+        "identity.typeToSearch": "Escribe al menos 2 caracteres para buscar identidades ADO.",
+        "diagnostics.visibleWhenDebug": "Visible sólo cuando el debug del Config UI está habilitado.",
+        "diagnostics.description": "Los diagnósticos de selectores muestran las opciones descubiertas, normalizadas y renderizadas en controles reales.",
+        "diagnostics.noItems": "Aún no hay diagnósticos capturados.",
+        "diagnostics.items": "{count} elemento{plural}",
+        "diagnostics.projects": "Proyectos",
+        "diagnostics.workItemTypes": "Work Item Types",
+        "diagnostics.fields": "Campos",
+        "diagnostics.identities": "Identidades",
+        "diagnostics.states": "Estados",
+        "diagnostics.yamlValidation": "YAML/Validación",
+        "diagnostics.decision": "decisión",
+        "diagnostics.updated": "actualizado",
+        "diagnostics.enabled": "habilitado",
+        "diagnostics.disabled": "deshabilitado",
+        "diagnostics.discoveredProjects": "Proyectos descubiertos",
+        "diagnostics.discoveredProjectsNote": "Estas son las mismas opciones de proyecto descubiertas que renderiza el selector de proyecto.",
+        "diagnostics.noProjectsRendered": "No hay proyectos renderizados.",
+        "validation.heading": "Validación",
+        "validation.finalAllowed": "YAML final permitido.",
+        "validation.finalBlocked": "YAML final bloqueado hasta resolver errores, valores no verificados y validación ADO actual.",
+        "status.loading": "Cargando configuración...",
+        "status.loaded": "Configuración cargada. Ejecuta ADO discovery para poblar selectores.",
+        "status.draftAllowed": "YAML final permitido.",
+        "status.draftBlocked": "Borrador YAML generado; aún faltan validaciones ADO.",
+        "status.yamlBlocked": "Errores bloqueantes: no se generó YAML.",
+        "status.resolveBeforeCollapse": "Resuelve la validación del proyecto antes de colapsar esta sección.",
+        "status.saveBlocked": "Verifica el proyecto y selecciona valores ADO actuales antes de guardar el YAML final.",
+        "message.staleIgnored": "Respuesta obsoleta ignorada.",
+        "message.staleIgnoredReason": "Respuesta obsoleta ignorada: {reason}.",
+        "message.projectNotLoaded": "El proyecto no se ha cargado.",
+        "message.loadProjectFirst": "Carga un proyecto primero.",
+        "message.selectWorkItemTypeFirst": "Selecciona primero un Work Item Type.",
+        "message.projectSelectionChanged": "La selección de proyecto cambió.",
+        "message.loadProjectAgain": "Carga el proyecto otra vez.",
+        "message.workItemTypeChanged": "El Work Item Type cambió.",
+        "message.clearedProject": "Limpiado después de cambiar la selección de proyecto.",
+        "message.clearedWorkItemType": "Limpiado después de cambiar el Work Item Type.",
+        "message.verifyBeforeType": "Verifica el proyecto antes de seleccionar un Work Item Type.",
+        "message.verifyProjectFirst": "Verifica el proyecto primero.",
+        "message.verifyBeforeUsers": "Verifica el proyecto antes de buscar usuarios.",
+        "message.noProjects": "No se devolvieron proyectos para la organización configurada.",
+        "message.noWorkItemTypes": "No se devolvieron Work Item Types para el proyecto verificado.",
+        "message.noFields": "No se devolvieron campos para el Work Item Type seleccionado.",
+        "message.noStates": "No se devolvieron estados para el Work Item Type seleccionado.",
+        "message.noIdentities": "La búsqueda no devolvió identidades ADO seleccionables.",
+        "message.projectSelectorRendered": "El selector de proyecto renderiza todas las opciones descubiertas.",
+        "message.organizationChanged": "La organización cambió; recarga proyectos.",
+        "message.adoDiscoveryError": "ADO discovery devolvió un error.",
+        "message.adoDiscoveryUnchecked": "ADO discovery no se verificó completamente.",
+        "message.adoDiscoveryRequestFailed": "La solicitud de ADO discovery falló.",
+        "message.invalidJson": "La solicitud falló porque la respuesta no era JSON válido. HTTP {status}.",
+        "message.httpFailed": "La solicitud falló con HTTP {status}.",
+        "message.selectorCountMismatch": "El optionCount del backend difiere de las opciones recibidas o normalizadas.",
+        "message.selectorEmptyButCount": "El optionCount del backend era mayor que cero, pero no se encontraron opciones renderizables.",
+        "message.manualUncheckedSuffix": "no verificado/manual",
+        "message.sameApprovalFields": "Los campos de aprobación SME y SQA deben ser diferentes.",
+        "message.duplicateReversibleField": "Campo reversible duplicado: {field}.",
+        "message.smeFieldAlsoReversible": "El campo de aprobación SME no puede ser reversible también.",
+        "message.sqaFieldAlsoReversible": "El campo de aprobación SQA no puede ser reversible también.",
+        "message.duplicateIdentity": "Los usuarios {role} contienen una identidad duplicada: {identity}.",
+        "message.crossRoleIdentity": "La misma identidad aparece en las listas SME y SQA."
+    }
+};
+if (!I18N[currentLanguage]) {
+    currentLanguage = "en";
+}
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -25,6 +391,48 @@ function escapeHtml(value) {
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+}
+
+function interpolate(template, values = {}) {
+    return String(template ?? "").replace(/\{(\w+)}/g, (_, key) => values[key] ?? "");
+}
+
+function t(key, values = {}) {
+    const dictionary = I18N[currentLanguage] || I18N.en;
+    return interpolate(dictionary[key] ?? I18N.en[key] ?? key, values);
+}
+
+function localizeMessage(message) {
+    if (!message) {
+        return "";
+    }
+    return t(message, {}) === message ? message : t(message);
+}
+
+function applyStaticTranslations() {
+    document.documentElement.lang = currentLanguage;
+    if (languageSelectorEl) {
+        languageSelectorEl.value = currentLanguage;
+    }
+    for (const element of document.querySelectorAll("[data-i18n]")) {
+        element.textContent = t(element.getAttribute("data-i18n"));
+    }
+    for (const element of document.querySelectorAll("[data-i18n-html]")) {
+        element.innerHTML = t(element.getAttribute("data-i18n-html"));
+    }
+}
+
+function setLanguage(language) {
+    currentLanguage = I18N[language] ? language : "en";
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage);
+    readFormToState();
+    applyStaticTranslations();
+    renderProjectSelectors();
+    renderProjects();
+    renderDiagnosticsPanel();
+    if (lastPreview) {
+        renderValidation(lastPreview);
+    }
 }
 
 function splitLines(value) {
@@ -121,7 +529,7 @@ function incrementStaleIgnored(selectorName, reason) {
     const current = ensureSelectorDiagnostic(selectorName);
     updateSelectorDiagnostics(selectorName, {
         staleIgnoredCount: current.staleIgnoredCount + 1,
-        message: reason ? `Stale response ignored: ${reason}.` : "Stale response ignored."
+        message: reason ? t("message.staleIgnoredReason", { reason }) : t("message.staleIgnored")
     });
 }
 
@@ -144,12 +552,12 @@ function diagnosticGroups() {
     const diagnostics = Object.values(selectorDiagnostics)
         .sort((left, right) => left.selector.localeCompare(right.selector));
     const groups = [
-        { title: "Projects", selectors: ["project"], items: [] },
-        { title: "Work Item Types", selectors: ["workItemType"], items: [] },
-        { title: "Fields", selectors: ["approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields"], items: [] },
-        { title: "Identities", selectors: ["smeUsers", "sqaUsers"], items: [] },
-        { title: "States", selectors: ["designState", "inReviewState", "approvedState"], items: [] },
-        { title: "YAML/Validation", selectors: [], items: [] }
+        { titleKey: "diagnostics.projects", selectors: ["project"], items: [] },
+        { titleKey: "diagnostics.workItemTypes", selectors: ["workItemType"], items: [] },
+        { titleKey: "diagnostics.fields", selectors: ["approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields"], items: [] },
+        { titleKey: "diagnostics.identities", selectors: ["smeUsers", "sqaUsers"], items: [] },
+        { titleKey: "diagnostics.states", selectors: ["designState", "inReviewState", "approvedState"], items: [] },
+        { titleKey: "diagnostics.yamlValidation", selectors: [], items: [] }
     ];
     for (const item of diagnostics) {
         const group = groups.find((candidate) => candidate.selectors.includes(item.selector)) || groups[groups.length - 1];
@@ -163,11 +571,11 @@ function diagnosticGroupMarkup(group) {
     return `
         <details class="diagnostic-group" open>
             <summary>
-                <strong>${escapeHtml(group.title)}</strong>
-                <span>${escapeHtml(group.items.length)} item${group.items.length === 1 ? "" : "s"}</span>
+                <strong>${escapeHtml(t(group.titleKey))}</strong>
+                <span>${escapeHtml(t("diagnostics.items", { count: group.items.length, plural: group.items.length === 1 ? "" : "s" }))}</span>
             </summary>
             <div class="diagnostic-grid">
-                ${rows || `<p class="note compact">No diagnostics captured yet.</p>`}
+                ${rows || `<p class="note compact">${escapeHtml(t("diagnostics.noItems"))}</p>`}
             </div>
         </details>
     `;
@@ -206,11 +614,11 @@ function diagnosticItemMarkup(item) {
                     </div>
                 `).join("")}
                 <div>
-                    <dt>decision</dt>
-                    <dd>${item.enabled ? "enabled" : "disabled"}</dd>
+                    <dt>${escapeHtml(t("diagnostics.decision"))}</dt>
+                    <dd>${item.enabled ? escapeHtml(t("diagnostics.enabled")) : escapeHtml(t("diagnostics.disabled"))}</dd>
                 </div>
                 <div>
-                    <dt>updated</dt>
+                    <dt>${escapeHtml(t("diagnostics.updated"))}</dt>
                     <dd>${escapeHtml(item.lastUpdated)}</dd>
                 </div>
             </dl>
@@ -423,19 +831,19 @@ function duplicateFieldMessages(project) {
         normalized: normalizedText(field)
     })).filter((field) => field.normalized);
     if (sme && sqa && sme === sqa) {
-        messages.push("SME and SQA approval fields must be different.");
+        messages.push(t("message.sameApprovalFields"));
     }
     const seen = new Set();
     for (const field of reversible) {
         if (seen.has(field.normalized)) {
-            messages.push(`Duplicate reversible field: ${field.value}.`);
+            messages.push(t("message.duplicateReversibleField", { field: field.value }));
         }
         seen.add(field.normalized);
         if (sme && field.normalized === sme) {
-            messages.push("SME approval field cannot also be reversible.");
+            messages.push(t("message.smeFieldAlsoReversible"));
         }
         if (sqa && field.normalized === sqa) {
-            messages.push("SQA approval field cannot also be reversible.");
+            messages.push(t("message.sqaFieldAlsoReversible"));
         }
     }
     return messages;
@@ -483,7 +891,7 @@ function ensureIdentitySearchState(index, role) {
     if (!identitySearchState[key]) {
         identitySearchState[key] = {
             query: "",
-            lookup: { status: "NOT_CHECKED", message: "Type at least 2 characters to search ADO identities.", values: [], optionCount: 0 },
+            lookup: { status: "NOT_CHECKED", message: t("identity.typeToSearch"), values: [], optionCount: 0 },
             pending: null,
             searching: false
         };
@@ -519,7 +927,7 @@ function duplicateIdentityMessages(project) {
         for (const user of roleUsers(project, role) || []) {
             const normalized = normalizedIdentity(user);
             if (normalized && seen.has(normalized)) {
-                messages.push(`${role.toUpperCase()} users contain duplicate identity: ${normalized}.`);
+                messages.push(t("message.duplicateIdentity", { role: role.toUpperCase(), identity: normalized }));
             }
             seen.add(normalized);
         }
@@ -528,7 +936,7 @@ function duplicateIdentityMessages(project) {
     for (const smeUser of project.approvals.smeUsers || []) {
         const normalized = normalizedIdentity(smeUser);
         if (normalized && sqa.has(normalized)) {
-            messages.push("Same identity appears in both SME and SQA lists.");
+            messages.push(t("message.crossRoleIdentity"));
             break;
         }
     }
@@ -628,7 +1036,7 @@ function clearIdentitySearch(index, role) {
     const searchState = ensureIdentitySearchState(index, role);
     searchState.query = "";
     searchState.pending = null;
-    searchState.lookup = { status: "NOT_CHECKED", message: "Type at least 2 characters to search ADO identities.", values: [], optionCount: 0 };
+    searchState.lookup = { status: "NOT_CHECKED", message: t("identity.typeToSearch"), values: [], optionCount: 0 };
     const picker = identityPickerElement(index, role);
     const input = picker?.querySelector("[data-action='identity-search']");
     if (input) {
@@ -707,7 +1115,7 @@ function updateIdentityPickers(index) {
 function selectedUserChips(project, role) {
     const users = roleUsers(project, role) || [];
     if (users.length === 0) {
-        return `<p class="note compact">No ${role.toUpperCase()} users selected.</p>`;
+        return `<p class="note compact">${escapeHtml(t(role === "sme" ? "identity.smeUsers" : "identity.sqaUsers"))}: 0</p>`;
     }
     return `<div class="identity-chip-list">${users.map((user) => `
         <span class="identity-chip">
@@ -716,7 +1124,7 @@ function selectedUserChips(project, role) {
                 <strong>${escapeHtml(identityDisplayName(user))}</strong>
                 <small>${escapeHtml(identityEmail(user))}</small>
             </span>
-            <button type="button" data-action="remove-user" data-role="${role}" data-user-value="${escapeHtml(user)}" aria-label="Remove ${escapeHtml(user)}">x</button>
+            <button type="button" data-action="remove-user" data-role="${role}" data-user-value="${escapeHtml(user)}" aria-label="${escapeHtml(t("button.remove"))} ${escapeHtml(user)}">x</button>
         </span>
     `).join("")}</div>`;
 }
@@ -731,7 +1139,7 @@ function pendingIdentityPreview(project, role, pending) {
             <strong>${escapeHtml(identityDisplayName(pending))}</strong>
             <small>${escapeHtml(identityEmail(pending))}</small>
         </span>
-    ` : `<span class="note compact">Select a search result before adding.</span>`;
+    ` : `<span class="note compact">${escapeHtml(t("identity.pendingNone"))}</span>`;
     return `
         <div class="identity-pending">
             <div class="identity-pending-user">${pendingBody}</div>
@@ -744,7 +1152,7 @@ function identitySearchResults(project, role, searchState) {
     const options = identityOptionsForSearch(searchState);
     const lookup = searchState.lookup;
     if (lookup?.status === "VALID" && options.length === 0) {
-        return `<p class="lookup-status">${validationBadge("WARNING")} No selectable identities returned.</p>`;
+        return `<p class="lookup-status">${validationBadge("WARNING")} ${escapeHtml(t("identity.noResults"))}</p>`;
     }
     if (lookup?.status && lookup.status !== "VALID" && lookup.status !== "NOT_CHECKED") {
         return lookupBadge(lookup);
@@ -776,8 +1184,8 @@ function identityUserPicker(project, index, role, enabled) {
     identitySearchStatus(index, role, project);
     return `
         <div class="identity-picker" data-identity-picker data-index="${index}" data-role="${role}">
-            <label>${role.toUpperCase()} users
-                <input type="search" data-action="identity-search" data-role="${role}" value="${escapeHtml(searchState.query)}" placeholder="Search by email, login, or name" ${disabled}>
+            <label>${escapeHtml(t(role === "sme" ? "identity.smeUsers" : "identity.sqaUsers"))}
+                <input type="search" data-action="identity-search" data-role="${role}" value="${escapeHtml(searchState.query)}" placeholder="${escapeHtml(t("identity.searchPlaceholder"))}" ${disabled}>
             </label>
             <div data-identity-pending>${pendingIdentityPreview(project, role, searchState.pending)}</div>
             <div data-identity-results>${identitySearchResults(project, role, searchState)}</div>
@@ -804,10 +1212,10 @@ function createProjectModel() {
 function createDiscoveryState() {
     return {
         requestToken: 0,
-        projectStatus: { status: "NOT_CHECKED", message: "Project has not been loaded." },
-        workItemTypes: { status: "NOT_CHECKED", message: "Load a project first.", values: [] },
-        fields: { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] },
-        states: { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] }
+        projectStatus: { status: "NOT_CHECKED", message: t("message.projectNotLoaded") },
+        workItemTypes: { status: "NOT_CHECKED", message: t("message.loadProjectFirst"), values: [] },
+        fields: { status: "NOT_CHECKED", message: t("message.selectWorkItemTypeFirst"), values: [] },
+        states: { status: "NOT_CHECKED", message: t("message.selectWorkItemTypeFirst"), values: [] }
     };
 }
 
@@ -880,10 +1288,10 @@ function clearDiscovery(index, level) {
     discovery.requestToken = ++discoveryRequestSequence;
     debugDiscovery("dependent-selectors-cleared", { index, level });
     if (level === "project") {
-        discovery.projectStatus = { status: "NOT_CHECKED", message: "Project selection changed." };
-        discovery.workItemTypes = { status: "NOT_CHECKED", message: "Load the project again.", values: [] };
-        discovery.fields = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
-        discovery.states = { status: "NOT_CHECKED", message: "Select a Work Item type first.", values: [] };
+        discovery.projectStatus = { status: "NOT_CHECKED", message: t("message.projectSelectionChanged") };
+        discovery.workItemTypes = { status: "NOT_CHECKED", message: t("message.loadProjectAgain"), values: [] };
+        discovery.fields = { status: "NOT_CHECKED", message: t("message.selectWorkItemTypeFirst"), values: [] };
+        discovery.states = { status: "NOT_CHECKED", message: t("message.selectWorkItemTypeFirst"), values: [] };
         for (const selector of ["workItemType", "approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields", "designState", "inReviewState", "approvedState"]) {
             updateSelectorDiagnostics(selector, {
                 status: "NOT_CHECKED",
@@ -893,13 +1301,13 @@ function clearDiscovery(index, level) {
                 renderedOptionCount: 0,
                 domOptionCount: "",
                 enabled: false,
-                message: "Cleared after Project selection changed."
+                message: t("message.clearedProject")
             });
         }
     }
     if (level === "type") {
-        discovery.fields = { status: "NOT_CHECKED", message: "Work Item type changed.", values: [] };
-        discovery.states = { status: "NOT_CHECKED", message: "Work Item type changed.", values: [] };
+        discovery.fields = { status: "NOT_CHECKED", message: t("message.workItemTypeChanged"), values: [] };
+        discovery.states = { status: "NOT_CHECKED", message: t("message.workItemTypeChanged"), values: [] };
         for (const selector of ["approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields", "designState", "inReviewState", "approvedState"]) {
             updateSelectorDiagnostics(selector, {
                 status: "NOT_CHECKED",
@@ -909,7 +1317,7 @@ function clearDiscovery(index, level) {
                 renderedOptionCount: 0,
                 domOptionCount: "",
                 enabled: false,
-                message: "Cleared after Work Item Type changed."
+                message: t("message.clearedWorkItemType")
             });
         }
     }
@@ -920,7 +1328,7 @@ function validationBadge(label) {
 }
 
 function projectDisplayName(project, index) {
-    return (project.name || "").trim() || `Project ${index + 1}`;
+    return (project.name || "").trim() || t("project.fallbackName", { number: index + 1 });
 }
 
 function projectSectionStatus(project, discovery, fieldDuplicateMessages, identityMessages) {
@@ -938,7 +1346,7 @@ function projectSectionStatus(project, discovery, fieldDuplicateMessages, identi
 
 function projectSummary(project, index, selectedType, status) {
     const selectedTypes = (project.supportedWorkItemTypes || []).filter((type) => type && type.trim());
-    const typeLabel = selectedTypes.length ? selectedTypes.join(", ") : "No Work Item Type selected";
+    const typeLabel = selectedTypes.length ? selectedTypes.join(", ") : t("project.noWorkItemType");
     const fieldCount = [
         project.fields.approvedBySme,
         project.fields.approvedBySqa,
@@ -948,13 +1356,13 @@ function projectSummary(project, index, selectedType, status) {
     return `
         <div class="project-summary">
             <div>
-                <h3>Project: ${escapeHtml(projectDisplayName(project, index))}</h3>
+                <h3>${escapeHtml(t("project.title", { name: projectDisplayName(project, index) }))}</h3>
                 <p class="note compact">${escapeHtml(typeLabel)}</p>
             </div>
             <div class="project-summary-meta">
                 ${validationBadge(status)}
-                <span>${escapeHtml(fieldCount)} field${fieldCount === 1 ? "" : "s"}</span>
-                <span>${escapeHtml(userCount)} user${userCount === 1 ? "" : "s"}</span>
+                <span>${escapeHtml(t("project.fieldCount", { count: fieldCount, plural: fieldCount === 1 ? "" : "s" }))}</span>
+                <span>${escapeHtml(t("project.userCount", { count: userCount, plural: userCount === 1 ? "" : "s" }))}</span>
             </div>
         </div>
     `;
@@ -989,16 +1397,16 @@ function renderValidation(preview) {
         <li>
             ${validationBadge(field.status)}
             <code>${escapeHtml(field.field)}</code>
-            <span>${escapeHtml(field.message)}</span>
+            <span>${escapeHtml(localizeMessage(field.message))}</span>
         </li>
     `).join("");
 
     const finalState = preview.finalYamlAllowed && uiAdoDiscoveryCurrent
-        ? "Final YAML allowed."
-        : "Final YAML blocked until errors, Not checked values, and current ADO selector verification are resolved.";
+        ? t("validation.finalAllowed")
+        : t("validation.finalBlocked");
     validationSummaryEl.innerHTML = `
         <div class="validation-heading">
-            <strong>Validation</strong>
+            <strong>${escapeHtml(t("validation.heading"))}</strong>
             <span>${escapeHtml(finalState)}</span>
         </div>
         <ul>${rows}</ul>
@@ -1033,7 +1441,7 @@ function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector")
     const status = lookup?.status || "NOT_CHECKED";
     const countMismatch = backendOptionCount !== receivedLength || backendOptionCount !== renderedOptions.length;
     const message = sanitizeMessage(
-            lookup?.message || (countMismatch ? "Backend optionCount differs from received or normalized option count." : "")
+            lookup?.message || (countMismatch ? t("message.selectorCountMismatch") : "")
     );
     debugDiscovery("discovery-response-received", {
         selector: selectorName,
@@ -1052,7 +1460,7 @@ function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector")
         message
     });
     if (backendOptionCount > 0 && renderedOptions.length === 0) {
-        const message = `${selectorName} selector could not be populated from the ADO discovery response.`;
+        const message = t("message.selectorEmptyButCount");
         errorDiscovery("selector-render-failed", {
             selector: selectorName,
             status,
@@ -1165,7 +1573,7 @@ function selectOptions(selectorName, lookup, selected, placeholder, enabled = fa
     const hasSelected = options.some((option) => option.value === selected);
     const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
     if (selected && !hasSelected && lookup?.status !== "VALID") {
-        rows.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} - unchecked/manual</option>`);
+        rows.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} - ${escapeHtml(t("message.manualUncheckedSuffix"))}</option>`);
     }
     for (const option of options) {
         rows.push(`<option value="${escapeHtml(option.value)}" ${option.value === selected ? "selected" : ""}>${escapeHtml(optionLabel(option, selectorName))}</option>`);
@@ -1257,65 +1665,65 @@ function renderProjects() {
             <div class="project-card-header">
                 ${projectSummary(project, index, selectedType, sectionStatus)}
                 <div class="project-card-actions">
-                    <button type="button" data-action="toggle-project" ${!collapsed && !canCollapse ? "disabled" : ""}>${collapsed ? "Edit" : "Collapse"}</button>
-                    <button type="button" class="remove" data-action="remove">Eliminar</button>
+                    <button type="button" data-action="toggle-project" ${!collapsed && !canCollapse ? "disabled" : ""}>${collapsed ? escapeHtml(t("button.edit")) : escapeHtml(t("button.collapse"))}</button>
+                    <button type="button" class="remove" data-action="remove">${escapeHtml(t("button.remove"))}</button>
                 </div>
             </div>
             ${collapsed ? `
                 <div class="project-collapsed-body">
-                    <span>Work Item Types: ${escapeHtml((project.supportedWorkItemTypes || []).length)}</span>
+                    <span>${escapeHtml(t("project.workItemTypeCount", { count: (project.supportedWorkItemTypes || []).length }))}</span>
                     ${fieldDuplicateMessages.length ? `<span>${validationBadge("ERROR")} ${escapeHtml(fieldDuplicateMessages.join(" "))}</span>` : ""}
                     ${identityMessages.length ? `<span>${validationBadge("WARNING")} ${escapeHtml(identityMessages.join(" "))}</span>` : ""}
                 </div>
             ` : `
                 <div class="project-card-body">
                     <div class="selector-grid">
-                        <label>Project
+                        <label>${escapeHtml(t("project.projectLabel"))}
                             <select data-field="name" data-selector-name="project" ${projectSelectorDisabled}>
-                                ${selectOptions("project", projectOptionLookup, project.name || "", "Load and select a discovered project", projectSelectorEnabled)}
+                                ${selectOptions("project", projectOptionLookup, project.name || "", t("message.loadProjectFirst"), projectSelectorEnabled)}
                             </select>
                         </label>
-                        <button type="button" data-action="load-project">Verify Project</button>
+                        <button type="button" data-action="load-project">${escapeHtml(t("button.verifyProject"))}</button>
                     </div>
                     ${lookupBadge(discovery.projectStatus)}
-                    <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> Enabled</label>
-                    <label>Work Item Type
+                    <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> ${escapeHtml(t("project.enabled"))}</label>
+                    <label>${escapeHtml(t("project.workItemType"))}
                         <select data-field="supportedWorkItemTypes.0" ${workItemTypeDisabled}>
-                            ${selectOptions("workItemType", discovery.workItemTypes, selectedType, "Select a discovered Work Item type", workItemTypeEnabled)}
+                            ${selectOptions("workItemType", discovery.workItemTypes, selectedType, t("message.selectWorkItemTypeFirst"), workItemTypeEnabled)}
                         </select>
                     </label>
                     ${lookupBadge(discovery.workItemTypes)}
                     <div class="grid-2">
-                        <label>State design
+                        <label>${escapeHtml(t("project.stateDesign"))}
                             <select data-field="states.design" ${fieldAndStateDisabled}>
-                                ${selectOptions("designState", discovery.states, project.states.design || "", "Select a discovered state", fieldAndStateEnabled)}
+                                ${selectOptions("designState", discovery.states, project.states.design || "", t("message.noStates"), fieldAndStateEnabled)}
                             </select>
                         </label>
-                        <label>State in-review
+                        <label>${escapeHtml(t("project.stateInReview"))}
                             <select data-field="states.inReview" ${fieldAndStateDisabled}>
-                                ${selectOptions("inReviewState", discovery.states, project.states.inReview || "", "Select a discovered state", fieldAndStateEnabled)}
+                                ${selectOptions("inReviewState", discovery.states, project.states.inReview || "", t("message.noStates"), fieldAndStateEnabled)}
                             </select>
                         </label>
                     </div>
-                    <label>State approved
+                    <label>${escapeHtml(t("project.stateApproved"))}
                         <select data-field="states.approved" ${fieldAndStateDisabled}>
-                            ${selectOptions("approvedState", discovery.states, project.states.approved || "", "Select a discovered final state", fieldAndStateEnabled)}
+                            ${selectOptions("approvedState", discovery.states, project.states.approved || "", t("message.noStates"), fieldAndStateEnabled)}
                         </select>
                     </label>
                     ${lookupBadge(discovery.states)}
                     <div class="grid-2">
-                        <label>Field approved-by-sme
+                        <label>${escapeHtml(t("project.fieldApprovedBySme"))}
                             <select data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
-                                ${selectOptions("approvedBySmeField", fieldLookups.smeLookup, project.fields.approvedBySme || "", "Select a discovered approval field", fieldAndStateEnabled)}
+                                ${selectOptions("approvedBySmeField", fieldLookups.smeLookup, project.fields.approvedBySme || "", t("message.noFields"), fieldAndStateEnabled)}
                             </select>
                         </label>
-                        <label>Field approved-by-sqa
+                        <label>${escapeHtml(t("project.fieldApprovedBySqa"))}
                             <select data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
-                                ${selectOptions("approvedBySqaField", fieldLookups.sqaLookup, project.fields.approvedBySqa || "", "Select a discovered approval field", fieldAndStateEnabled)}
+                                ${selectOptions("approvedBySqaField", fieldLookups.sqaLookup, project.fields.approvedBySqa || "", t("message.noFields"), fieldAndStateEnabled)}
                             </select>
                         </label>
                     </div>
-                    <label>Reversible business fields
+                    <label>${escapeHtml(t("project.reversibleBusinessFields"))}
                         <select data-field="fields.reversibleBusinessFields" multiple size="6" ${fieldAndStateDisabled}>
                             ${selectorOptions(fieldLookups.reversibleLookup).map((option) => `
                                 <option value="${escapeHtml(option.value)}" ${(project.fields.reversibleBusinessFields || []).includes(option.value) ? "selected" : ""}>
@@ -1332,8 +1740,8 @@ function renderProjects() {
                     </div>
                     ${identityStatus}
                     <div class="row-between">
-                        <p class="note compact">Display names are shown for selection only. YAML stores normalized email/login values.</p>
-                        <button type="button" data-action="collapse-project" ${collapseDisabled}>Collapse</button>
+                        <p class="note compact">${escapeHtml(t("identity.selectionNote"))}</p>
+                        <button type="button" data-action="collapse-project" ${collapseDisabled}>${escapeHtml(t("button.collapse"))}</button>
                     </div>
                 </div>
             `}
@@ -1368,7 +1776,7 @@ function renderProjects() {
             collapseButton.addEventListener("click", () => {
                 if (!canCollapse) {
                     projectLayout(index).collapsed = false;
-                    setStatus("Resolve project validation before collapsing this section.", true);
+                    setStatus(t("status.resolveBeforeCollapse"), true);
                     renderProjects();
                     return;
                 }
@@ -1564,10 +1972,10 @@ async function postJson(url, body) {
     try {
         payload = await response.json();
     } catch (error) {
-        throw new Error(`Request failed because the response was not valid JSON. HTTP ${response.status}.`);
+        throw new Error(t("message.invalidJson", { status: response.status }));
     }
     if (!response.ok) {
-        throw new Error(payload.error || `Request failed with HTTP ${response.status}.`);
+        throw new Error(payload.error || t("message.httpFailed", { status: response.status }));
     }
     return payload;
 }
@@ -1596,15 +2004,15 @@ async function discover(operation, url, body) {
             durationMs: Math.round(performance.now() - started)
         });
         if (result.status === "ERROR") {
-            setStatus(result.message || "ADO discovery returned an error.", true);
+            setStatus(result.message || t("message.adoDiscoveryError"), true);
         } else if (result.status === "NOT_CHECKED" || result.status === "WARNING") {
-            setStatus(result.message || "ADO discovery was not fully checked.");
+            setStatus(result.message || t("message.adoDiscoveryUnchecked"));
         }
         return result;
     } catch (error) {
         const result = {
             status: "ERROR",
-            message: error.message || "ADO discovery request failed.",
+            message: error.message || t("message.adoDiscoveryRequestFailed"),
             values: [],
             optionCount: 0
         };
@@ -1624,7 +2032,7 @@ async function loadProjects() {
     readFormToState();
     projectOptionLookup = normalizeOptionsLookup(await discover("list-projects", "/api/config-ui/discovery/projects", {
         organization: state.ado.organization
-    }), "No projects were returned for the configured organization.", "project");
+    }), t("message.noProjects"), "project");
     clearStaleProjectSelections();
     renderProjectSelectors();
     renderProjects();
@@ -1660,7 +2068,7 @@ async function loadProject(index) {
         }
         discovery.workItemTypes = normalizeOptionsLookup(
                 workItemTypes,
-                "No Work Item Types were returned for the verified project.",
+                t("message.noWorkItemTypes"),
                 "workItemType"
         );
         debugDiscovery("selector-populated", {
@@ -1672,7 +2080,7 @@ async function loadProject(index) {
         });
     } else {
         projectLayout(index).collapsed = false;
-        discovery.workItemTypes = { status: "NOT_CHECKED", message: "Verify the project before selecting a Work Item type.", values: [], optionCount: 0 };
+        discovery.workItemTypes = { status: "NOT_CHECKED", message: t("message.verifyBeforeType"), values: [], optionCount: 0 };
     }
     renderProjects();
     schedulePreview();
@@ -1688,8 +2096,8 @@ async function loadFieldAndStateOptions(index) {
     }
     const discovery = projectDiscovery[index];
     if (!isProjectVerified(discovery, project)) {
-        discovery.fields = { status: "NOT_CHECKED", message: "Verify the project first.", values: [], optionCount: 0 };
-        discovery.states = { status: "NOT_CHECKED", message: "Verify the project first.", values: [], optionCount: 0 };
+        discovery.fields = { status: "NOT_CHECKED", message: t("message.verifyProjectFirst"), values: [], optionCount: 0 };
+        discovery.states = { status: "NOT_CHECKED", message: t("message.verifyProjectFirst"), values: [], optionCount: 0 };
         renderProjects();
         schedulePreview();
         return;
@@ -1713,8 +2121,8 @@ async function loadFieldAndStateOptions(index) {
     if (!isCurrentDiscoveryRequest(index, requestToken, projectName, type)) {
         return;
     }
-    discovery.fields = normalizeOptionsLookup(fields, "No fields were returned for the selected Work Item Type.", "fields");
-    discovery.states = normalizeOptionsLookup(states, "No states were returned for the selected Work Item Type.", "states");
+    discovery.fields = normalizeOptionsLookup(fields, t("message.noFields"), "fields");
+    discovery.states = normalizeOptionsLookup(states, t("message.noStates"), "states");
     debugDiscovery("selector-populated", {
         index,
         selector: "fields",
@@ -1740,7 +2148,7 @@ async function loadIdentityOptions(index, role, query) {
     const discovery = projectDiscovery[index];
     if (!project || !isProjectVerified(discovery, project)) {
         const searchState = ensureIdentitySearchState(index, role);
-        searchState.lookup = { status: "NOT_CHECKED", message: "Verify the project before searching users.", values: [], optionCount: 0 };
+        searchState.lookup = { status: "NOT_CHECKED", message: t("message.verifyBeforeUsers"), values: [], optionCount: 0 };
         updateIdentityPicker(index, role);
         return;
     }
@@ -1759,7 +2167,7 @@ async function loadIdentityOptions(index, role, query) {
     }
     searchState.lookup = normalizeOptionsLookup(
             result,
-            "No selectable ADO identities were returned for the search.",
+            t("message.noIdentities"),
             `${role}Users`
     );
     cacheIdentityOptions(selectorOptions(searchState.lookup));
@@ -1781,9 +2189,9 @@ async function previewDraft(showStatus = true) {
     renderValidation(payload);
     if (showStatus) {
         if (payload.draftYamlAvailable) {
-            setStatus(payload.finalYamlAllowed ? "YAML final permitido." : "YAML de borrador generado; faltan validaciones ADO.");
+            setStatus(payload.finalYamlAllowed ? t("status.draftAllowed") : t("status.draftBlocked"));
         } else {
-            setStatus("Errores bloqueantes: no se genero YAML.", true);
+            setStatus(t("status.yamlBlocked"), true);
         }
     }
     return payload;
@@ -1807,7 +2215,7 @@ function renderProjectSelectors() {
         renderedOptionCount: options.length,
         domOptionCount: options.length > 0 ? options.length + 1 : 1,
         enabled: options.length > 0,
-        message: sanitizeMessage(projectOptionLookup.message || "Project selector renders all discovered project options.")
+        message: sanitizeMessage(projectOptionLookup.message || t("message.projectSelectorRendered"))
     });
     renderDiscoveredProjectsDebug(options);
 }
@@ -1828,9 +2236,9 @@ function renderDiscoveredProjectsDebug(options) {
         </li>
     `).join("");
     discoveredProjectsDebugEl.innerHTML = `
-        <strong>Discovered projects</strong>
-        <p class="note compact">These are the same discovered project options rendered by the Project selector.</p>
-        <ul>${rows || "<li>No projects rendered.</li>"}</ul>
+        <strong>${escapeHtml(t("diagnostics.discoveredProjects"))}</strong>
+        <p class="note compact">${escapeHtml(t("diagnostics.discoveredProjectsNote"))}</p>
+        <ul>${rows || `<li>${escapeHtml(t("diagnostics.noProjectsRendered"))}</li>`}</ul>
     `;
     for (const button of discoveredProjectsDebugEl.querySelectorAll("[data-project-value]")) {
         button.addEventListener("click", () => {
@@ -1854,7 +2262,7 @@ function handleGlobalInput() {
 
 function handleOrganizationChanged() {
     readFormToState();
-    projectOptionLookup = { status: "NOT_CHECKED", message: "Organization changed; reload projects.", values: [] };
+    projectOptionLookup = { status: "NOT_CHECKED", message: t("message.organizationChanged"), values: [] };
     for (const project of state.ado.projects) {
         clearChildSelections(project);
     }
@@ -1866,7 +2274,8 @@ function handleOrganizationChanged() {
 }
 
 async function initialize() {
-    setStatus("Cargando configuracion...");
+    applyStaticTranslations();
+    setStatus(t("status.loading"));
     renderDiagnosticsPanel();
     const response = await fetch("/api/config-ui/model");
     state = await response.json();
@@ -1876,12 +2285,16 @@ async function initialize() {
     projectDiscovery = state.ado.projects.map(createDiscoveryState);
     fillFormFromState();
     saveBtn.disabled = true;
-    setStatus("Configuracion cargada. Carga ADO discovery para poblar selectores.");
+    setStatus(t("status.loaded"));
     await previewDraft(false);
 }
 
 document.getElementById("loadProjects").addEventListener("click", () => {
     loadProjects().catch((error) => setStatus(error.message, true));
+});
+
+languageSelectorEl?.addEventListener("change", (event) => {
+    setLanguage(event.target.value);
 });
 
 document.getElementById("adoOrganization").addEventListener("input", handleOrganizationChanged);
@@ -1917,7 +2330,7 @@ document.getElementById("previewBtn").addEventListener("click", async () => {
 document.getElementById("saveBtn").addEventListener("click", async () => {
     try {
         if (!isUiAdoDiscoveryCurrent()) {
-            setStatus("Verify project and select current ADO-backed values before saving final YAML.", true);
+            setStatus(t("status.saveBlocked"), true);
             saveBtn.disabled = true;
             return;
         }
