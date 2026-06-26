@@ -270,6 +270,19 @@ function clearTypeSelections(project) {
     project.states = { design: "Design", inReview: "In Review", approved: "Approved" };
 }
 
+function clearStaleProjectSelections() {
+    if (!lookupHasOptions(projectOptionLookup)) {
+        return;
+    }
+    state.ado.projects.forEach((project, index) => {
+        if (project.name && !lookupContainsValue(projectOptionLookup, project.name)) {
+            project.name = "";
+            clearChildSelections(project);
+            clearDiscovery(index, "project");
+        }
+    });
+}
+
 function clearDiscovery(index, level) {
     const discovery = projectDiscovery[index];
     if (!discovery) {
@@ -509,7 +522,7 @@ function selectOptions(selectorName, lookup, selected, placeholder, enabled = fa
     const options = selectorOptions(lookup);
     const hasSelected = options.some((option) => option.value === selected);
     const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
-    if (selected && !hasSelected) {
+    if (selected && !hasSelected && lookup?.status !== "VALID") {
         rows.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} - unchecked/manual</option>`);
     }
     for (const option of options) {
@@ -528,16 +541,11 @@ function selectOptions(selectorName, lookup, selected, placeholder, enabled = fa
         receivedLength: rawOptionItems(lookup).length,
         normalizedLength: options.length,
         renderedOptionCount: options.length,
+        domOptionCount: rows.length,
         enabled: enabled && options.length > 0,
         message: sanitizeMessage(lookup?.message)
     });
     return rows.join("");
-}
-
-function projectDatalist() {
-    return selectorOptions(projectOptionLookup)
-        .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(optionLabel(option))}</option>`)
-        .join("");
 }
 
 function renderProjects() {
@@ -552,12 +560,17 @@ function renderProjects() {
         const fieldAndStateDisabled = dependentOptionsReady ? "" : "disabled";
         const workItemTypeEnabled = !workItemTypeDisabled;
         const fieldAndStateEnabled = !fieldAndStateDisabled;
+        const projectSelectorEnabled = lookupHasOptions(projectOptionLookup);
+        const projectSelectorDisabled = projectSelectorEnabled ? "" : "disabled";
         debugDiscovery("selector-state", {
             index,
             project: project.name,
             projectVerified,
+            projectSelectorDisabled: !!projectSelectorDisabled,
             workItemTypeDisabled: !!workItemTypeDisabled,
             fieldAndStateDisabled: !!fieldAndStateDisabled,
+            projectOptionCount: lookupOptionCount(projectOptionLookup),
+            projectRenderedOptionCount: renderedOptionCount(projectOptionLookup),
             workItemTypeOptionCount: lookupOptionCount(discovery.workItemTypes),
             workItemTypeRenderedOptionCount: renderedOptionCount(discovery.workItemTypes),
             fieldOptionCount: lookupOptionCount(discovery.fields),
@@ -571,6 +584,7 @@ function renderProjects() {
             receivedLength: rawOptionItems(discovery.fields).length,
             normalizedLength: renderedOptionCount(discovery.fields),
             renderedOptionCount: renderedOptionCount(discovery.fields),
+            domOptionCount: renderedOptionCount(discovery.fields),
             enabled: fieldAndStateEnabled && renderedOptionCount(discovery.fields) > 0,
             message: sanitizeMessage(discovery.fields?.message)
         });
@@ -583,7 +597,9 @@ function renderProjects() {
             </div>
             <div class="selector-grid">
                 <label>Project
-                    <input data-field="name" list="adoProjectOptions" type="text" value="${escapeHtml(project.name || "")}">
+                    <select data-field="name" data-selector-name="project" ${projectSelectorDisabled}>
+                        ${selectOptions("project", projectOptionLookup, project.name || "", "Load and select a discovered project", projectSelectorEnabled)}
+                    </select>
                 </label>
                 <button type="button" data-action="load-project">Verify Project</button>
             </div>
@@ -843,7 +859,8 @@ async function loadProjects() {
     projectOptionLookup = normalizeOptionsLookup(await discover("list-projects", "/api/config-ui/discovery/projects", {
         organization: state.ado.organization
     }), "No projects were returned for the configured organization.", "project");
-    renderProjectDatalist();
+    clearStaleProjectSelections();
+    renderProjectSelectors();
     renderProjects();
     schedulePreview();
 }
@@ -963,18 +980,14 @@ async function previewDraft(showStatus = true) {
     return payload;
 }
 
-function renderProjectDatalist() {
+function renderProjectSelectors() {
     const options = selectorOptions(projectOptionLookup);
-    const datalist = document.getElementById("adoProjectOptions");
-    datalist.innerHTML = projectDatalist();
-    const domOptionCount = datalist.querySelectorAll("option").length;
     document.getElementById("projectLookupStatus").innerHTML = lookupBadge(projectOptionLookup);
     debugDiscovery("selector-rendered", {
         selector: "project",
         status: projectOptionLookup.status,
         backendOptionCount: lookupOptionCount(projectOptionLookup),
         renderedOptionCount: options.length,
-        domOptionCount,
         enabled: options.length > 0
     });
     updateSelectorDiagnostics("project", {
@@ -983,9 +996,9 @@ function renderProjectDatalist() {
         receivedLength: rawOptionItems(projectOptionLookup).length,
         normalizedLength: options.length,
         renderedOptionCount: options.length,
-        domOptionCount,
+        domOptionCount: options.length > 0 ? options.length + 1 : 1,
         enabled: options.length > 0,
-        message: sanitizeMessage(projectOptionLookup.message || "Browser datalist suggestions may be filtered by the current Project input text.")
+        message: sanitizeMessage(projectOptionLookup.message || "Project selector renders all discovered project options.")
     });
     renderDiscoveredProjectsDebug(options);
 }
@@ -1007,7 +1020,7 @@ function renderDiscoveredProjectsDebug(options) {
     `).join("");
     discoveredProjectsDebugEl.innerHTML = `
         <strong>Discovered projects</strong>
-        <p class="note compact">These are all Project datalist options rendered in the DOM. The browser dropdown may show fewer while it filters by typed text.</p>
+        <p class="note compact">These are the same discovered project options rendered by the Project selector.</p>
         <ul>${rows || "<li>No projects rendered.</li>"}</ul>
     `;
     for (const button of discoveredProjectsDebugEl.querySelectorAll("[data-project-value]")) {
@@ -1037,7 +1050,7 @@ function handleOrganizationChanged() {
         clearChildSelections(project);
     }
     projectDiscovery = state.ado.projects.map(createDiscoveryState);
-    renderProjectDatalist();
+    renderProjectSelectors();
     renderProjects();
     schedulePreview();
 }

@@ -75,8 +75,8 @@ class ConfigUiStaticAssetsTest {
                 .contains("selectOptions(selectorName, lookup, selected, placeholder, enabled = false)")
                 .contains("option.value === selected")
                 .contains("optionLabel(option) + description")
-                .contains("projectDatalist()")
                 .contains("selectorOptions(projectOptionLookup)")
+                .contains("select data-field=\"name\" data-selector-name=\"project\"")
                 .contains("selectOptions(\"workItemType\", discovery.workItemTypes")
                 .contains("selectOptions(\"approvedBySmeField\", discovery.fields")
                 .contains("selectOptions(\"approvedState\", discovery.states");
@@ -134,7 +134,8 @@ class ConfigUiStaticAssetsTest {
                 .contains("class=\"card diagnostics-panel\" hidden")
                 .contains("id=\"configUiDiagnosticsContent\"")
                 .contains("id=\"discoveredProjectsDebug\"")
-                .contains("browser datalist");
+                .contains("real selector controls")
+                .doesNotContain("<datalist");
         assertThat(css)
                 .contains(".diagnostics-panel")
                 .contains(".diagnostics-table")
@@ -169,15 +170,30 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptMeasuresProjectDatalistDomOptionsAndExplainsFiltering() throws Exception {
+    void javascriptRendersProjectOptionsWithRealSelectorDiagnostics() throws Exception {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("datalist.querySelectorAll(\"option\").length")
                 .contains("selector: \"project\"")
+                .contains("data-selector-name=\"project\"")
+                .contains("Project selector renders all discovered project options.")
                 .contains("renderDiscoveredProjectsDebug(options)")
-                .contains("browser dropdown may show fewer while it filters by typed text")
-                .contains("Discovered projects");
+                .contains("These are the same discovered project options rendered by the Project selector.")
+                .contains("Discovered projects")
+                .doesNotContain("datalist")
+                .doesNotContain("browser dropdown may show fewer");
+    }
+
+    @Test
+    void pageDoesNotUseBrowserDatalistForRequiredSelectors() throws Exception {
+        var html = read("src/main/resources/templates/index.html");
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(html).doesNotContain("<datalist", "list=\"adoProjectOptions\"");
+        assertThat(javascript)
+                .doesNotContain("projectDatalist")
+                .doesNotContain("renderProjectDatalist")
+                .doesNotContain("adoProjectOptions");
     }
 
     @Test
@@ -215,6 +231,8 @@ class ConfigUiStaticAssetsTest {
                 .contains("clearTypeSelections(project)")
                 .contains("clearDiscovery(index, \"project\")")
                 .contains("clearDiscovery(index, \"type\")")
+                .contains("clearStaleProjectSelections()")
+                .contains("!lookupContainsValue(projectOptionLookup, project.name)")
                 .contains("project.fields.approvedBySme = \"\"")
                 .contains("project.fields.approvedBySqa = \"\"")
                 .contains("project.states = { design: \"Design\", inReview: \"In Review\", approved: \"Approved\" }");
