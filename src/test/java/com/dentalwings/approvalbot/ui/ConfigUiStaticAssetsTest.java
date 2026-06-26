@@ -19,6 +19,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("/api/config-ui/discovery/work-item-types")
                 .contains("/api/config-ui/discovery/fields")
                 .contains("/api/config-ui/discovery/states")
+                .contains("/api/config-ui/discovery/users/search")
                 .contains("select data-field=\"fields.approvedBySme\"")
                 .contains("select data-field=\"fields.approvedBySqa\"");
     }
@@ -214,9 +215,61 @@ class ConfigUiStaticAssetsTest {
                 .contains("approval fields")
                 .contains("reversible fields")
                 .contains("duplicate errors")
+                .contains("query length")
+                .contains("user results")
+                .contains("selected users")
+                .contains("unresolved users")
+                .contains("identity warnings")
                 .contains("stale ignored")
                 .contains("lastUpdated")
                 .contains("selectorDiagnostics");
+    }
+
+    @Test
+    void javascriptUsesAdoBackedIdentitySearchAndChipsForUsers() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function identityUserPicker(project, index, role, enabled)")
+                .contains("data-action=\"identity-search\"")
+                .contains("data-action=\"add-user\"")
+                .contains("data-action=\"remove-user\"")
+                .contains("function loadIdentityOptions(index, role, query)")
+                .contains("Type at least 2 characters to search ADO identities.")
+                .contains("Display names are shown for selection only. YAML stores normalized email/login values.")
+                .contains("addUserToRole(project, button.getAttribute(\"data-role\"), button.getAttribute(\"data-user-value\"))")
+                .contains("removeUserFromRole(project, button.getAttribute(\"data-role\"), button.getAttribute(\"data-user-value\"))")
+                .doesNotContain("textarea data-field=\"approvals.smeUsers\"")
+                .doesNotContain("textarea data-field=\"approvals.sqaUsers\"");
+    }
+
+    @Test
+    void javascriptIdentitySelectionStoresNormalizedValuesAndShowsCrossRoleWarnings() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function normalizedIdentity(value)")
+                .contains("setRoleUsers(project, role, [...users, normalized])")
+                .contains("function duplicateIdentityMessages(project)")
+                .contains("Same identity appears in both SME and SQA lists.")
+                .contains("unresolvedIdentityCount(project, role)")
+                .contains("lookupOptionCount(stateForRole.lookup)")
+                .contains("lastQueryLength: stateForRole.query.length")
+                .contains("selectedCount")
+                .contains("unresolvedCount");
+    }
+
+    @Test
+    void cssStylesIdentityPickerResultsAndChips() throws Exception {
+        var css = read("src/main/resources/static/css/nova-lite.css");
+
+        assertThat(css)
+                .contains(".identity-picker")
+                .contains(".identity-chip-list")
+                .contains(".identity-chip")
+                .contains(".identity-results")
+                .contains(".identity-result")
+                .contains(".identity-avatar");
     }
 
     @Test

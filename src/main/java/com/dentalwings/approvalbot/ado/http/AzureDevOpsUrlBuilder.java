@@ -121,6 +121,17 @@ public class AzureDevOpsUrlBuilder {
                 + WORK_ITEM_API_VERSION;
     }
 
+    public String identitySearchUrl(String organization, String query) {
+        requireComponent("organization", organization);
+        requireComponent("identity search query", query);
+        return "https://vssps.dev.azure.com/"
+                + encode(organization)
+                + "/_apis/identities?searchFilter=General&filterValue="
+                + encode(query)
+                + "&queryMembership=None&api-version="
+                + WORK_ITEM_API_VERSION;
+    }
+
     private void validateKey(AdoWorkItemKey key) {
         if (key == null) {
             throw new IllegalArgumentException("Azure DevOps Work Item key must not be null.");

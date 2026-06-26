@@ -116,6 +116,31 @@ class ConfigUiControllerTest {
     }
 
     @Test
+    void userSearchEndpointReturnsSelectorOptionShapeWithoutSecrets() throws Exception {
+        when(discoveryService.searchIdentityOptions(any(), any()))
+                .thenReturn(ConfigLookupResult.valid(List.of(
+                        new ConfigSelectorOption("sme@example.test", "SME Sandbox <sme@example.test>", "sme@example.test", "ADO", "aad.user-1")
+                )));
+
+        mockMvc.perform(post("/api/config-ui/discovery/users/search")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organization": "STMN-Group",
+                                  "project": "ADOnis 2.0 Test Project",
+                                  "query": "sme"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"status\":\"VALID\"")))
+                .andExpect(content().string(containsString("\"value\":\"sme@example.test\"")))
+                .andExpect(content().string(containsString("\"displayName\":\"SME Sandbox <sme@example.test>\"")))
+                .andExpect(content().string(containsString("\"optionCount\":1")))
+                .andExpect(content().string(not(containsString("secret-pat"))))
+                .andExpect(content().string(not(containsString("Authorization"))));
+    }
+
+    @Test
     void emptyDiscoveryEndpointResponseIsWarningWithOptionCountZero() throws Exception {
         when(discoveryService.listWorkItemTypeOptions(any(), any()))
                 .thenReturn(ConfigLookupResult.valid(List.of()));

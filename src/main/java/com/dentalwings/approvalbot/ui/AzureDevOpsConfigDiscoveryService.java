@@ -6,7 +6,9 @@ import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URI;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.springframework.http.HttpHeaders;
@@ -253,7 +255,72 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     @Override
     public ConfigLookupResult<String> resolveUsers(String organization, List<String> users) {
-        return ConfigLookupResult.warning("ADO user discovery is not available yet; use email/login values, not display names.");
+        if (users == null || users.isEmpty()) {
+            return ConfigLookupResult.error("User list is required.");
+        }
+        var resolved = new LinkedHashSet<String>();
+        var unresolved = new LinkedHashSet<String>();
+        for (var user : users) {
+            var normalizedUser = normalizedIdentity(user);
+            if (normalizedUser.isBlank()) {
+                unresolved.add("");
+                continue;
+            }
+            var lookup = searchIdentityOptions(organization, user);
+            if (lookup.status() == ConfigValidationStatus.ERROR || lookup.status() == ConfigValidationStatus.NOT_CHECKED) {
+                return new ConfigLookupResult<>(lookup.status(), lookup.message(), List.of());
+            }
+            var matched = lookup.values().stream()
+                    .map(ConfigSelectorOption::value)
+                    .map(this::normalizedIdentity)
+                    .filter(normalizedUser::equals)
+                    .findFirst();
+            if (matched.isPresent()) {
+                resolved.add(matched.get());
+            } else {
+                unresolved.add(user);
+            }
+        }
+        if (!unresolved.isEmpty()) {
+            return ConfigLookupResult.error("User identity was not resolved in ADO: " + String.join(", ", unresolved));
+        }
+        return ConfigLookupResult.valid(List.copyOf(resolved));
+    }
+
+    @Override
+    public ConfigLookupResult<ConfigSelectorOption> searchIdentityOptions(String organization, String query) {
+        var trimmedQuery = query == null ? "" : query.trim();
+        if (trimmedQuery.length() < 2) {
+            return ConfigLookupResult.notChecked("Type at least 2 characters to search ADO identities.");
+        }
+        return readList(
+                "searchIdentityOptions",
+                () -> urlBuilder.identitySearchUrl(organization, trimmedQuery),
+                AdoRestIdentityListResponse.class,
+                this::identityOptions
+        );
+    }
+
+    private List<ConfigSelectorOption> identityOptions(AdoRestIdentityListResponse response) {
+        return response.items().stream()
+                .map(this::identityOption)
+                .filter(option -> !option.value().isBlank())
+                .toList();
+    }
+
+    private ConfigSelectorOption identityOption(AdoRestIdentityResponse identity) {
+        var value = normalizedIdentity(firstNonBlank(
+                identity.uniqueName(),
+                identity.mail(),
+                identity.account(),
+                identity.signInAddress()
+        ));
+        if (value.isBlank()) {
+            return new ConfigSelectorOption("", identity.displayLabel(), "", "ADO", identity.subjectDescriptor());
+        }
+        var displayName = firstNonBlank(identity.displayName(), identity.providerDisplayName(), value);
+        var displayLabel = displayName.equals(value) ? value : displayName + " <" + value + ">";
+        return new ConfigSelectorOption(value, displayLabel, value, "ADO", identity.subjectDescriptor());
     }
 
     private <R, T> ConfigLookupResult<R> readOne(
@@ -436,6 +503,9 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         if (body instanceof AdoRestStateListResponse response) {
             return response.rawCount();
         }
+        if (body instanceof AdoRestIdentityListResponse response) {
+            return response.rawCount();
+        }
         return null;
     }
 
@@ -508,6 +578,19 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String normalizedIdentity(String value) {
+        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String firstNonBlank(String... values) {
+        for (var value : values) {
+            if (!isBlank(value)) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -611,5 +694,78 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record AdoRestStateResponse(String name) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record AdoRestIdentityListResponse(Integer count, List<AdoRestIdentityResponse> value, List<AdoRestIdentityResponse> identities) {
+        AdoRestIdentityListResponse {
+            value = value == null ? List.of() : List.copyOf(value);
+            identities = identities == null ? List.of() : List.copyOf(identities);
+        }
+
+        List<AdoRestIdentityResponse> items() {
+            return value.isEmpty() ? identities : value;
+        }
+
+        Integer rawCount() {
+            return count == null ? items().size() : count;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record AdoRestIdentityResponse(
+            String id,
+            String descriptor,
+            String subjectDescriptor,
+            String displayName,
+            String providerDisplayName,
+            String uniqueName,
+            JsonNode properties
+    ) {
+        String mail() {
+            return property("Mail");
+        }
+
+        String account() {
+            return property("Account");
+        }
+
+        String signInAddress() {
+            return property("SignInAddress");
+        }
+
+        String displayLabel() {
+            return firstNonBlank(displayName, providerDisplayName, uniqueName, id);
+        }
+
+        public String subjectDescriptor() {
+            return firstNonBlank(subjectDescriptor, descriptor, id);
+        }
+
+        private String property(String name) {
+            if (properties == null || properties.isNull() || !properties.has(name)) {
+                return "";
+            }
+            var property = properties.get(name);
+            if (property.isTextual()) {
+                return property.asText();
+            }
+            if (property.has("$value")) {
+                return property.get("$value").asText();
+            }
+            if (property.has("value")) {
+                return property.get("value").asText();
+            }
+            return "";
+        }
+
+        private String firstNonBlank(String... values) {
+            for (var value : values) {
+                if (value != null && !value.isBlank()) {
+                    return value.trim();
+                }
+            }
+            return "";
+        }
     }
 }

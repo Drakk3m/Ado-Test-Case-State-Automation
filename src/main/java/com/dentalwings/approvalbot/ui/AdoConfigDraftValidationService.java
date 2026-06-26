@@ -207,6 +207,7 @@ public class AdoConfigDraftValidationService {
     private void validateUsers(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix, ConfigValidationResult result) {
         validateUserList(model, prefix + ".approvals.sme-users", project.getApprovals().getSmeUsers(), result);
         validateUserList(model, prefix + ".approvals.sqa-users", project.getApprovals().getSqaUsers(), result);
+        validateCrossRoleUsers(prefix, project.getApprovals().getSmeUsers(), project.getApprovals().getSqaUsers(), result);
     }
 
     private void validateUserList(ConfigUiModel model, String field, List<String> users, ConfigValidationResult result) {
@@ -221,9 +222,15 @@ public class AdoConfigDraftValidationService {
             return;
         }
 
+        var duplicate = firstDuplicate(users);
+        if (!duplicate.isBlank()) {
+            result.add(field, ConfigValidationStatus.ERROR, "User list must not contain duplicate identities: " + duplicate);
+            return;
+        }
+
         var displayNameOnly = users.stream().filter(this::isLikelyDisplayNameOnly).toList();
         if (!displayNameOnly.isEmpty()) {
-            result.add(field, ConfigValidationStatus.WARNING, "User values must be email/login based; displayName-only values are not treated as validated identities.");
+            result.add(field, ConfigValidationStatus.ERROR, "User values must be email/login based; displayName-only values are not valid authorization identities.");
             return;
         }
 
@@ -240,6 +247,28 @@ public class AdoConfigDraftValidationService {
         } else {
             result.add(field, lookup.status(), lookup.message());
         }
+    }
+
+    private void validateCrossRoleUsers(String prefix, List<String> smeUsers, List<String> sqaUsers, ConfigValidationResult result) {
+        var sqa = normalizedSet(sqaUsers);
+        for (var smeUser : smeUsers) {
+            var normalized = normalize(smeUser);
+            if (!normalized.isBlank() && sqa.contains(normalized)) {
+                result.add(prefix + ".approvals", ConfigValidationStatus.WARNING, "Same identity appears in both SME and SQA lists. Workflow still requires different actual approvers.");
+                return;
+            }
+        }
+    }
+
+    private String firstDuplicate(List<String> users) {
+        var seen = new HashSet<String>();
+        for (var user : users) {
+            var normalized = normalize(user);
+            if (!normalized.isBlank() && !seen.add(normalized)) {
+                return normalized;
+            }
+        }
+        return "";
     }
 
     private void validateReloadNotice(ConfigValidationResult result) {
