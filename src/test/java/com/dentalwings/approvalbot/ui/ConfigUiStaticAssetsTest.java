@@ -185,7 +185,8 @@ class ConfigUiStaticAssetsTest {
                 .doesNotContain("<datalist");
         assertThat(css)
                 .contains(".diagnostics-panel")
-                .contains(".diagnostics-table")
+                .contains(".diagnostic-group")
+                .contains(".diagnostic-grid")
                 .contains(".debug-project-list");
     }
 
@@ -223,7 +224,56 @@ class ConfigUiStaticAssetsTest {
                 .contains("identity warnings")
                 .contains("stale ignored")
                 .contains("lastUpdated")
-                .contains("selectorDiagnostics");
+                .contains("selectorDiagnostics")
+                .contains("function diagnosticGroups()")
+                .contains("function diagnosticGroupMarkup(group)")
+                .contains("function diagnosticItemMarkup(item)")
+                .doesNotContain("class=\"diagnostics-table\"");
+    }
+
+    @Test
+    void javascriptSupportsCollapsibleProjectSections() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("let projectLayoutState = []")
+                .contains("function projectLayout(index)")
+                .contains("function projectSummary(project, index, selectedType, status)")
+                .contains("Project: ${escapeHtml(projectDisplayName(project, index))}")
+                .contains("data-action=\"toggle-project\"")
+                .contains("data-action=\"collapse-project\"")
+                .contains("project-card${collapsed ? \" collapsed\" : \"\"}")
+                .contains("projectLayout(index).collapsed = true")
+                .contains("projectLayout(index).collapsed = false");
+    }
+
+    @Test
+    void javascriptOnlyCollapsesValidatedProjectSections() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function projectCanCollapse(project, discovery, fieldDuplicateMessages, identityMessages)")
+                .contains("isProjectDiscoveryCurrent(project, discovery)")
+                .contains("const collapseDisabled = canCollapse ? \"\" : \"disabled\"")
+                .contains("Resolve project validation before collapsing this section.")
+                .contains("projectLayout(index).collapsed = false;")
+                .contains("projectLayoutState.splice(index, 1)");
+    }
+
+    @Test
+    void cssStylesProjectSectionsAndResponsiveDiagnosticsWithoutWideTable() throws Exception {
+        var css = read("src/main/resources/static/css/nova-lite.css");
+
+        assertThat(css)
+                .contains(".project-card.collapsed")
+                .contains(".project-card-header")
+                .contains(".project-summary")
+                .contains(".project-card-body")
+                .contains(".project-collapsed-body")
+                .contains(".diagnostics-groups")
+                .contains(".diagnostic-group")
+                .contains(".diagnostic-grid")
+                .doesNotContain(".diagnostics-table");
     }
 
     @Test
