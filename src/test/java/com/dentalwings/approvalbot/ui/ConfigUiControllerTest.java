@@ -67,8 +67,8 @@ class ConfigUiControllerTest {
     void projectDiscoveryEndpointReturnsSelectorOptionShapeUsedByJavascript() throws Exception {
         when(discoveryService.listProjectOptions(any()))
                 .thenReturn(ConfigLookupResult.valid(List.of(
-                        new ConfigSelectorOption("Project Alpha", "Project Alpha", "", "ADO"),
-                        new ConfigSelectorOption("ADOnis 2.0 Test Project", "ADOnis 2.0 Test Project", "", "ADO")
+                        new ConfigSelectorOption("ADOnis 2.0 Test Project", "ADOnis 2.0 Test Project", "", "ADO"),
+                        new ConfigSelectorOption("RART", "RART", "", "ADO")
                 )));
 
         mockMvc.perform(post("/api/config-ui/discovery/projects")
@@ -81,9 +81,10 @@ class ConfigUiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("\"status\":\"VALID\"")))
                 .andExpect(content().string(containsString("\"values\"")))
-                .andExpect(content().string(containsString("\"value\":\"Project Alpha\"")))
-                .andExpect(content().string(containsString("\"displayName\":\"Project Alpha\"")))
                 .andExpect(content().string(containsString("\"value\":\"ADOnis 2.0 Test Project\"")))
+                .andExpect(content().string(containsString("\"displayName\":\"ADOnis 2.0 Test Project\"")))
+                .andExpect(content().string(containsString("\"value\":\"RART\"")))
+                .andExpect(content().string(containsString("\"displayName\":\"RART\"")))
                 .andExpect(content().string(containsString("\"optionCount\":2")))
                 .andExpect(content().string(not(containsString("secret-pat"))))
                 .andExpect(content().string(not(containsString("Authorization"))));

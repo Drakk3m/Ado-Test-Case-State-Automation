@@ -25,7 +25,6 @@
                 <button id="loadProjects" type="button">Load Projects</button>
                 <span id="projectLookupStatus"></span>
             </div>
-            <datalist id="adoProjectOptions"></datalist>
             <label class="switch-row"><input id="adoHttpClientEnabled" type="checkbox"> HTTP client enabled</label>
             <label class="switch-row"><input id="adoDryRun" type="checkbox"> Dry run</label>
         </div>
@@ -55,7 +54,7 @@
             <h2>Config UI diagnostics</h2>
             <span class="note compact">Visible only when config UI debug is enabled.</span>
         </div>
-        <p class="note compact">Project suggestions use a browser datalist. The browser may visually filter suggestions by the current Project input text even when more options exist in the DOM.</p>
+        <p class="note compact">Selector diagnostics show the discovered options normalized and rendered into real selector controls.</p>
         <div id="configUiDiagnosticsContent"></div>
     </section>
 
