@@ -77,7 +77,7 @@ public class AzureDevOpsUrlBuilder {
                 + encode(organization)
                 + "/"
                 + encode(project)
-                + "/_apis/wit/workitemtypes?api-version="
+                + "/_apis/wit/workitemtypes?$expand=None&api-version="
                 + WORK_ITEM_API_VERSION;
     }
 

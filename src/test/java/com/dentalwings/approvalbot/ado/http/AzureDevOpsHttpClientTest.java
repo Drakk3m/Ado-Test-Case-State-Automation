@@ -74,10 +74,14 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
-    void urlBuilderCreatesCorrectWorkItemTypesDiscoveryUrl() {
+    void urlBuilderCreatesMinimalWorkItemTypesDiscoveryUrl() {
         var url = new AzureDevOpsUrlBuilder().workItemTypesUrl("my org", "Project A");
 
-        assertThat(url).isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workitemtypes?api-version=7.1");
+        assertThat(url)
+                .isEqualTo("https://dev.azure.com/my%20org/Project%20A/_apis/wit/workitemtypes?$expand=None&api-version=7.1")
+                .contains("$expand=None")
+                .doesNotContain("%24expand")
+                .doesNotContain("%2520");
     }
 
     @Test
