@@ -36,6 +36,39 @@ class ApplicationLocalConfigServiceTest {
     }
 
     @Test
+    void previewKeepsMultipleProjectConfigurationsIndependent() {
+        var discovery = new FixedDiscovery(
+                List.of("Project A", "Project B"),
+                List.of("Test Case"),
+                List.of("System.Title", "Custom.ProjectASme", "Custom.ProjectASqa", "Custom.ProjectBSme", "Custom.ProjectBSqa"),
+                List.of("Design", "In Review", "Approved"),
+                List.of("a-sme@example.test", "a-sqa@example.test", "b-sme@example.test", "b-sqa@example.test")
+        );
+        var service = new ApplicationLocalConfigService(tempDir.resolve("application-local.yml"), validatingService(discovery));
+        var model = new ConfigUiModel();
+        model.getAdo().setOrganization("ExampleOrg");
+        model.getAdo().setHttpClientEnabled(true);
+        model.getAdo().setDryRun(true);
+        model.getBot().setIdentityEmail("bot@example.test");
+        model.getAdo().getProjects().add(project(
+                "Project A", "Custom.ProjectASme", "Custom.ProjectASqa", "a-sme@example.test", "a-sqa@example.test"
+        ));
+        model.getAdo().getProjects().add(project(
+                "Project B", "Custom.ProjectBSme", "Custom.ProjectBSqa", "b-sme@example.test", "b-sqa@example.test"
+        ));
+
+        var preview = service.preview(model);
+
+        assertThat(preview.yaml())
+                .contains("'[Project A]':")
+                .contains("approved-by-sme: 'Custom.ProjectASme'")
+                .contains("- 'a-sme@example.test'")
+                .contains("'[Project B]':")
+                .contains("approved-by-sme: 'Custom.ProjectBSme'")
+                .contains("- 'b-sme@example.test'");
+    }
+
+    @Test
     void saveWritesYamlOnlyWhenFinalValidationPasses() throws Exception {
         var configFile = tempDir.resolve("application-local.yml");
         var service = new ApplicationLocalConfigService(configFile, validatingService(validDiscovery()));
@@ -182,6 +215,27 @@ class ApplicationLocalConfigServiceTest {
 
         model.getBot().setIdentityEmail("bot@example.test");
         return model;
+    }
+
+    private static ConfigUiModel.ProjectConfig project(
+            String name,
+            String smeField,
+            String sqaField,
+            String smeUser,
+            String sqaUser
+    ) {
+        var project = new ConfigUiModel.ProjectConfig();
+        project.setName(name);
+        project.getSupportedWorkItemTypes().add("Test Case");
+        project.getStates().setDesign("Design");
+        project.getStates().setInReview("In Review");
+        project.getStates().setApproved("Approved");
+        project.getFields().setApprovedBySme(smeField);
+        project.getFields().setApprovedBySqa(sqaField);
+        project.getFields().getReversibleBusinessFields().add("System.Title");
+        project.getApprovals().getSmeUsers().add(smeUser);
+        project.getApprovals().getSqaUsers().add(sqaUser);
+        return project;
     }
 
     static AdoConfigDiscoveryService validDiscovery() {

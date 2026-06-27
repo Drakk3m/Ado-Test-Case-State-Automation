@@ -12,7 +12,7 @@ let state = { ado: { projects: [] } };
 let lastPreview = null;
 let previewTimer = null;
 let projectOptionLookup = { status: "NOT_CHECKED", message: "", values: [] };
-let projectDiscovery = [];
+let projectDiscovery = new Map();
 let discoveryRequestSequence = 0;
 let selectorDiagnostics = {};
 let identitySearchState = {};
@@ -24,7 +24,8 @@ const IDENTITY_SEARCH_DEBOUNCE_MS = 450;
 const IDENTITY_CACHE_TTL_MS = 10 * 60 * 1000;
 const IDENTITY_CACHE_MAX_ENTRIES = 50;
 const IDENTITY_CACHE_USEFUL_RESULT_COUNT = 3;
-let projectLayoutState = [];
+let projectLayoutState = new Map();
+let localProjectSequence = 0;
 const LANGUAGE_STORAGE_KEY = "configUiLanguage";
 let currentLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en";
 
@@ -492,10 +493,16 @@ function sanitizeMessage(message) {
         .slice(0, 240);
 }
 
-function ensureSelectorDiagnostic(selectorName) {
-    if (!selectorDiagnostics[selectorName]) {
-        selectorDiagnostics[selectorName] = {
+function diagnosticKey(selectorName, projectConfigId = "") {
+    return projectConfigId ? `${projectConfigId}:${selectorName}` : selectorName;
+}
+
+function ensureSelectorDiagnostic(selectorName, projectConfigId = "") {
+    const key = diagnosticKey(selectorName, projectConfigId);
+    if (!selectorDiagnostics[key]) {
+        selectorDiagnostics[key] = {
             selector: selectorName,
+            projectConfigId,
             status: "NOT_CHECKED",
             backendOptionCount: 0,
             receivedLength: 0,
@@ -526,12 +533,13 @@ function ensureSelectorDiagnostic(selectorName) {
             lastUpdated: ""
         };
     }
-    return selectorDiagnostics[selectorName];
+    return selectorDiagnostics[key];
 }
 
-function updateSelectorDiagnostics(selectorName, updates = {}) {
-    const current = ensureSelectorDiagnostic(selectorName);
-    selectorDiagnostics[selectorName] = {
+function updateSelectorDiagnostics(selectorName, updates = {}, projectConfigId = "") {
+    const key = diagnosticKey(selectorName, projectConfigId);
+    const current = ensureSelectorDiagnostic(selectorName, projectConfigId);
+    selectorDiagnostics[key] = {
         ...current,
         ...safeDiscoveryDetails(updates),
         lastUpdated: nowTimestamp()
@@ -539,12 +547,12 @@ function updateSelectorDiagnostics(selectorName, updates = {}) {
     renderDiagnosticsPanel();
 }
 
-function incrementStaleIgnored(selectorName, reason) {
-    const current = ensureSelectorDiagnostic(selectorName);
+function incrementStaleIgnored(selectorName, reason, projectConfigId = "") {
+    const current = ensureSelectorDiagnostic(selectorName, projectConfigId);
     updateSelectorDiagnostics(selectorName, {
         staleIgnoredCount: current.staleIgnoredCount + 1,
         message: reason ? t("message.staleIgnoredReason", { reason }) : t("message.staleIgnored")
-    });
+    }, projectConfigId);
 }
 
 function renderDiagnosticsPanel() {
@@ -565,6 +573,15 @@ function renderDiagnosticsPanel() {
 function diagnosticGroups() {
     const diagnostics = Object.values(selectorDiagnostics)
         .sort((left, right) => left.selector.localeCompare(right.selector));
+    const projectGroups = state.ado.projects.map((project, index) => {
+        const projectConfigId = ensureProjectConfigId(project);
+        return {
+            title: `${projectDisplayName(project, index)} (${projectConfigId})`,
+            selectors: [],
+            items: diagnostics.filter((item) => item.projectConfigId === projectConfigId)
+        };
+    });
+    const globalDiagnostics = diagnostics.filter((item) => !item.projectConfigId);
     const groups = [
         { titleKey: "diagnostics.projects", selectors: ["project"], items: [] },
         { titleKey: "diagnostics.workItemTypes", selectors: ["workItemType"], items: [] },
@@ -573,11 +590,11 @@ function diagnosticGroups() {
         { titleKey: "diagnostics.states", selectors: ["designState", "inReviewState", "approvedState"], items: [] },
         { titleKey: "diagnostics.yamlValidation", selectors: [], items: [] }
     ];
-    for (const item of diagnostics) {
+    for (const item of globalDiagnostics) {
         const group = groups.find((candidate) => candidate.selectors.includes(item.selector)) || groups[groups.length - 1];
         group.items.push(item);
     }
-    return groups;
+    return [...projectGroups, ...groups];
 }
 
 function diagnosticGroupMarkup(group) {
@@ -585,7 +602,7 @@ function diagnosticGroupMarkup(group) {
     return `
         <details class="diagnostic-group" open>
             <summary>
-                <strong>${escapeHtml(t(group.titleKey))}</strong>
+                <strong>${escapeHtml(group.title || t(group.titleKey))}</strong>
                 <span>${escapeHtml(t("diagnostics.items", { count: group.items.length, plural: group.items.length === 1 ? "" : "s" }))}</span>
             </summary>
             <div class="diagnostic-grid">
@@ -597,6 +614,7 @@ function diagnosticGroupMarkup(group) {
 
 function diagnosticItemMarkup(item) {
     const metrics = [
+        ["projectConfigId", item.projectConfigId],
         ["backend optionCount", item.backendOptionCount],
         ["received length", item.receivedLength],
         ["normalized length", item.normalizedLength],
@@ -904,12 +922,12 @@ function cleanFieldConflicts(project, changedField) {
     project.fields.reversibleBusinessFields = removeValue(project.fields.reversibleBusinessFields, project.fields.approvedBySqa);
 }
 
-function identityKey(index, role) {
-    return `${index}:${role}`;
+function identityKey(projectConfigId, role) {
+    return `${projectConfigId}:${role}`;
 }
 
-function ensureIdentitySearchState(index, role) {
-    const key = identityKey(index, role);
+function ensureIdentitySearchState(projectConfigId, role) {
+    const key = identityKey(projectConfigId, role);
     if (!identitySearchState[key]) {
         identitySearchState[key] = {
             query: "",
@@ -1104,27 +1122,27 @@ function addUserToRole(project, role, value) {
     return true;
 }
 
-function pendingIdentityValue(index, role) {
-    return ensureIdentitySearchState(index, role).pending?.value || "";
+function pendingIdentityValue(projectConfigId, role) {
+    return ensureIdentitySearchState(projectConfigId, role).pending?.value || "";
 }
 
-function setPendingIdentity(index, role, value) {
-    const searchState = ensureIdentitySearchState(index, role);
+function setPendingIdentity(projectConfigId, role, value) {
+    const searchState = ensureIdentitySearchState(projectConfigId, role);
     const normalized = normalizedIdentity(value);
     searchState.pending = identityOptionsForSearch(searchState)
             .find((option) => normalizedIdentity(option.value) === normalized) || null;
 }
 
-function clearIdentitySearch(index, role) {
-    const searchState = ensureIdentitySearchState(index, role);
-    clearTimeout(identitySearchTimers[identityKey(index, role)]);
+function clearIdentitySearch(projectConfigId, role) {
+    const searchState = ensureIdentitySearchState(projectConfigId, role);
+    clearTimeout(identitySearchTimers[identityKey(projectConfigId, role)]);
     searchState.requestVersion += 1;
     searchState.query = "";
     searchState.pending = null;
     searchState.searching = false;
     searchState.debouncePending = false;
     searchState.lookup = { status: "NOT_CHECKED", message: t("identity.typeToSearch"), values: [], optionCount: 0 };
-    const picker = identityPickerElement(index, role);
+    const picker = identityPickerElement(projectConfigId, role);
     const input = picker?.querySelector("[data-action='identity-search']");
     if (input) {
         input.value = "";
@@ -1137,8 +1155,8 @@ function removeUserFromRole(project, role, value) {
     setRoleUsers(project, role, (roleUsers(project, role) || []).filter((user) => normalizedIdentity(user) !== normalized));
 }
 
-function identitySearchStatus(index, role, project) {
-    const stateForRole = ensureIdentitySearchState(index, role);
+function identitySearchStatus(projectConfigId, role, project) {
+    const stateForRole = ensureIdentitySearchState(projectConfigId, role);
     const selectedCount = (roleUsers(project, role) || []).length;
     const unresolvedCount = unresolvedIdentityCount(project, role);
     const warnings = duplicateIdentityMessages(project).length;
@@ -1169,24 +1187,24 @@ function identitySearchStatus(index, role, project) {
         adoRequestCount: stateForRole.adoRequestCount,
         enabled: true,
         message: sanitizeMessage(stateForRole.lookup.message)
-    });
+    }, projectConfigId);
 }
 
-function identityPickerElement(index, role) {
-    return projectsEl.querySelector(`[data-identity-picker][data-index="${index}"][data-role="${role}"]`);
+function identityPickerElement(projectConfigId, role) {
+    return projectsEl.querySelector(`[data-identity-picker][data-project-config-id="${projectConfigId}"][data-role="${role}"]`);
 }
 
-function updateIdentityPicker(index, role) {
-    const project = state.ado.projects[index];
+function updateIdentityPicker(projectConfigId, role) {
+    const project = projectByConfigId(projectConfigId);
     if (!project) {
         return;
     }
-    const picker = identityPickerElement(index, role);
+    const picker = identityPickerElement(projectConfigId, role);
     if (!picker) {
-        identitySearchStatus(index, role, project);
+        identitySearchStatus(projectConfigId, role, project);
         return;
     }
-    const searchState = ensureIdentitySearchState(index, role);
+    const searchState = ensureIdentitySearchState(projectConfigId, role);
     const pendingEl = picker.querySelector("[data-identity-pending]");
     const resultsEl = picker.querySelector("[data-identity-results]");
     const selectedEl = picker.querySelector("[data-identity-selected]");
@@ -1199,12 +1217,12 @@ function updateIdentityPicker(index, role) {
     if (selectedEl) {
         selectedEl.innerHTML = selectedUserChips(project, role);
     }
-    identitySearchStatus(index, role, project);
+    identitySearchStatus(projectConfigId, role, project);
 }
 
-function updateIdentityPickers(index) {
-    updateIdentityPicker(index, "sme");
-    updateIdentityPicker(index, "sqa");
+function updateIdentityPickers(projectConfigId) {
+    updateIdentityPicker(projectConfigId, "sme");
+    updateIdentityPicker(projectConfigId, "sqa");
 }
 
 function selectedUserChips(project, role) {
@@ -1273,15 +1291,15 @@ function identitySearchResults(project, role, searchState) {
     }).join("")}</div>`;
 }
 
-function identityUserPicker(project, index, role, enabled) {
-    const searchState = ensureIdentitySearchState(index, role);
+function identityUserPicker(project, projectConfigId, role, enabled) {
+    const searchState = ensureIdentitySearchState(projectConfigId, role);
     const disabled = enabled ? "" : "disabled";
-    identitySearchStatus(index, role, project);
+    identitySearchStatus(projectConfigId, role, project);
+    const inputId = projectControlId(projectConfigId, `${role}-identity-search`);
     return `
-        <div class="identity-picker" data-identity-picker data-index="${index}" data-role="${role}">
-            <label>${escapeHtml(t(role === "sme" ? "identity.smeUsers" : "identity.sqaUsers"))}
-                <input type="search" data-action="identity-search" data-role="${role}" value="${escapeHtml(searchState.query)}" placeholder="${escapeHtml(t("identity.searchPlaceholder"))}" ${disabled}>
-            </label>
+        <div class="identity-picker" data-identity-picker data-project-config-id="${projectConfigId}" data-role="${role}">
+            <label for="${inputId}">${escapeHtml(t(role === "sme" ? "identity.smeUsers" : "identity.sqaUsers"))}</label>
+                <input id="${inputId}" type="search" data-action="identity-search" data-role="${role}" value="${escapeHtml(searchState.query)}" placeholder="${escapeHtml(t("identity.searchPlaceholder"))}" ${disabled}>
             <div data-identity-pending>${pendingIdentityPreview(project, role, searchState.pending)}</div>
             <div data-identity-results>${identitySearchResults(project, role, searchState)}</div>
             <div data-identity-selected>${selectedUserChips(project, role)}</div>
@@ -1293,8 +1311,24 @@ function renderedOptionCount(lookup) {
     return selectorOptions(lookup).length;
 }
 
+function newProjectConfigId() {
+    localProjectSequence += 1;
+    return `project-${Date.now().toString(36)}-${localProjectSequence.toString(36)}`;
+}
+
+function ensureProjectConfigId(project) {
+    if (!project.projectConfigId) {
+        Object.defineProperty(project, "projectConfigId", {
+            value: newProjectConfigId(),
+            writable: false,
+            enumerable: false
+        });
+    }
+    return project.projectConfigId;
+}
+
 function createProjectModel() {
-    return {
+    const project = {
         name: "",
         enabled: true,
         supportedWorkItemTypes: [],
@@ -1302,6 +1336,33 @@ function createProjectModel() {
         fields: { approvedBySme: "", approvedBySqa: "", reversibleBusinessFields: [] },
         approvals: { smeUsers: [], sqaUsers: [] }
     };
+    ensureProjectConfigId(project);
+    return project;
+}
+
+function prepareProjectState(project) {
+    project.supportedWorkItemTypes = [...(project.supportedWorkItemTypes || [])];
+    project.states = { design: "Design", inReview: "In Review", approved: "Approved", ...(project.states || {}) };
+    project.fields = {
+        approvedBySme: "",
+        approvedBySqa: "",
+        ...(project.fields || {}),
+        reversibleBusinessFields: [...(project.fields?.reversibleBusinessFields || [])]
+    };
+    project.approvals = {
+        smeUsers: [...(project.approvals?.smeUsers || [])],
+        sqaUsers: [...(project.approvals?.sqaUsers || [])]
+    };
+    ensureProjectConfigId(project);
+    return project;
+}
+
+function projectByConfigId(projectConfigId) {
+    return state.ado.projects.find((project) => ensureProjectConfigId(project) === projectConfigId);
+}
+
+function projectControlId(projectConfigId, controlName) {
+    return `${projectConfigId}-${controlName}`;
 }
 
 function createDiscoveryState() {
@@ -1315,23 +1376,60 @@ function createDiscoveryState() {
 }
 
 function ensureDiscovery() {
-    while (projectDiscovery.length < state.ado.projects.length) {
-        projectDiscovery.push(createDiscoveryState());
+    const activeIds = new Set();
+    for (const project of state.ado.projects) {
+        const projectConfigId = ensureProjectConfigId(project);
+        activeIds.add(projectConfigId);
+        if (!projectDiscovery.has(projectConfigId)) {
+            projectDiscovery.set(projectConfigId, createDiscoveryState());
+        }
+        if (!projectLayoutState.has(projectConfigId)) {
+            projectLayoutState.set(projectConfigId, { collapsed: false });
+        }
     }
-    if (projectDiscovery.length > state.ado.projects.length) {
-        projectDiscovery = projectDiscovery.slice(0, state.ado.projects.length);
-    }
-    while (projectLayoutState.length < state.ado.projects.length) {
-        projectLayoutState.push({ collapsed: false });
-    }
-    if (projectLayoutState.length > state.ado.projects.length) {
-        projectLayoutState = projectLayoutState.slice(0, state.ado.projects.length);
+    for (const projectConfigId of projectDiscovery.keys()) {
+        if (!activeIds.has(projectConfigId)) {
+            projectDiscovery.delete(projectConfigId);
+            projectLayoutState.delete(projectConfigId);
+        }
     }
 }
 
-function projectLayout(index) {
+function projectLayout(projectConfigId) {
     ensureDiscovery();
-    return projectLayoutState[index] || { collapsed: false };
+    return projectLayoutState.get(projectConfigId) || { collapsed: false };
+}
+
+function removeProjectState(projectConfigId) {
+    const index = state.ado.projects.findIndex((project) => ensureProjectConfigId(project) === projectConfigId);
+    if (index >= 0) {
+        state.ado.projects.splice(index, 1);
+    }
+    projectDiscovery.delete(projectConfigId);
+    projectLayoutState.delete(projectConfigId);
+    for (const role of ["sme", "sqa"]) {
+        const key = identityKey(projectConfigId, role);
+        clearTimeout(identitySearchTimers[key]);
+        delete identitySearchTimers[key];
+        delete identitySearchState[key];
+    }
+    for (const key of Object.keys(selectorDiagnostics)) {
+        if (key.startsWith(`${projectConfigId}:`)) {
+            delete selectorDiagnostics[key];
+        }
+    }
+}
+
+function resetProjectScopedState() {
+    for (const timer of Object.values(identitySearchTimers)) {
+        clearTimeout(timer);
+    }
+    projectDiscovery = new Map();
+    projectLayoutState = new Map();
+    identitySearchState = {};
+    identitySearchTimers = {};
+    selectorDiagnostics = {};
+    ensureDiscovery();
 }
 
 function invalidatePreview() {
@@ -1366,22 +1464,23 @@ function clearStaleProjectSelections() {
     if (!lookupHasOptions(projectOptionLookup)) {
         return;
     }
-    state.ado.projects.forEach((project, index) => {
+    state.ado.projects.forEach((project) => {
+        const projectConfigId = ensureProjectConfigId(project);
         if (project.name && !lookupContainsValue(projectOptionLookup, project.name)) {
             project.name = "";
             clearChildSelections(project);
-            clearDiscovery(index, "project");
+            clearDiscovery(projectConfigId, "project");
         }
     });
 }
 
-function clearDiscovery(index, level) {
-    const discovery = projectDiscovery[index];
+function clearDiscovery(projectConfigId, level) {
+    const discovery = projectDiscovery.get(projectConfigId);
     if (!discovery) {
         return;
     }
     discovery.requestToken = ++discoveryRequestSequence;
-    debugDiscovery("dependent-selectors-cleared", { index, level });
+    debugDiscovery("dependent-selectors-cleared", { projectConfigId, level });
     if (level === "project") {
         discovery.projectStatus = { status: "NOT_CHECKED", message: t("message.projectSelectionChanged") };
         discovery.workItemTypes = { status: "NOT_CHECKED", message: t("message.loadProjectAgain"), values: [] };
@@ -1397,7 +1496,7 @@ function clearDiscovery(index, level) {
                 domOptionCount: "",
                 enabled: false,
                 message: t("message.clearedProject")
-            });
+            }, projectConfigId);
         }
     }
     if (level === "type") {
@@ -1413,7 +1512,7 @@ function clearDiscovery(index, level) {
                 domOptionCount: "",
                 enabled: false,
                 message: t("message.clearedWorkItemType")
-            });
+            }, projectConfigId);
         }
     }
 }
@@ -1529,7 +1628,7 @@ function lookupHasOptions(lookup) {
     return lookup?.status === "VALID" && renderedOptionCount(lookup) > 0;
 }
 
-function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector") {
+function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector", projectConfigId = "") {
     const backendOptionCount = lookupOptionCount(lookup);
     const receivedLength = rawOptionItems(lookup).length;
     const renderedOptions = selectorOptions(lookup);
@@ -1553,7 +1652,7 @@ function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector")
         renderedOptionCount: renderedOptions.length,
         enabled: status === "VALID" && renderedOptions.length > 0,
         message
-    });
+    }, projectConfigId);
     if (backendOptionCount > 0 && renderedOptions.length === 0) {
         const message = t("message.selectorEmptyButCount");
         errorDiscovery("selector-render-failed", {
@@ -1573,7 +1672,7 @@ function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector")
             renderedOptionCount: 0,
             enabled: false,
             message
-        });
+        }, projectConfigId);
         return { status: "ERROR", message, values: [], optionCount: 0 };
     }
     if (lookup?.status === "VALID" && renderedOptions.length === 0) {
@@ -1585,29 +1684,29 @@ function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector")
             renderedOptionCount: 0,
             enabled: false,
             message: emptyMessage
-        });
+        }, projectConfigId);
         return { status: "WARNING", message: emptyMessage, values: [], optionCount: 0 };
     }
     return { ...(lookup || {}), values: renderedOptions, optionCount: renderedOptions.length };
 }
 
-function isCurrentDiscoveryRequest(index, requestToken, projectName, workItemType) {
-    const project = state.ado.projects[index];
-    const discovery = projectDiscovery[index];
+function isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName, workItemType) {
+    const project = projectByConfigId(projectConfigId);
+    const discovery = projectDiscovery.get(projectConfigId);
     if (!project || !discovery || discovery.requestToken !== requestToken) {
-        debugDiscovery("stale-response-ignored", { index, projectName, workItemType, reason: "request-token" });
-        incrementStaleIgnored(workItemType === undefined ? "workItemType" : "fields", "request-token");
+        debugDiscovery("stale-response-ignored", { projectConfigId, projectName, workItemType, reason: "request-token" });
+        incrementStaleIgnored(workItemType === undefined ? "workItemType" : "fields", "request-token", projectConfigId);
         return false;
     }
     if ((project.name || "").trim() !== projectName) {
-        debugDiscovery("stale-response-ignored", { index, projectName, workItemType, reason: "project-changed" });
-        incrementStaleIgnored(workItemType === undefined ? "workItemType" : "fields", "project-changed");
+        debugDiscovery("stale-response-ignored", { projectConfigId, projectName, workItemType, reason: "project-changed" });
+        incrementStaleIgnored(workItemType === undefined ? "workItemType" : "fields", "project-changed", projectConfigId);
         return false;
     }
     if (workItemType !== undefined && (project.supportedWorkItemTypes?.[0] || "") !== workItemType) {
-        debugDiscovery("stale-response-ignored", { index, projectName, workItemType, reason: "work-item-type-changed" });
-        incrementStaleIgnored("fields", "work-item-type-changed");
-        incrementStaleIgnored("states", "work-item-type-changed");
+        debugDiscovery("stale-response-ignored", { projectConfigId, projectName, workItemType, reason: "work-item-type-changed" });
+        incrementStaleIgnored("fields", "work-item-type-changed", projectConfigId);
+        incrementStaleIgnored("states", "work-item-type-changed", projectConfigId);
         return false;
     }
     return true;
@@ -1660,10 +1759,10 @@ function isProjectDiscoveryCurrent(project, discovery) {
 function isUiAdoDiscoveryCurrent() {
     ensureDiscovery();
     return (state.ado.projects || []).length > 0
-        && state.ado.projects.every((project, index) => isProjectDiscoveryCurrent(project, projectDiscovery[index]));
+        && state.ado.projects.every((project) => isProjectDiscoveryCurrent(project, projectDiscovery.get(ensureProjectConfigId(project))));
 }
 
-function selectOptions(selectorName, lookup, selected, placeholder, enabled = false) {
+function selectOptions(selectorName, lookup, selected, placeholder, enabled = false, projectConfigId = "") {
     const options = selectorOptions(lookup);
     const hasSelected = options.some((option) => option.value === selected);
     const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
@@ -1692,7 +1791,7 @@ function selectOptions(selectorName, lookup, selected, placeholder, enabled = fa
         duplicateErrors: lookup?.duplicateErrors ?? "",
         enabled: enabled && options.length > 0,
         message: sanitizeMessage(lookup?.message)
-    });
+    }, projectConfigId);
     return rows.join("");
 }
 
@@ -1700,7 +1799,8 @@ function renderProjects() {
     ensureDiscovery();
     projectsEl.innerHTML = "";
     state.ado.projects.forEach((project, index) => {
-        const discovery = projectDiscovery[index];
+        const projectConfigId = ensureProjectConfigId(project);
+        const discovery = projectDiscovery.get(projectConfigId);
         const selectedType = project.supportedWorkItemTypes?.[0] || "";
         const projectVerified = isProjectVerified(discovery, project);
         const dependentOptionsReady = areFieldsAndStatesReady(discovery, project);
@@ -1719,13 +1819,13 @@ function renderProjects() {
         const identityStatus = identityMessages.length
                 ? `<span class="lookup-status">${validationBadge("WARNING")} ${escapeHtml(identityMessages.join(" "))}</span>`
                 : "";
-        const layout = projectLayout(index);
+        const layout = projectLayout(projectConfigId);
         const collapsed = !!layout.collapsed;
         const sectionStatus = projectSectionStatus(project, discovery, fieldDuplicateMessages, identityMessages);
         const canCollapse = projectCanCollapse(project, discovery, fieldDuplicateMessages, identityMessages);
         const collapseDisabled = canCollapse ? "" : "disabled";
         debugDiscovery("selector-state", {
-            index,
+            projectConfigId,
             project: project.name,
             projectVerified,
             projectSelectorDisabled: !!projectSelectorDisabled,
@@ -1753,9 +1853,10 @@ function renderProjects() {
             duplicateErrors: fieldDuplicateMessages.length,
             enabled: fieldAndStateEnabled && fieldLookups.reversibleFieldCount > 0,
             message: sanitizeMessage(fieldDuplicateMessages.join(" ") || discovery.fields?.message)
-        });
+        }, projectConfigId);
         const card = document.createElement("div");
         card.className = `project-card${collapsed ? " collapsed" : ""}`;
+        card.dataset.projectConfigId = projectConfigId;
         card.innerHTML = `
             <div class="project-card-header">
                 ${projectSummary(project, index, selectedType, sectionStatus)}
@@ -1774,8 +1875,8 @@ function renderProjects() {
                 <div class="project-card-body">
                     <div class="selector-grid">
                         <label>${escapeHtml(t("project.projectLabel"))}
-                            <select data-field="name" data-selector-name="project" ${projectSelectorDisabled}>
-                                ${selectOptions("project", projectOptionLookup, project.name || "", t("message.loadProjectFirst"), projectSelectorEnabled)}
+                            <select id="${projectControlId(projectConfigId, "project")}" data-field="name" data-selector-name="project" ${projectSelectorDisabled}>
+                                ${selectOptions("project", projectOptionLookup, project.name || "", t("message.loadProjectFirst"), projectSelectorEnabled, projectConfigId)}
                             </select>
                         </label>
                         <button type="button" data-action="load-project">${escapeHtml(t("button.verifyProject"))}</button>
@@ -1783,43 +1884,43 @@ function renderProjects() {
                     ${lookupBadge(discovery.projectStatus)}
                     <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> ${escapeHtml(t("project.enabled"))}</label>
                     <label>${escapeHtml(t("project.workItemType"))}
-                        <select data-field="supportedWorkItemTypes.0" ${workItemTypeDisabled}>
-                            ${selectOptions("workItemType", discovery.workItemTypes, selectedType, t("message.selectWorkItemTypeFirst"), workItemTypeEnabled)}
+                        <select id="${projectControlId(projectConfigId, "work-item-type")}" data-field="supportedWorkItemTypes.0" ${workItemTypeDisabled}>
+                            ${selectOptions("workItemType", discovery.workItemTypes, selectedType, t("message.selectWorkItemTypeFirst"), workItemTypeEnabled, projectConfigId)}
                         </select>
                     </label>
                     ${lookupBadge(discovery.workItemTypes)}
                     <div class="grid-2">
                         <label>${escapeHtml(t("project.stateDesign"))}
-                            <select data-field="states.design" ${fieldAndStateDisabled}>
-                                ${selectOptions("designState", discovery.states, project.states.design || "", t("message.noStates"), fieldAndStateEnabled)}
+                            <select id="${projectControlId(projectConfigId, "state-design")}" data-field="states.design" ${fieldAndStateDisabled}>
+                                ${selectOptions("designState", discovery.states, project.states.design || "", t("message.noStates"), fieldAndStateEnabled, projectConfigId)}
                             </select>
                         </label>
                         <label>${escapeHtml(t("project.stateInReview"))}
-                            <select data-field="states.inReview" ${fieldAndStateDisabled}>
-                                ${selectOptions("inReviewState", discovery.states, project.states.inReview || "", t("message.noStates"), fieldAndStateEnabled)}
+                            <select id="${projectControlId(projectConfigId, "state-in-review")}" data-field="states.inReview" ${fieldAndStateDisabled}>
+                                ${selectOptions("inReviewState", discovery.states, project.states.inReview || "", t("message.noStates"), fieldAndStateEnabled, projectConfigId)}
                             </select>
                         </label>
                     </div>
                     <label>${escapeHtml(t("project.stateApproved"))}
-                        <select data-field="states.approved" ${fieldAndStateDisabled}>
-                            ${selectOptions("approvedState", discovery.states, project.states.approved || "", t("message.noStates"), fieldAndStateEnabled)}
+                        <select id="${projectControlId(projectConfigId, "state-approved")}" data-field="states.approved" ${fieldAndStateDisabled}>
+                            ${selectOptions("approvedState", discovery.states, project.states.approved || "", t("message.noStates"), fieldAndStateEnabled, projectConfigId)}
                         </select>
                     </label>
                     ${lookupBadge(discovery.states)}
                     <div class="grid-2">
                         <label>${escapeHtml(t("project.fieldApprovedBySme"))}
-                            <select data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
-                                ${selectOptions("approvedBySmeField", fieldLookups.smeLookup, project.fields.approvedBySme || "", t("message.noFields"), fieldAndStateEnabled)}
+                            <select id="${projectControlId(projectConfigId, "field-sme")}" data-field="fields.approvedBySme" ${fieldAndStateDisabled}>
+                                ${selectOptions("approvedBySmeField", fieldLookups.smeLookup, project.fields.approvedBySme || "", t("message.noFields"), fieldAndStateEnabled, projectConfigId)}
                             </select>
                         </label>
                         <label>${escapeHtml(t("project.fieldApprovedBySqa"))}
-                            <select data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
-                                ${selectOptions("approvedBySqaField", fieldLookups.sqaLookup, project.fields.approvedBySqa || "", t("message.noFields"), fieldAndStateEnabled)}
+                            <select id="${projectControlId(projectConfigId, "field-sqa")}" data-field="fields.approvedBySqa" ${fieldAndStateDisabled}>
+                                ${selectOptions("approvedBySqaField", fieldLookups.sqaLookup, project.fields.approvedBySqa || "", t("message.noFields"), fieldAndStateEnabled, projectConfigId)}
                             </select>
                         </label>
                     </div>
                     <label>${escapeHtml(t("project.reversibleBusinessFields"))}
-                        <select data-field="fields.reversibleBusinessFields" multiple size="6" ${fieldAndStateDisabled}>
+                        <select id="${projectControlId(projectConfigId, "fields-reversible")}" data-field="fields.reversibleBusinessFields" multiple size="6" ${fieldAndStateDisabled}>
                             ${selectorOptions(fieldLookups.reversibleLookup).map((option) => `
                                 <option value="${escapeHtml(option.value)}" ${(project.fields.reversibleBusinessFields || []).includes(option.value) ? "selected" : ""}>
                                     ${escapeHtml(optionLabel(option, "reversibleBusinessFields"))}
@@ -1830,8 +1931,8 @@ function renderProjects() {
                     ${lookupBadge(discovery.fields)}
                     ${fieldDuplicateStatus}
                     <div class="grid-2">
-                        ${identityUserPicker(project, index, "sme", projectVerified)}
-                        ${identityUserPicker(project, index, "sqa", projectVerified)}
+                        ${identityUserPicker(project, projectConfigId, "sme", projectVerified)}
+                        ${identityUserPicker(project, projectConfigId, "sqa", projectVerified)}
                     </div>
                     ${identityStatus}
                     <div class="row-between">
@@ -1843,16 +1944,14 @@ function renderProjects() {
         `;
 
         card.addEventListener("input", (event) => {
-            handleProjectInput(project, index, event);
+            handleProjectInput(projectConfigId, event);
         });
         card.addEventListener("change", (event) => {
-            handleProjectInput(project, index, event);
+            handleProjectInput(projectConfigId, event);
         });
 
         card.querySelector("[data-action='remove']").addEventListener("click", () => {
-            state.ado.projects.splice(index, 1);
-            projectDiscovery.splice(index, 1);
-            projectLayoutState.splice(index, 1);
+            removeProjectState(projectConfigId);
             invalidatePreview();
             renderProjects();
             schedulePreview();
@@ -1860,9 +1959,9 @@ function renderProjects() {
 
         card.querySelector("[data-action='toggle-project']").addEventListener("click", () => {
             if (collapsed) {
-                projectLayout(index).collapsed = false;
+                projectLayout(projectConfigId).collapsed = false;
             } else if (canCollapse) {
-                projectLayout(index).collapsed = true;
+                projectLayout(projectConfigId).collapsed = true;
             }
             renderProjects();
         });
@@ -1870,29 +1969,29 @@ function renderProjects() {
         if (collapseButton) {
             collapseButton.addEventListener("click", () => {
                 if (!canCollapse) {
-                    projectLayout(index).collapsed = false;
+                    projectLayout(projectConfigId).collapsed = false;
                     setStatus(t("status.resolveBeforeCollapse"), true);
                     renderProjects();
                     return;
                 }
-                projectLayout(index).collapsed = true;
+                projectLayout(projectConfigId).collapsed = true;
                 renderProjects();
             });
         }
         const loadProjectButton = card.querySelector("[data-action='load-project']");
         if (loadProjectButton) {
             loadProjectButton.addEventListener("click", async () => {
-                await loadProject(index);
+                await loadProject(projectConfigId);
             });
         }
         for (const input of card.querySelectorAll("[data-action='identity-search']")) {
             input.addEventListener("input", (event) => {
-                handleIdentitySearchInput(index, event.target.getAttribute("data-role"), event.target.value);
+                handleIdentitySearchInput(projectConfigId, event.target.getAttribute("data-role"), event.target.value);
             });
             input.addEventListener("keydown", (event) => {
                 if (event.key === "Enter") {
                     event.preventDefault();
-                    addPendingIdentity(index, event.target.getAttribute("data-role"));
+                    addPendingIdentity(projectConfigId, event.target.getAttribute("data-role"));
                 }
             });
         }
@@ -1903,16 +2002,16 @@ function renderProjects() {
             }
             const role = button.getAttribute("data-role");
             if (button.getAttribute("data-action") === "select-pending-user") {
-                setPendingIdentity(index, role, button.getAttribute("data-user-value"));
-                updateIdentityPicker(index, role);
+                setPendingIdentity(projectConfigId, role, button.getAttribute("data-user-value"));
+                updateIdentityPicker(projectConfigId, role);
                 return;
             }
             if (button.getAttribute("data-action") === "add-pending-user") {
-                addPendingIdentity(index, role);
+                addPendingIdentity(projectConfigId, role);
                 return;
             }
             removeUserFromRole(project, role, button.getAttribute("data-user-value"));
-            updateIdentityPickers(index);
+            updateIdentityPickers(projectConfigId);
             schedulePreview();
         });
 
@@ -1920,7 +2019,11 @@ function renderProjects() {
     });
 }
 
-function handleProjectInput(project, index, event) {
+function handleProjectInput(projectConfigId, event) {
+    const project = projectByConfigId(projectConfigId);
+    if (!project) {
+        return;
+    }
     const field = event.target.getAttribute("data-field");
     if (!field) {
         return;
@@ -1937,9 +2040,9 @@ function handleProjectInput(project, index, event) {
 
     if (field === "name") {
         project.name = event.target.value;
-        projectLayout(index).collapsed = false;
+        projectLayout(projectConfigId).collapsed = false;
         clearChildSelections(project);
-        clearDiscovery(index, "project");
+        clearDiscovery(projectConfigId, "project");
         if (event.type === "change") {
             renderProjects();
         }
@@ -1949,11 +2052,11 @@ function handleProjectInput(project, index, event) {
 
     if (field === "supportedWorkItemTypes.0") {
         project.supportedWorkItemTypes = event.target.value ? [event.target.value] : [];
-        projectLayout(index).collapsed = false;
+        projectLayout(projectConfigId).collapsed = false;
         clearTypeSelections(project);
-        clearDiscovery(index, "type");
+        clearDiscovery(projectConfigId, "type");
         renderProjects();
-        loadFieldAndStateOptions(index).catch((error) => setStatus(error.message, true));
+        loadFieldAndStateOptions(projectConfigId).catch((error) => setStatus(error.message, true));
         schedulePreview();
         return;
     }
@@ -1978,8 +2081,8 @@ function handleProjectInput(project, index, event) {
     schedulePreview();
 }
 
-function handleIdentitySearchInput(index, role, query) {
-    const stateForRole = ensureIdentitySearchState(index, role);
+function handleIdentitySearchInput(projectConfigId, role, query) {
+    const stateForRole = ensureIdentitySearchState(projectConfigId, role);
     stateForRole.query = query || "";
     stateForRole.pending = null;
     stateForRole.searching = false;
@@ -1988,12 +2091,12 @@ function handleIdentitySearchInput(index, role, query) {
     stateForRole.backendCacheHit = false;
     stateForRole.backendCacheMiss = false;
     stateForRole.debouncePending = false;
-    clearTimeout(identitySearchTimers[identityKey(index, role)]);
+    clearTimeout(identitySearchTimers[identityKey(projectConfigId, role)]);
     const normalizedQuery = normalizedIdentity(stateForRole.query);
     if (normalizedQuery.length < IDENTITY_MIN_QUERY_LENGTH) {
         stateForRole.lookup = { status: "NOT_CHECKED", message: t("identity.typeToSearch"), values: [], optionCount: 0 };
         stateForRole.searching = false;
-        updateIdentityPicker(index, role);
+        updateIdentityPicker(projectConfigId, role);
         return;
     }
 
@@ -2005,7 +2108,7 @@ function handleIdentitySearchInput(index, role, query) {
         cacheIdentityOptions(cached.options);
         if (cached.exact || cached.options.length >= IDENTITY_CACHE_USEFUL_RESULT_COUNT) {
             stateForRole.searching = false;
-            updateIdentityPicker(index, role);
+            updateIdentityPicker(projectConfigId, role);
             return;
         }
     } else {
@@ -2013,26 +2116,26 @@ function handleIdentitySearchInput(index, role, query) {
         stateForRole.lookup = { status: "NOT_CHECKED", message: t("identity.searching"), values: [], optionCount: 0 };
     }
     stateForRole.debouncePending = true;
-    updateIdentityPicker(index, role);
+    updateIdentityPicker(projectConfigId, role);
     const requestVersion = stateForRole.requestVersion;
-    identitySearchTimers[identityKey(index, role)] = setTimeout(() => {
-        loadIdentityOptions(index, role, normalizedQuery, requestVersion).catch((error) => setStatus(error.message, true));
+    identitySearchTimers[identityKey(projectConfigId, role)] = setTimeout(() => {
+        loadIdentityOptions(projectConfigId, role, normalizedQuery, requestVersion).catch((error) => setStatus(error.message, true));
     }, IDENTITY_SEARCH_DEBOUNCE_MS);
 }
 
-function addPendingIdentity(index, role) {
-    const project = state.ado.projects[index];
+function addPendingIdentity(projectConfigId, role) {
+    const project = projectByConfigId(projectConfigId);
     if (!project) {
         return;
     }
-    const value = pendingIdentityValue(index, role);
+    const value = pendingIdentityValue(projectConfigId, role);
     if (!isResolvableIdentityValue(value)) {
-        updateIdentityPicker(index, role);
+        updateIdentityPicker(projectConfigId, role);
         return;
     }
     if (addUserToRole(project, role, value)) {
-        clearIdentitySearch(index, role);
-        updateIdentityPickers(index);
+        clearIdentitySearch(projectConfigId, role);
+        updateIdentityPickers(projectConfigId);
         schedulePreview();
     }
 }
@@ -2156,22 +2259,25 @@ async function loadProjects() {
     schedulePreview();
 }
 
-async function loadProject(index) {
+async function loadProject(projectConfigId) {
     readFormToState();
     ensureDiscovery();
-    const project = state.ado.projects[index];
-    const discovery = projectDiscovery[index];
+    const project = projectByConfigId(projectConfigId);
+    const discovery = projectDiscovery.get(projectConfigId);
+    if (!project || !discovery) {
+        return;
+    }
     const projectName = (project.name || "").trim();
-    debugDiscovery("verify-project-clicked", { index, project: projectName });
+    debugDiscovery("verify-project-clicked", { projectConfigId, project: projectName });
     clearChildSelections(project);
-    clearDiscovery(index, "project");
+    clearDiscovery(projectConfigId, "project");
     const requestToken = ++discoveryRequestSequence;
     discovery.requestToken = requestToken;
     const projectStatus = await discover("verify-project", "/api/config-ui/discovery/validate-project", {
         organization: state.ado.organization,
         project: projectName
     });
-    if (!isCurrentDiscoveryRequest(index, requestToken, projectName)) {
+    if (!isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName)) {
         return;
     }
     discovery.projectStatus = projectStatus;
@@ -2180,38 +2286,42 @@ async function loadProject(index) {
             organization: state.ado.organization,
             project: projectName
         });
-        if (!isCurrentDiscoveryRequest(index, requestToken, projectName)) {
+        if (!isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName)) {
             return;
         }
         discovery.workItemTypes = normalizeOptionsLookup(
                 workItemTypes,
                 t("message.noWorkItemTypes"),
-                "workItemType"
+                "workItemType",
+                projectConfigId
         );
         debugDiscovery("selector-populated", {
-            index,
+            projectConfigId,
             selector: "workItemType",
             status: discovery.workItemTypes.status,
             backendOptionCount: lookupOptionCount(workItemTypes),
             renderedOptionCount: renderedOptionCount(discovery.workItemTypes)
         });
     } else {
-        projectLayout(index).collapsed = false;
+        projectLayout(projectConfigId).collapsed = false;
         discovery.workItemTypes = { status: "NOT_CHECKED", message: t("message.verifyBeforeType"), values: [], optionCount: 0 };
     }
     renderProjects();
     schedulePreview();
 }
 
-async function loadFieldAndStateOptions(index) {
+async function loadFieldAndStateOptions(projectConfigId) {
     readFormToState();
     ensureDiscovery();
-    const project = state.ado.projects[index];
+    const project = projectByConfigId(projectConfigId);
+    if (!project) {
+        return;
+    }
     const type = project.supportedWorkItemTypes?.[0] || "";
     if (!project.name || !type) {
         return;
     }
-    const discovery = projectDiscovery[index];
+    const discovery = projectDiscovery.get(projectConfigId);
     if (!isProjectVerified(discovery, project)) {
         discovery.fields = { status: "NOT_CHECKED", message: t("message.verifyProjectFirst"), values: [], optionCount: 0 };
         discovery.states = { status: "NOT_CHECKED", message: t("message.verifyProjectFirst"), values: [], optionCount: 0 };
@@ -2227,7 +2337,7 @@ async function loadFieldAndStateOptions(index) {
         project: projectName,
         workItemType: type
     });
-    if (!isCurrentDiscoveryRequest(index, requestToken, projectName, type)) {
+    if (!isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName, type)) {
         return;
     }
     const states = await discover("load-states", "/api/config-ui/discovery/states", {
@@ -2235,20 +2345,20 @@ async function loadFieldAndStateOptions(index) {
         project: projectName,
         workItemType: type
     });
-    if (!isCurrentDiscoveryRequest(index, requestToken, projectName, type)) {
+    if (!isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName, type)) {
         return;
     }
-    discovery.fields = normalizeOptionsLookup(fields, t("message.noFields"), "fields");
-    discovery.states = normalizeOptionsLookup(states, t("message.noStates"), "states");
+    discovery.fields = normalizeOptionsLookup(fields, t("message.noFields"), "fields", projectConfigId);
+    discovery.states = normalizeOptionsLookup(states, t("message.noStates"), "states", projectConfigId);
     debugDiscovery("selector-populated", {
-        index,
+        projectConfigId,
         selector: "fields",
         status: discovery.fields.status,
         backendOptionCount: lookupOptionCount(fields),
         renderedOptionCount: renderedOptionCount(discovery.fields)
     });
     debugDiscovery("selector-populated", {
-        index,
+        projectConfigId,
         selector: "states",
         status: discovery.states.status,
         backendOptionCount: lookupOptionCount(states),
@@ -2258,41 +2368,42 @@ async function loadFieldAndStateOptions(index) {
     schedulePreview();
 }
 
-async function loadIdentityOptions(index, role, query, requestVersion) {
+async function loadIdentityOptions(projectConfigId, role, query, requestVersion) {
     readFormToState();
     ensureDiscovery();
-    const project = state.ado.projects[index];
-    const discovery = projectDiscovery[index];
+    const project = projectByConfigId(projectConfigId);
+    const discovery = projectDiscovery.get(projectConfigId);
     if (!project || !isProjectVerified(discovery, project)) {
-        const searchState = ensureIdentitySearchState(index, role);
+        const searchState = ensureIdentitySearchState(projectConfigId, role);
         searchState.lookup = { status: "NOT_CHECKED", message: t("message.verifyBeforeUsers"), values: [], optionCount: 0 };
-        updateIdentityPicker(index, role);
+        updateIdentityPicker(projectConfigId, role);
         return;
     }
-    const searchState = ensureIdentitySearchState(index, role);
+    const searchState = ensureIdentitySearchState(projectConfigId, role);
     const requestQuery = normalizedIdentity(query);
     if (searchState.requestVersion !== requestVersion || normalizedIdentity(searchState.query) !== requestQuery) {
-        incrementStaleIgnored(`${role}Users`, "identity-query-changed-before-request");
+        incrementStaleIgnored(`${role}Users`, "identity-query-changed-before-request", projectConfigId);
         return;
     }
     searchState.debouncePending = false;
     searchState.searching = true;
     searchState.backendRequestCount += 1;
-    updateIdentityPicker(index, role);
+    updateIdentityPicker(projectConfigId, role);
     const result = await discover("search-users", "/api/config-ui/discovery/users/search", {
         organization: state.ado.organization,
         project: project.name,
         query: requestQuery
     });
-    if (ensureIdentitySearchState(index, role).requestVersion !== requestVersion
-            || normalizedIdentity(ensureIdentitySearchState(index, role).query) !== requestQuery) {
-        incrementStaleIgnored(`${role}Users`, "identity-query-changed");
+    if (ensureIdentitySearchState(projectConfigId, role).requestVersion !== requestVersion
+            || normalizedIdentity(ensureIdentitySearchState(projectConfigId, role).query) !== requestQuery) {
+        incrementStaleIgnored(`${role}Users`, "identity-query-changed", projectConfigId);
         return;
     }
     searchState.lookup = normalizeOptionsLookup(
             result,
             t("message.noIdentities"),
-            `${role}Users`
+            `${role}Users`,
+            projectConfigId
     );
     cacheIdentityOptions(selectorOptions(searchState.lookup));
     if (searchState.lookup.status === "VALID" || searchState.lookup.status === "WARNING") {
@@ -2305,14 +2416,14 @@ async function loadIdentityOptions(index, role, query, requestVersion) {
     searchState.adoRequestCount = Number(backendDiagnostics.adoRequestCount ?? searchState.adoRequestCount);
     searchState.searching = false;
     debugDiscovery("selector-populated", {
-        index,
+        projectConfigId,
         selector: `${role}Users`,
         status: searchState.lookup.status,
         backendOptionCount: lookupOptionCount(result),
         renderedOptionCount: renderedOptionCount(searchState.lookup),
         queryLength: requestQuery.length
     });
-    updateIdentityPicker(index, role);
+    updateIdentityPicker(projectConfigId, role);
 }
 
 async function previewDraft(showStatus = true) {
@@ -2376,11 +2487,11 @@ function renderDiscoveredProjectsDebug(options) {
         button.addEventListener("click", () => {
             if (state.ado.projects.length === 0) {
                 state.ado.projects.push(createProjectModel());
-                projectDiscovery.push(createDiscoveryState());
+                ensureDiscovery();
             }
             state.ado.projects[0].name = button.getAttribute("data-project-value") || "";
             clearChildSelections(state.ado.projects[0]);
-            clearDiscovery(0, "project");
+            clearDiscovery(ensureProjectConfigId(state.ado.projects[0]), "project");
             renderProjects();
             schedulePreview();
         });
@@ -2398,8 +2509,7 @@ function handleOrganizationChanged() {
     for (const project of state.ado.projects) {
         clearChildSelections(project);
     }
-    projectDiscovery = state.ado.projects.map(createDiscoveryState);
-    projectLayoutState = state.ado.projects.map(() => ({ collapsed: false }));
+    resetProjectScopedState();
     renderProjectSelectors();
     renderProjects();
     schedulePreview();
@@ -2414,7 +2524,8 @@ async function initialize() {
     if (!Array.isArray(state.ado.projects)) {
         state.ado.projects = [];
     }
-    projectDiscovery = state.ado.projects.map(createDiscoveryState);
+    state.ado.projects = state.ado.projects.map(prepareProjectState);
+    resetProjectScopedState();
     fillFormFromState();
     saveBtn.disabled = true;
     setStatus(t("status.loaded"));
@@ -2445,8 +2556,7 @@ document.getElementById("idempotencyMaxRecords").addEventListener("input", handl
 
 document.getElementById("addProject").addEventListener("click", () => {
     state.ado.projects.push(createProjectModel());
-    projectDiscovery.push(createDiscoveryState());
-    projectLayoutState.push({ collapsed: false });
+    ensureDiscovery();
     renderProjects();
     schedulePreview();
 });
