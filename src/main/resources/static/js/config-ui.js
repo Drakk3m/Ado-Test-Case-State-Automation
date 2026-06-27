@@ -18,6 +18,12 @@ let selectorDiagnostics = {};
 let identitySearchState = {};
 let identitySearchTimers = {};
 let identityOptionCache = {};
+const identitySearchResultCache = new Map();
+const IDENTITY_MIN_QUERY_LENGTH = 3;
+const IDENTITY_SEARCH_DEBOUNCE_MS = 450;
+const IDENTITY_CACHE_TTL_MS = 10 * 60 * 1000;
+const IDENTITY_CACHE_MAX_ENTRIES = 50;
+const IDENTITY_CACHE_USEFUL_RESULT_COUNT = 3;
 let projectLayoutState = [];
 const LANGUAGE_STORAGE_KEY = "configUiLanguage";
 let currentLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en";
@@ -79,7 +85,7 @@ const I18N = {
         "identity.pendingUnresolved": "Selected result has no email/login and cannot be added.",
         "identity.noResults": "No matching users yet.",
         "identity.searching": "Searching...",
-        "identity.typeToSearch": "Type at least 2 characters to search ADO identities.",
+        "identity.typeToSearch": "Type at least 3 characters to search ADO identities.",
         "diagnostics.visibleWhenDebug": "Visible only when config UI debug is enabled.",
         "diagnostics.description": "Selector diagnostics show the discovered options normalized and rendered into real selector controls.",
         "diagnostics.noItems": "No diagnostics captured yet.",
@@ -198,7 +204,7 @@ const I18N = {
         "identity.pendingUnresolved": "Le résultat sélectionné n'a pas d'e-mail/login et ne peut pas être ajouté.",
         "identity.noResults": "Aucun utilisateur correspondant pour le moment.",
         "identity.searching": "Recherche...",
-        "identity.typeToSearch": "Saisissez au moins 2 caractères pour rechercher des identités ADO.",
+        "identity.typeToSearch": "Saisissez au moins 3 caractères pour rechercher des identités ADO.",
         "diagnostics.visibleWhenDebug": "Visible uniquement quand le débogage de l'UI de configuration est activé.",
         "diagnostics.description": "Les diagnostics des sélecteurs montrent les options découvertes, normalisées et rendues dans de vrais sélecteurs.",
         "diagnostics.noItems": "Aucun diagnostic capturé pour le moment.",
@@ -317,7 +323,7 @@ const I18N = {
         "identity.pendingUnresolved": "El resultado seleccionado no tiene email/login y no puede agregarse.",
         "identity.noResults": "Aún no hay usuarios coincidentes.",
         "identity.searching": "Buscando...",
-        "identity.typeToSearch": "Escribe al menos 2 caracteres para buscar identidades ADO.",
+        "identity.typeToSearch": "Escribe al menos 3 caracteres para buscar identidades ADO.",
         "diagnostics.visibleWhenDebug": "Visible sólo cuando el debug del Config UI está habilitado.",
         "diagnostics.description": "Los diagnósticos de selectores muestran las opciones descubiertas, normalizadas y renderizadas en controles reales.",
         "diagnostics.noItems": "Aún no hay diagnósticos capturados.",
@@ -506,6 +512,14 @@ function ensureSelectorDiagnostic(selectorName) {
             selectedCount: "",
             unresolvedCount: "",
             identityWarnings: "",
+            debouncePending: false,
+            frontendCacheHit: false,
+            frontendCacheHits: 0,
+            frontendCacheMisses: 0,
+            backendCacheHit: false,
+            backendCacheMiss: false,
+            backendRequestCount: 0,
+            adoRequestCount: 0,
             enabled: false,
             message: "",
             staleIgnoredCount: 0,
@@ -598,6 +612,14 @@ function diagnosticItemMarkup(item) {
         ["selected users", item.selectedCount],
         ["unresolved users", item.unresolvedCount],
         ["identity warnings", item.identityWarnings],
+        ["debounce pending", item.debouncePending],
+        ["frontend cache hit", item.frontendCacheHit],
+        ["frontend cache hits", item.frontendCacheHits],
+        ["frontend cache misses", item.frontendCacheMisses],
+        ["backend cache hit", item.backendCacheHit],
+        ["backend cache miss", item.backendCacheMiss],
+        ["backend requests", item.backendRequestCount],
+        ["ADO requests", item.adoRequestCount],
         ["stale ignored", item.staleIgnoredCount]
     ].filter((metric) => metric[1] !== "" && metric[1] !== null && metric[1] !== undefined);
     return `
@@ -893,7 +915,15 @@ function ensureIdentitySearchState(index, role) {
             query: "",
             lookup: { status: "NOT_CHECKED", message: t("identity.typeToSearch"), values: [], optionCount: 0 },
             pending: null,
-            searching: false
+            searching: false,
+            debouncePending: false,
+            requestVersion: 0,
+            frontendCacheHits: 0,
+            frontendCacheMisses: 0,
+            backendRequestCount: 0,
+            adoRequestCount: 0,
+            backendCacheHit: false,
+            backendCacheMiss: false
         };
     }
     return identitySearchState[key];
@@ -1001,6 +1031,59 @@ function identityContainsQuery(option, query) {
             .includes(normalizedQuery);
 }
 
+function identitySearchCacheKey(organization, query) {
+    return `${normalizedIdentity(organization)}::${normalizedIdentity(query)}`;
+}
+
+function pruneIdentitySearchCache(now = Date.now()) {
+    for (const [key, entry] of identitySearchResultCache) {
+        if (now - entry.createdAt >= IDENTITY_CACHE_TTL_MS) {
+            identitySearchResultCache.delete(key);
+        }
+    }
+    while (identitySearchResultCache.size > IDENTITY_CACHE_MAX_ENTRIES) {
+        identitySearchResultCache.delete(identitySearchResultCache.keys().next().value);
+    }
+}
+
+function putIdentitySearchCache(organization, query, options) {
+    const key = identitySearchCacheKey(organization, query);
+    identitySearchResultCache.delete(key);
+    identitySearchResultCache.set(key, {
+        organization: normalizedIdentity(organization),
+        query: normalizedIdentity(query),
+        options: (options || []).map((option) => ({ ...option })),
+        createdAt: Date.now()
+    });
+    pruneIdentitySearchCache();
+}
+
+function findIdentitySearchCache(organization, query) {
+    pruneIdentitySearchCache();
+    const normalizedOrganization = normalizedIdentity(organization);
+    const normalizedQuery = normalizedIdentity(query);
+    const exact = identitySearchResultCache.get(identitySearchCacheKey(organization, query));
+    if (exact) {
+        return { exact: true, options: exact.options.filter((option) => identityContainsQuery(option, normalizedQuery)) };
+    }
+    const broader = Array.from(identitySearchResultCache.values())
+            .filter((entry) => entry.organization === normalizedOrganization && normalizedQuery.startsWith(entry.query))
+            .sort((left, right) => right.query.length - left.query.length)[0];
+    if (!broader) {
+        return null;
+    }
+    return { exact: false, options: broader.options.filter((option) => identityContainsQuery(option, normalizedQuery)) };
+}
+
+function identityLookupFromCache(options) {
+    return {
+        status: options.length > 0 ? "VALID" : "WARNING",
+        message: options.length > 0 ? "" : t("identity.noResults"),
+        values: options,
+        optionCount: options.length
+    };
+}
+
 function identityOptionsForSearch(searchState) {
     const options = selectorOptions(searchState.lookup);
     const filtered = options.filter((option) => identityContainsQuery(option, searchState.query));
@@ -1034,8 +1117,12 @@ function setPendingIdentity(index, role, value) {
 
 function clearIdentitySearch(index, role) {
     const searchState = ensureIdentitySearchState(index, role);
+    clearTimeout(identitySearchTimers[identityKey(index, role)]);
+    searchState.requestVersion += 1;
     searchState.query = "";
     searchState.pending = null;
+    searchState.searching = false;
+    searchState.debouncePending = false;
     searchState.lookup = { status: "NOT_CHECKED", message: t("identity.typeToSearch"), values: [], optionCount: 0 };
     const picker = identityPickerElement(index, role);
     const input = picker?.querySelector("[data-action='identity-search']");
@@ -1072,6 +1159,14 @@ function identitySearchStatus(index, role, project) {
         selectedCount,
         unresolvedCount,
         identityWarnings: warnings,
+        debouncePending: stateForRole.debouncePending,
+        frontendCacheHit: stateForRole.frontendCacheHit || false,
+        frontendCacheHits: stateForRole.frontendCacheHits,
+        frontendCacheMisses: stateForRole.frontendCacheMisses,
+        backendCacheHit: stateForRole.backendCacheHit,
+        backendCacheMiss: stateForRole.backendCacheMiss,
+        backendRequestCount: stateForRole.backendRequestCount,
+        adoRequestCount: stateForRole.adoRequestCount,
         enabled: true,
         message: sanitizeMessage(stateForRole.lookup.message)
     });
@@ -1887,20 +1982,42 @@ function handleIdentitySearchInput(index, role, query) {
     const stateForRole = ensureIdentitySearchState(index, role);
     stateForRole.query = query || "";
     stateForRole.pending = null;
-    stateForRole.lookup = stateForRole.query.trim().length < 2
-            ? { status: "NOT_CHECKED", message: "Type at least 2 characters to search ADO identities.", values: [], optionCount: 0 }
-            : stateForRole.lookup;
-    if (stateForRole.query.trim().length < 2) {
-        stateForRole.searching = false;
-    }
-    updateIdentityPicker(index, role);
+    stateForRole.searching = false;
+    stateForRole.requestVersion += 1;
+    stateForRole.frontendCacheHit = false;
+    stateForRole.backendCacheHit = false;
+    stateForRole.backendCacheMiss = false;
+    stateForRole.debouncePending = false;
     clearTimeout(identitySearchTimers[identityKey(index, role)]);
-    if (stateForRole.query.trim().length < 2) {
+    const normalizedQuery = normalizedIdentity(stateForRole.query);
+    if (normalizedQuery.length < IDENTITY_MIN_QUERY_LENGTH) {
+        stateForRole.lookup = { status: "NOT_CHECKED", message: t("identity.typeToSearch"), values: [], optionCount: 0 };
+        stateForRole.searching = false;
+        updateIdentityPicker(index, role);
         return;
     }
+
+    const cached = findIdentitySearchCache(state.ado.organization, normalizedQuery);
+    if (cached) {
+        stateForRole.frontendCacheHit = true;
+        stateForRole.frontendCacheHits += 1;
+        stateForRole.lookup = identityLookupFromCache(cached.options);
+        cacheIdentityOptions(cached.options);
+        if (cached.exact || cached.options.length >= IDENTITY_CACHE_USEFUL_RESULT_COUNT) {
+            stateForRole.searching = false;
+            updateIdentityPicker(index, role);
+            return;
+        }
+    } else {
+        stateForRole.frontendCacheMisses += 1;
+        stateForRole.lookup = { status: "NOT_CHECKED", message: t("identity.searching"), values: [], optionCount: 0 };
+    }
+    stateForRole.debouncePending = true;
+    updateIdentityPicker(index, role);
+    const requestVersion = stateForRole.requestVersion;
     identitySearchTimers[identityKey(index, role)] = setTimeout(() => {
-        loadIdentityOptions(index, role, stateForRole.query.trim()).catch((error) => setStatus(error.message, true));
-    }, 300);
+        loadIdentityOptions(index, role, normalizedQuery, requestVersion).catch((error) => setStatus(error.message, true));
+    }, IDENTITY_SEARCH_DEBOUNCE_MS);
 }
 
 function addPendingIdentity(index, role) {
@@ -2141,7 +2258,7 @@ async function loadFieldAndStateOptions(index) {
     schedulePreview();
 }
 
-async function loadIdentityOptions(index, role, query) {
+async function loadIdentityOptions(index, role, query, requestVersion) {
     readFormToState();
     ensureDiscovery();
     const project = state.ado.projects[index];
@@ -2153,15 +2270,22 @@ async function loadIdentityOptions(index, role, query) {
         return;
     }
     const searchState = ensureIdentitySearchState(index, role);
-    const requestQuery = query || "";
+    const requestQuery = normalizedIdentity(query);
+    if (searchState.requestVersion !== requestVersion || normalizedIdentity(searchState.query) !== requestQuery) {
+        incrementStaleIgnored(`${role}Users`, "identity-query-changed-before-request");
+        return;
+    }
+    searchState.debouncePending = false;
     searchState.searching = true;
+    searchState.backendRequestCount += 1;
     updateIdentityPicker(index, role);
     const result = await discover("search-users", "/api/config-ui/discovery/users/search", {
         organization: state.ado.organization,
         project: project.name,
         query: requestQuery
     });
-    if (ensureIdentitySearchState(index, role).query.trim() !== requestQuery) {
+    if (ensureIdentitySearchState(index, role).requestVersion !== requestVersion
+            || normalizedIdentity(ensureIdentitySearchState(index, role).query) !== requestQuery) {
         incrementStaleIgnored(`${role}Users`, "identity-query-changed");
         return;
     }
@@ -2171,6 +2295,14 @@ async function loadIdentityOptions(index, role, query) {
             `${role}Users`
     );
     cacheIdentityOptions(selectorOptions(searchState.lookup));
+    if (searchState.lookup.status === "VALID" || searchState.lookup.status === "WARNING") {
+        putIdentitySearchCache(state.ado.organization, requestQuery, selectorOptions(searchState.lookup));
+    }
+    const backendDiagnostics = result.diagnostics || {};
+    searchState.backendCacheHit = backendDiagnostics.backendCacheHit === true;
+    searchState.backendCacheMiss = backendDiagnostics.backendCacheMiss === true;
+    searchState.backendRequestCount = Number(backendDiagnostics.backendRequestCount ?? searchState.backendRequestCount);
+    searchState.adoRequestCount = Number(backendDiagnostics.adoRequestCount ?? searchState.adoRequestCount);
     searchState.searching = false;
     debugDiscovery("selector-populated", {
         index,

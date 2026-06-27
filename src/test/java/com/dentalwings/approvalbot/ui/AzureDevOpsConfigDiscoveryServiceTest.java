@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsAuth;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsUrlBuilder;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -405,10 +409,80 @@ class AzureDevOpsConfigDiscoveryServiceTest {
         var exchange = new RecordingExchangeFunction("{}", HttpStatus.OK);
         var service = discovery(exchange);
 
-        var result = service.searchIdentityOptions("STMN-Group", "a");
+        var result = service.searchIdentityOptions("STMN-Group", "ab");
 
         assertThat(result.status()).isEqualTo(ConfigValidationStatus.NOT_CHECKED);
+        assertThat(result.message()).contains("3 characters");
         assertThat(exchange.requests).isEmpty();
+    }
+
+    @Test
+    void repeatedNormalizedIdentitySearchUsesBackendCacheWithoutCallingAdoAgain() {
+        var exchange = new RecordingExchangeFunction("""
+                {"value":[{"displayName":"Rene Example","uniqueName":"rene@example.test"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+
+        var first = service.searchIdentityOptions("STMN-Group", " Rene ");
+        var second = service.searchIdentityOptions("stmn-group", "RENE");
+
+        assertThat(first.diagnostics()).containsEntry("backendCacheMiss", true);
+        assertThat(second.diagnostics())
+                .containsEntry("backendCacheHit", true)
+                .containsEntry("adoRequestCount", 1L);
+        assertThat(exchange.requests).hasSize(1);
+        assertThat(second.values()).extracting(ConfigSelectorOption::value).containsExactly("rene@example.test");
+    }
+
+    @Test
+    void identitySearchCacheSeparatesOrganizations() {
+        var exchange = new RecordingExchangeFunction("""
+                {"value":[{"displayName":"Rene Example","uniqueName":"rene@example.test"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+
+        service.searchIdentityOptions("Organization-A", "rene");
+        service.searchIdentityOptions("Organization-B", "rene");
+
+        assertThat(exchange.requests).hasSize(2);
+    }
+
+    @Test
+    void expiredIdentitySearchCacheCausesNewAdoRequest() {
+        var clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
+        var cache = new IdentitySearchResultCache(Duration.ofMinutes(5), 10, clock);
+        var exchange = new RecordingExchangeFunction("""
+                {"value":[{"displayName":"Rene Example","uniqueName":"rene@example.test"}]}
+                """, HttpStatus.OK);
+        var service = new AzureDevOpsConfigDiscoveryService(
+                "secret-pat",
+                exchange,
+                new AzureDevOpsUrlBuilder(),
+                cache
+        );
+
+        service.searchIdentityOptions("STMN-Group", "rene");
+        clock.advance(Duration.ofMinutes(6));
+        var refreshed = service.searchIdentityOptions("STMN-Group", "rene");
+
+        assertThat(exchange.requests).hasSize(2);
+        assertThat(refreshed.diagnostics()).containsEntry("backendCacheMiss", true);
+    }
+
+    @Test
+    void identitySearchCacheStoresOnlyNormalizedSelectorOptions() {
+        var cache = new IdentitySearchResultCache(Duration.ofMinutes(5), 10, Clock.systemUTC());
+        cache.put("STMN-Group", "rene", ConfigLookupResult.valid(List.of(
+                new ConfigSelectorOption("rene@example.test", "Rene Example", "rene@example.test", "ADO", "aad.user-1")
+        )));
+
+        var cached = cache.get("STMN-Group", "rene").orElseThrow().toResult();
+
+        assertThat(cached.values()).containsExactly(
+                new ConfigSelectorOption("rene@example.test", "Rene Example", "rene@example.test", "ADO")
+        );
+        assertThat(cached.values().getFirst().referenceName()).isEmpty();
+        assertThat(cached.diagnostics()).isEmpty();
     }
 
 
@@ -452,6 +526,34 @@ class AzureDevOpsConfigDiscoveryServiceTest {
                     .header(HttpHeaders.CONTENT_TYPE, "application/json")
                     .body(response.body())
                     .build());
+        }
+    }
+
+    private static final class MutableClock extends Clock {
+
+        private Instant instant;
+
+        private MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        private void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneId.of("UTC");
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
         }
     }
 }

@@ -336,7 +336,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("data-action=\"select-pending-user\"")
                 .contains("data-action=\"add-pending-user\"")
                 .contains("data-action=\"remove-user\"")
-                .contains("function loadIdentityOptions(index, role, query)")
+                .contains("function loadIdentityOptions(index, role, query, requestVersion)")
                 .contains("function updateIdentityPicker(index, role)")
                 .contains("function pendingIdentityPreview(project, role, pending)")
                 .contains("identity.typeToSearch")
@@ -373,9 +373,11 @@ class ConfigUiStaticAssetsTest {
                 .contains("handleIdentitySearchInput(index, role, query)")
                 .contains("updateIdentityPicker(index, role)")
                 .contains("clearTimeout(identitySearchTimers[identityKey(index, role)])")
-                .contains("}, 300)")
+                .contains("const IDENTITY_MIN_QUERY_LENGTH = 3")
+                .contains("const IDENTITY_SEARCH_DEBOUNCE_MS = 450")
+                .contains("requestVersion")
                 .contains("input.focus()")
-                .doesNotContain("if (stateForRole.query.trim().length < 2) {\n        renderProjects();");
+                .doesNotContain("if (normalizedQuery.length < IDENTITY_MIN_QUERY_LENGTH) {\n        renderProjects();");
     }
 
     @Test
@@ -387,7 +389,12 @@ class ConfigUiStaticAssetsTest {
                 .contains("option.displayName || \"\"")
                 .contains("option.value || \"\"")
                 .contains("option.description || \"\"")
-                .contains("identityOptionsForSearch(searchState)");
+                .contains("identityOptionsForSearch(searchState)")
+                .contains("function findIdentitySearchCache(organization, query)")
+                .contains("normalizedQuery.startsWith(entry.query)")
+                .contains("IDENTITY_CACHE_TTL_MS")
+                .contains("IDENTITY_CACHE_MAX_ENTRIES")
+                .contains("cached.options.length >= IDENTITY_CACHE_USEFUL_RESULT_COUNT");
     }
 
     @Test
