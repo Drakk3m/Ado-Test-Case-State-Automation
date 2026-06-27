@@ -20,8 +20,8 @@ class ConfigUiStaticAssetsTest {
                 .contains("/api/config-ui/discovery/fields")
                 .contains("/api/config-ui/discovery/states")
                 .contains("/api/config-ui/discovery/users/search")
-                .contains("select data-field=\"fields.approvedBySme\"")
-                .contains("select data-field=\"fields.approvedBySqa\"");
+                .contains("data-field=\"fields.approvedBySme\"")
+                .contains("data-field=\"fields.approvedBySqa\"");
     }
 
     @Test
@@ -45,7 +45,7 @@ class ConfigUiStaticAssetsTest {
                 .contains("lookupHasOptions(lookup)")
                 .contains("lookupOptionCount(lookup)")
                 .contains("renderedOptionCount(lookup)")
-                .contains("normalizeOptionsLookup(lookup, emptyMessage, selectorName = \"selector\")")
+                .contains("normalizeOptionsLookup(lookup, emptyMessage, selectorName = \"selector\", projectConfigId = \"\")")
                 .contains("backend-count-without-renderable-options")
                 .contains("selector-render-failed")
                 .contains("message.noWorkItemTypes")
@@ -73,11 +73,11 @@ class ConfigUiStaticAssetsTest {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("selectOptions(selectorName, lookup, selected, placeholder, enabled = false)")
+                .contains("selectOptions(selectorName, lookup, selected, placeholder, enabled = false, projectConfigId = \"\")")
                 .contains("option.value === selected")
                 .contains("optionLabel(option, selectorName)")
                 .contains("selectorOptions(projectOptionLookup)")
-                .contains("select data-field=\"name\" data-selector-name=\"project\"")
+                .contains("data-field=\"name\" data-selector-name=\"project\"")
                 .contains("selectOptions(\"workItemType\", discovery.workItemTypes")
                 .contains("selectOptions(\"approvedBySmeField\", fieldLookups.smeLookup")
                 .contains("selectOptions(\"approvedState\", discovery.states");
@@ -136,8 +136,8 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("discoveryRequestSequence")
                 .contains("discovery.requestToken")
-                .contains("isCurrentDiscoveryRequest(index, requestToken, projectName)")
-                .contains("isCurrentDiscoveryRequest(index, requestToken, projectName, type)");
+                .contains("isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName)")
+                .contains("isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName, type)");
     }
 
     @Test
@@ -286,15 +286,15 @@ class ConfigUiStaticAssetsTest {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("let projectLayoutState = []")
-                .contains("function projectLayout(index)")
+                .contains("let projectLayoutState = new Map()")
+                .contains("function projectLayout(projectConfigId)")
                 .contains("function projectSummary(project, index, selectedType, status)")
                 .contains("project.title")
                 .contains("data-action=\"toggle-project\"")
                 .contains("data-action=\"collapse-project\"")
                 .contains("project-card${collapsed ? \" collapsed\" : \"\"}")
-                .contains("projectLayout(index).collapsed = true")
-                .contains("projectLayout(index).collapsed = false");
+                .contains("projectLayout(projectConfigId).collapsed = true")
+                .contains("projectLayout(projectConfigId).collapsed = false");
     }
 
     @Test
@@ -306,8 +306,8 @@ class ConfigUiStaticAssetsTest {
                 .contains("isProjectDiscoveryCurrent(project, discovery)")
                 .contains("const collapseDisabled = canCollapse ? \"\" : \"disabled\"")
                 .contains("status.resolveBeforeCollapse")
-                .contains("projectLayout(index).collapsed = false;")
-                .contains("projectLayoutState.splice(index, 1)");
+                .contains("projectLayout(projectConfigId).collapsed = false;")
+                .contains("projectLayoutState.delete(projectConfigId)");
     }
 
     @Test
@@ -331,17 +331,17 @@ class ConfigUiStaticAssetsTest {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("function identityUserPicker(project, index, role, enabled)")
+                .contains("function identityUserPicker(project, projectConfigId, role, enabled)")
                 .contains("data-action=\"identity-search\"")
                 .contains("data-action=\"select-pending-user\"")
                 .contains("data-action=\"add-pending-user\"")
                 .contains("data-action=\"remove-user\"")
-                .contains("function loadIdentityOptions(index, role, query, requestVersion)")
-                .contains("function updateIdentityPicker(index, role)")
+                .contains("function loadIdentityOptions(projectConfigId, role, query, requestVersion)")
+                .contains("function updateIdentityPicker(projectConfigId, role)")
                 .contains("function pendingIdentityPreview(project, role, pending)")
                 .contains("identity.typeToSearch")
                 .contains("identity.selectionNote")
-                .contains("addPendingIdentity(index, role)")
+                .contains("addPendingIdentity(projectConfigId, role)")
                 .contains("removeUserFromRole(project, role, button.getAttribute(\"data-user-value\"))")
                 .doesNotContain("textarea data-field=\"approvals.smeUsers\"")
                 .doesNotContain("textarea data-field=\"approvals.sqaUsers\"");
@@ -354,7 +354,7 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("function normalizedIdentity(value)")
                 .contains("setRoleUsers(project, role, [...users, normalized])")
-                .contains("function setPendingIdentity(index, role, value)")
+                .contains("function setPendingIdentity(projectConfigId, role, value)")
                 .contains("function duplicateIdentityMessages(project)")
                 .contains("message.crossRoleIdentity")
                 .contains("unresolvedIdentityCount(project, role)")
@@ -370,9 +370,9 @@ class ConfigUiStaticAssetsTest {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("handleIdentitySearchInput(index, role, query)")
-                .contains("updateIdentityPicker(index, role)")
-                .contains("clearTimeout(identitySearchTimers[identityKey(index, role)])")
+                .contains("handleIdentitySearchInput(projectConfigId, role, query)")
+                .contains("updateIdentityPicker(projectConfigId, role)")
+                .contains("clearTimeout(identitySearchTimers[identityKey(projectConfigId, role)])")
                 .contains("const IDENTITY_MIN_QUERY_LENGTH = 3")
                 .contains("const IDENTITY_SEARCH_DEBOUNCE_MS = 450")
                 .contains("requestVersion")
@@ -472,8 +472,8 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("clearChildSelections(project)")
                 .contains("clearTypeSelections(project)")
-                .contains("clearDiscovery(index, \"project\")")
-                .contains("clearDiscovery(index, \"type\")")
+                .contains("clearDiscovery(projectConfigId, \"project\")")
+                .contains("clearDiscovery(projectConfigId, \"type\")")
                 .contains("clearStaleProjectSelections()")
                 .contains("!lookupContainsValue(projectOptionLookup, project.name)")
                 .contains("project.fields.approvedBySme = \"\"")
@@ -488,8 +488,55 @@ class ConfigUiStaticAssetsTest {
         assertThat(javascript)
                 .contains("schedulePreview()")
                 .contains("previewDraft(false)")
-                .contains("loadFieldAndStateOptions(index)")
+                .contains("loadFieldAndStateOptions(projectConfigId)")
                 .contains("/api/config-ui/preview");
+    }
+
+    @Test
+    void javascriptIsolatesEveryProjectCardByStableLocalId() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function ensureProjectConfigId(project)")
+                .contains("Object.defineProperty(project, \"projectConfigId\"")
+                .contains("enumerable: false")
+                .contains("let projectDiscovery = new Map()")
+                .contains("let projectLayoutState = new Map()")
+                .contains("projectDiscovery.get(projectConfigId)")
+                .contains("projectByConfigId(projectConfigId)")
+                .contains("card.dataset.projectConfigId = projectConfigId")
+                .contains("removeProjectState(projectConfigId)")
+                .doesNotContain("projectDiscovery[index]")
+                .doesNotContain("data-index=\"");
+    }
+
+    @Test
+    void javascriptCreatesFreshNestedProjectCollections() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function createProjectModel()")
+                .contains("supportedWorkItemTypes: []")
+                .contains("reversibleBusinessFields: []")
+                .contains("approvals: { smeUsers: [], sqaUsers: [] }")
+                .contains("project.supportedWorkItemTypes = [...(project.supportedWorkItemTypes || [])]")
+                .contains("reversibleBusinessFields: [...(project.fields?.reversibleBusinessFields || [])]")
+                .contains("smeUsers: [...(project.approvals?.smeUsers || [])]")
+                .contains("sqaUsers: [...(project.approvals?.sqaUsers || [])]");
+    }
+
+    @Test
+    void javascriptScopesControlsIdentityStateAndDiagnosticsToProjectId() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function projectControlId(projectConfigId, controlName)")
+                .contains("data-project-config-id=\"${projectConfigId}\"")
+                .contains("identityKey(projectConfigId, role)")
+                .contains("diagnosticKey(selectorName, projectConfigId)")
+                .contains("projectConfigId,")
+                .contains("updateSelectorDiagnostics(`${role}Users`, {")
+                .contains("}, projectConfigId);");
     }
 
     private String read(String path) throws Exception {
