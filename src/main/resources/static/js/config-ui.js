@@ -528,6 +528,14 @@ function ensureSelectorDiagnostic(selectorName, projectConfigId = "") {
             frontendRequestCount: 0,
             backendRequestCount: 0,
             adoRequestCount: 0,
+            adoDiscoveryRequestCount: 0,
+            lastDiscoveryOperation: "",
+            discoveryCacheHit: false,
+            projectMetadataCacheHit: false,
+            processIdCacheHit: false,
+            workItemTypeOptionsCacheHit: false,
+            fieldOptionsCacheHit: false,
+            stateOptionsCacheHit: false,
             candidatePoolSource: "",
             candidatePoolSize: 0,
             candidatePoolCacheHit: false,
@@ -650,6 +658,14 @@ function diagnosticItemMarkup(item) {
         ["frontend requests", item.frontendRequestCount],
         ["backend requests", item.backendRequestCount],
         ["ADO requests", item.adoRequestCount],
+        ["ADO discovery requests", item.adoDiscoveryRequestCount],
+        ["last discovery operation", item.lastDiscoveryOperation],
+        ["discovery cache hit", item.discoveryCacheHit],
+        ["project metadata cache hit", item.projectMetadataCacheHit],
+        ["process id cache hit", item.processIdCacheHit],
+        ["Work Item Type cache hit", item.workItemTypeOptionsCacheHit],
+        ["field cache hit", item.fieldOptionsCacheHit],
+        ["state cache hit", item.stateOptionsCacheHit],
         ["candidate source", item.candidatePoolSource],
         ["candidate pool size", item.candidatePoolSize],
         ["candidate pool cache hit", item.candidatePoolCacheHit],
@@ -1742,7 +1758,8 @@ function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector",
         normalizedLength: renderedOptions.length,
         renderedOptionCount: renderedOptions.length,
         enabled: status === "VALID" && renderedOptions.length > 0,
-        message
+        message,
+        ...adoDiscoveryDiagnostics(lookup)
     }, projectConfigId);
     if (backendOptionCount > 0 && renderedOptions.length === 0) {
         const message = t("message.selectorEmptyButCount");
@@ -1779,6 +1796,20 @@ function normalizeOptionsLookup(lookup, emptyMessage, selectorName = "selector",
         return { status: "WARNING", message: emptyMessage, values: [], optionCount: 0 };
     }
     return { ...(lookup || {}), values: renderedOptions, optionCount: renderedOptions.length };
+}
+
+function adoDiscoveryDiagnostics(lookup) {
+    const diagnostics = lookup?.diagnostics || {};
+    return {
+        adoDiscoveryRequestCount: Number(diagnostics.adoDiscoveryRequestCount ?? 0),
+        lastDiscoveryOperation: String(diagnostics.lastDiscoveryOperation ?? ""),
+        discoveryCacheHit: diagnostics.discoveryCacheHit === true,
+        projectMetadataCacheHit: diagnostics.projectMetadataCacheHit === true,
+        processIdCacheHit: diagnostics.processIdCacheHit === true,
+        workItemTypeOptionsCacheHit: diagnostics.workItemTypeOptionsCacheHit === true,
+        fieldOptionsCacheHit: diagnostics.fieldOptionsCacheHit === true,
+        stateOptionsCacheHit: diagnostics.stateOptionsCacheHit === true
+    };
 }
 
 function isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName, workItemType) {
@@ -2380,6 +2411,11 @@ async function loadProject(projectConfigId) {
         return;
     }
     discovery.projectStatus = projectStatus;
+    updateSelectorDiagnostics("projectValidation", {
+        status: projectStatus.status || "NOT_CHECKED",
+        message: sanitizeMessage(projectStatus.message),
+        ...adoDiscoveryDiagnostics(projectStatus)
+    }, projectConfigId);
     if (isProjectVerified(discovery, project)) {
         const workItemTypes = await discover("load-work-item-types", "/api/config-ui/discovery/work-item-types", {
             organization: state.ado.organization,
