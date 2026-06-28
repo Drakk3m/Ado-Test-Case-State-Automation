@@ -3,12 +3,12 @@ package com.dentalwings.approvalbot.ui;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsAuth;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsUrlBuilder;
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -510,12 +510,17 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 "queryGraphIdentities",
                 () -> urlBuilder.graphSubjectQueryUrl(organization),
                 new GraphSubjectQueryRequest(query, scopeDescriptor, List.of("User")),
-                AdoGraphUserResponse[].class,
-                response -> Arrays.stream(response)
+                AdoGraphSubjectQueryResponse.class,
+                response -> response.items().stream()
+                        .filter(this::isUserSubject)
                         .map(user -> graphUserOption(organization, user, "graph-query"))
                         .filter(ConfigSelectorOption::resolved)
                         .toList()
         );
+    }
+
+    private boolean isUserSubject(AdoGraphUserResponse subject) {
+        return isBlank(subject.subjectKind()) || "user".equalsIgnoreCase(subject.subjectKind());
     }
 
     private List<ConfigSelectorOption> mergeIdentityOptions(List<ConfigSelectorOption> primary, List<ConfigSelectorOption> fallback) {
@@ -812,6 +817,9 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         if (body instanceof AdoRestIdentityListResponse response) {
             return response.rawCount();
         }
+        if (body instanceof AdoGraphSubjectQueryResponse response) {
+            return response.rawCount();
+        }
         return null;
     }
 
@@ -960,11 +968,35 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
+    record AdoGraphSubjectQueryResponse(
+            Integer count,
+            List<AdoGraphUserResponse> value,
+            List<AdoGraphUserResponse> identities
+    ) {
+        AdoGraphSubjectQueryResponse {
+            value = value == null ? List.of() : List.copyOf(value);
+            identities = identities == null ? List.of() : List.copyOf(identities);
+        }
+
+        List<AdoGraphUserResponse> items() {
+            return value.isEmpty() ? identities : value;
+        }
+
+        Integer rawCount() {
+            return count == null ? items().size() : count;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record AdoGraphUserResponse(
+            @JsonAlias("subjectDescriptor")
             String descriptor,
             String displayName,
+            @JsonAlias({"uniqueName", "signInAddress", "samAccountName"})
             String principalName,
-            String mailAddress
+            String mailAddress,
+            @JsonAlias("entityType")
+            String subjectKind
     ) {
     }
 
