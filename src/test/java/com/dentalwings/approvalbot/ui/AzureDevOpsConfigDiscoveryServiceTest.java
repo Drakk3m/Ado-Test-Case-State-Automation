@@ -543,22 +543,61 @@ class AzureDevOpsConfigDiscoveryServiceTest {
 
     @Test
     void sparseProjectCandidatesFallBackToOfficialGraphSubjectQuery() {
-        var exchange = new RecordingExchangeFunction(List.of(
-                new RecordedResponse("{\"id\":\"project-id-1\",\"name\":\"Sandbox\"}", HttpStatus.OK),
-                new RecordedResponse("{\"value\":\"scp.project-1\"}", HttpStatus.OK),
-                new RecordedResponse("{\"count\":0,\"value\":[]}", HttpStatus.OK),
-                new RecordedResponse("""
-                        [{"descriptor":"aad.fallback","displayName":"Rene Fallback","principalName":"rene@example.test"}]
-                        """, HttpStatus.OK)
-        ));
+        var exchange = projectIdentityFallbackExchange("""
+                {"count":1,"value":[
+                  {"descriptor":"aad.fallback","displayName":"Rene Fallback","principalName":"RENE@Example.Test","subjectKind":"User"}
+                ]}
+                """);
         var service = discovery(exchange);
 
         var result = service.searchIdentityOptions("STMN-Group", "Sandbox", "rene");
 
-        assertThat(result.values()).extracting(ConfigSelectorOption::value).containsExactly("rene@example.test");
+        assertThat(result.values()).singleElement().satisfies(option -> {
+            assertThat(option.value()).isEqualTo("rene@example.test");
+            assertThat(option.displayName()).isEqualTo("Rene Fallback <rene@example.test>");
+            assertThat(option.avatarUrl()).contains("descriptor=aad.fallback");
+            assertThat(option.resolved()).isTrue();
+        });
         assertThat(result.diagnostics()).containsEntry("candidatePoolSource", "project-scope+graph-query");
         assertThat(exchange.requests.getLast().method().name()).isEqualTo("POST");
         assertThat(exchange.requests.getLast().url().toString()).contains("/_apis/graph/subjectquery?api-version=7.1-preview.1");
+    }
+
+    @Test
+    void graphSubjectQueryObjectRootMapsAllResolvableUsersAndFallsBackToLoginForDisplay() {
+        var exchange = projectIdentityFallbackExchange("""
+                {"count":4,"value":[
+                  {"descriptor":"aad.one","displayName":"Rene One","mailAddress":"RENE.ONE@Example.Test","subjectKind":"User"},
+                  {"descriptor":"aad.two","principalName":"rene.two@example.test","subjectKind":"User"},
+                  {"descriptor":"vssgp.group","displayName":"Rene Group","principalName":"group@example.test","subjectKind":"Group"},
+                  {"descriptor":"aad.unresolved","displayName":"Rene Without Login","subjectKind":"User"}
+                ]}
+                """);
+        var service = discovery(exchange);
+
+        var result = service.searchIdentityOptions("STMN-Group", "Sandbox", "rene");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.values()).extracting(ConfigSelectorOption::value)
+                .containsExactly("rene.one@example.test", "rene.two@example.test");
+        assertThat(result.values().get(1).displayName()).isEqualTo("rene.two@example.test");
+        assertThat(result.values()).noneMatch(option -> option.value().equals("group@example.test"));
+    }
+
+    @Test
+    void graphSubjectQueryDoesNotMakeUnresolvedOrNonUserSubjectsSelectable() {
+        var exchange = projectIdentityFallbackExchange("""
+                {"value":[
+                  {"descriptor":"vssgp.group","displayName":"Rene Group","subjectKind":"Group"},
+                  {"descriptor":"aad.unresolved","displayName":"Rene Without Login","subjectKind":"User"}
+                ]}
+                """);
+        var service = discovery(exchange);
+
+        var result = service.searchIdentityOptions("STMN-Group", "Sandbox", "rene");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.WARNING);
+        assertThat(result.optionCount()).isZero();
     }
 
     @Test
@@ -599,6 +638,15 @@ class AzureDevOpsConfigDiscoveryServiceTest {
                 new RecordedResponse("{\"id\":\"project-id-1\",\"name\":\"Sandbox\"}", HttpStatus.OK),
                 new RecordedResponse("{\"value\":\"scp.project-1\"}", HttpStatus.OK),
                 new RecordedResponse(graphUsersBody, HttpStatus.OK)
+        ));
+    }
+
+    private RecordingExchangeFunction projectIdentityFallbackExchange(String graphQueryBody) {
+        return new RecordingExchangeFunction(List.of(
+                new RecordedResponse("{\"id\":\"project-id-1\",\"name\":\"Sandbox\"}", HttpStatus.OK),
+                new RecordedResponse("{\"value\":\"scp.project-1\"}", HttpStatus.OK),
+                new RecordedResponse("{\"count\":0,\"value\":[]}", HttpStatus.OK),
+                new RecordedResponse(graphQueryBody, HttpStatus.OK)
         ));
     }
 
