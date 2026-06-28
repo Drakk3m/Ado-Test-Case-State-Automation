@@ -525,13 +525,19 @@ function ensureSelectorDiagnostic(selectorName, projectConfigId = "") {
             frontendCacheMisses: 0,
             backendCacheHit: false,
             backendCacheMiss: false,
+            frontendRequestCount: 0,
             backendRequestCount: 0,
             adoRequestCount: 0,
             candidatePoolSource: "",
             candidatePoolSize: 0,
             candidatePoolCacheHit: false,
+            projectPoolMatchCount: 0,
+            graphFallbackAttempted: false,
+            graphCacheHit: false,
+            graphNegativeCacheHit: false,
             avatarCacheHitCount: 0,
             avatarCacheMissCount: 0,
+            avatarAdoRequestCount: 0,
             enabled: false,
             message: "",
             staleIgnoredCount: 0,
@@ -641,13 +647,19 @@ function diagnosticItemMarkup(item) {
         ["frontend cache misses", item.frontendCacheMisses],
         ["backend cache hit", item.backendCacheHit],
         ["backend cache miss", item.backendCacheMiss],
+        ["frontend requests", item.frontendRequestCount],
         ["backend requests", item.backendRequestCount],
         ["ADO requests", item.adoRequestCount],
         ["candidate source", item.candidatePoolSource],
         ["candidate pool size", item.candidatePoolSize],
         ["candidate pool cache hit", item.candidatePoolCacheHit],
+        ["project pool matches", item.projectPoolMatchCount],
+        ["Graph fallback attempted", item.graphFallbackAttempted],
+        ["Graph cache hit", item.graphCacheHit],
+        ["Graph negative cache hit", item.graphNegativeCacheHit],
         ["avatar cache hits", item.avatarCacheHitCount],
         ["avatar cache misses", item.avatarCacheMissCount],
+        ["avatar ADO requests", item.avatarAdoRequestCount],
         ["stale ignored", item.staleIgnoredCount]
     ].filter((metric) => metric[1] !== "" && metric[1] !== null && metric[1] !== undefined);
     return `
@@ -950,6 +962,7 @@ function ensureIdentitySearchState(projectConfigId, role) {
             requestVersion: 0,
             frontendCacheHits: 0,
             frontendCacheMisses: 0,
+            frontendRequestCount: 0,
             backendRequestCount: 0,
             adoRequestCount: 0,
             backendCacheHit: false,
@@ -957,8 +970,13 @@ function ensureIdentitySearchState(projectConfigId, role) {
             candidatePoolSource: "",
             candidatePoolSize: 0,
             candidatePoolCacheHit: false,
+            projectPoolMatchCount: 0,
+            graphFallbackAttempted: false,
+            graphCacheHit: false,
+            graphNegativeCacheHit: false,
             avatarCacheHitCount: 0,
-            avatarCacheMissCount: 0
+            avatarCacheMissCount: 0,
+            avatarAdoRequestCount: 0
         };
     }
     return identitySearchState[key];
@@ -1242,6 +1260,7 @@ function identitySearchStatus(projectConfigId, role, project) {
         frontendCacheHit: stateForRole.frontendCacheHit || false,
         frontendCacheHits: stateForRole.frontendCacheHits,
         frontendCacheMisses: stateForRole.frontendCacheMisses,
+        frontendRequestCount: stateForRole.frontendRequestCount,
         backendCacheHit: stateForRole.backendCacheHit,
         backendCacheMiss: stateForRole.backendCacheMiss,
         backendRequestCount: stateForRole.backendRequestCount,
@@ -1249,8 +1268,13 @@ function identitySearchStatus(projectConfigId, role, project) {
         candidatePoolSource: stateForRole.candidatePoolSource,
         candidatePoolSize: stateForRole.candidatePoolSize,
         candidatePoolCacheHit: stateForRole.candidatePoolCacheHit,
+        projectPoolMatchCount: stateForRole.projectPoolMatchCount,
+        graphFallbackAttempted: stateForRole.graphFallbackAttempted,
+        graphCacheHit: stateForRole.graphCacheHit,
+        graphNegativeCacheHit: stateForRole.graphNegativeCacheHit,
         avatarCacheHitCount: stateForRole.avatarCacheHitCount,
         avatarCacheMissCount: stateForRole.avatarCacheMissCount,
+        avatarAdoRequestCount: stateForRole.avatarAdoRequestCount,
         enabled: true,
         message: sanitizeMessage(stateForRole.lookup.message)
     }, projectConfigId);
@@ -2462,7 +2486,7 @@ async function loadIdentityOptions(projectConfigId, role, query, requestVersion)
     }
     searchState.debouncePending = false;
     searchState.searching = true;
-    searchState.backendRequestCount += 1;
+    searchState.frontendRequestCount += 1;
     updateIdentityPicker(projectConfigId, role);
     const result = await discover("search-users", "/api/config-ui/discovery/users/search", {
         organization: state.ado.organization,
@@ -2499,8 +2523,13 @@ async function loadIdentityOptions(projectConfigId, role, query, requestVersion)
     searchState.candidatePoolSource = String(backendDiagnostics.candidatePoolSource ?? "");
     searchState.candidatePoolSize = Number(backendDiagnostics.candidatePoolSize ?? 0);
     searchState.candidatePoolCacheHit = backendDiagnostics.candidatePoolCacheHit === true;
+    searchState.projectPoolMatchCount = Number(backendDiagnostics.projectPoolMatchCount ?? 0);
+    searchState.graphFallbackAttempted = backendDiagnostics.graphFallbackAttempted === true;
+    searchState.graphCacheHit = backendDiagnostics.graphCacheHit === true;
+    searchState.graphNegativeCacheHit = backendDiagnostics.graphNegativeCacheHit === true;
     searchState.avatarCacheHitCount = Number(backendDiagnostics.avatarCacheHitCount ?? 0);
     searchState.avatarCacheMissCount = Number(backendDiagnostics.avatarCacheMissCount ?? 0);
+    searchState.avatarAdoRequestCount = Number(backendDiagnostics.avatarAdoRequestCount ?? 0);
     searchState.searching = false;
     debugDiscovery("selector-populated", {
         projectConfigId,
