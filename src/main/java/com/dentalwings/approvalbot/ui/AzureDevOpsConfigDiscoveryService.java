@@ -3,6 +3,7 @@ package com.dentalwings.approvalbot.ui;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsAuth;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsUrlBuilder;
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URI;
@@ -510,7 +511,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 () -> urlBuilder.graphSubjectQueryUrl(organization),
                 new GraphSubjectQueryRequest(query, scopeDescriptor, List.of("User")),
                 AdoGraphSubjectQueryResponse.class,
-                response -> response.value().stream()
+                response -> response.items().stream()
                         .filter(this::isUserSubject)
                         .map(user -> graphUserOption(organization, user, "graph-query"))
                         .filter(ConfigSelectorOption::resolved)
@@ -967,22 +968,34 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record AdoGraphSubjectQueryResponse(Integer count, List<AdoGraphUserResponse> value) {
+    record AdoGraphSubjectQueryResponse(
+            Integer count,
+            List<AdoGraphUserResponse> value,
+            List<AdoGraphUserResponse> identities
+    ) {
         AdoGraphSubjectQueryResponse {
             value = value == null ? List.of() : List.copyOf(value);
+            identities = identities == null ? List.of() : List.copyOf(identities);
+        }
+
+        List<AdoGraphUserResponse> items() {
+            return value.isEmpty() ? identities : value;
         }
 
         Integer rawCount() {
-            return count == null ? value.size() : count;
+            return count == null ? items().size() : count;
         }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record AdoGraphUserResponse(
+            @JsonAlias("subjectDescriptor")
             String descriptor,
             String displayName,
+            @JsonAlias({"uniqueName", "signInAddress", "samAccountName"})
             String principalName,
             String mailAddress,
+            @JsonAlias("entityType")
             String subjectKind
     ) {
     }

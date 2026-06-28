@@ -585,6 +585,31 @@ class AzureDevOpsConfigDiscoveryServiceTest {
     }
 
     @Test
+    void graphSubjectQueryMapsIdentityPickerStyleCollectionAndFieldAliases() {
+        var exchange = projectIdentityFallbackExchange("""
+                {"identities":[
+                  {
+                    "subjectDescriptor":"aad.aliased-user",
+                    "displayName":"Rene Alias",
+                    "samAccountName":"RENE.ALIAS@Example.Test",
+                    "entityType":"User"
+                  }
+                ]}
+                """);
+        var service = discovery(exchange);
+
+        var result = service.searchIdentityOptions("STMN-Group", "Sandbox", "rene");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.values()).singleElement().satisfies(option -> {
+            assertThat(option.value()).isEqualTo("rene.alias@example.test");
+            assertThat(option.displayName()).isEqualTo("Rene Alias <rene.alias@example.test>");
+            assertThat(option.avatarUrl()).contains("descriptor=aad.aliased-user");
+            assertThat(option.resolved()).isTrue();
+        });
+    }
+
+    @Test
     void graphSubjectQueryDoesNotMakeUnresolvedOrNonUserSubjectsSelectable() {
         var exchange = projectIdentityFallbackExchange("""
                 {"value":[
