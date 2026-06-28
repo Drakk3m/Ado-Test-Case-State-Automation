@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsAuth;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsUrlBuilder;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -627,18 +628,57 @@ class AzureDevOpsConfigDiscoveryServiceTest {
 
     @Test
     void identityAvatarIsFetchedOnceAndThenServedFromCache() {
-        var exchange = new RecordingExchangeFunction("{\"value\":\"AQID\"}", HttpStatus.OK);
+        var exchange = new RecordingExchangeFunction(List.of(
+                new RecordedResponse("png-binary", HttpStatus.OK, "image/png;api-version=7.1")
+        ));
         var service = discovery(exchange);
 
         var first = service.loadIdentityAvatar("STMN-Group", "aad.user-1").orElseThrow();
         var second = service.loadIdentityAvatar("stmn-group", "AAD.USER-1").orElseThrow();
 
-        assertThat(first.bytes()).containsExactly(1, 2, 3);
+        assertThat(first.bytes()).isEqualTo("png-binary".getBytes(StandardCharsets.UTF_8));
+        assertThat(first.contentType()).isEqualTo("image/png;api-version=7.1");
         assertThat(first.cacheHit()).isFalse();
-        assertThat(second.bytes()).containsExactly(1, 2, 3);
+        assertThat(second.bytes()).isEqualTo("png-binary".getBytes(StandardCharsets.UTF_8));
         assertThat(second.cacheHit()).isTrue();
         assertThat(exchange.requests).hasSize(1);
         assertThat(exchange.requests.getFirst().url().toString()).contains("/avatars?size=small&format=png&api-version=7.1");
+    }
+
+    @Test
+    void failedAvatarLoadIsCachedBrieflyWithoutAffectingIdentityDiscovery() {
+        var clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
+        var avatarCache = new IdentityAvatarCache(Duration.ofMinutes(15), Duration.ofMinutes(2), 10, clock);
+        var exchange = new RecordingExchangeFunction(List.of(
+                new RecordedResponse("not found", HttpStatus.NOT_FOUND, "application/json")
+        ));
+        var service = new AzureDevOpsConfigDiscoveryService(
+                "secret-pat",
+                exchange,
+                new AzureDevOpsUrlBuilder(),
+                new IdentitySearchResultCache(),
+                new ProjectIdentityCandidateCache(),
+                avatarCache
+        );
+
+        assertThat(service.loadIdentityAvatar("STMN-Group", "aad.missing")).isEmpty();
+        assertThat(service.loadIdentityAvatar("STMN-Group", "aad.missing")).isEmpty();
+        assertThat(exchange.requests).hasSize(1);
+
+        clock.advance(Duration.ofMinutes(3));
+        assertThat(service.loadIdentityAvatar("STMN-Group", "aad.missing")).isEmpty();
+        assertThat(exchange.requests).hasSize(2);
+    }
+
+    @Test
+    void nonPngAvatarResponseFallsBackWithoutTryingJsonDeserialization() {
+        var exchange = new RecordingExchangeFunction(List.of(
+                new RecordedResponse("{\"value\":\"not-an-image\"}", HttpStatus.OK, "application/json")
+        ));
+        var service = discovery(exchange);
+
+        assertThat(service.loadIdentityAvatar("STMN-Group", "aad.user-1")).isEmpty();
+        assertThat(exchange.requests).hasSize(1);
     }
 
 
@@ -675,7 +715,10 @@ class AzureDevOpsConfigDiscoveryServiceTest {
         ));
     }
 
-    private record RecordedResponse(String body, HttpStatus status) {
+    private record RecordedResponse(String body, HttpStatus status, String contentType) {
+        private RecordedResponse(String body, HttpStatus status) {
+            this(body, status, "application/json");
+        }
     }
 
     private static class RecordingExchangeFunction implements ExchangeFunction {
@@ -696,7 +739,7 @@ class AzureDevOpsConfigDiscoveryServiceTest {
             requests.add(request);
             var response = responses.get(Math.min(requests.size() - 1, responses.size() - 1));
             return Mono.just(ClientResponse.create(response.status())
-                    .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                    .header(HttpHeaders.CONTENT_TYPE, response.contentType())
                     .body(response.body())
                     .build());
         }
