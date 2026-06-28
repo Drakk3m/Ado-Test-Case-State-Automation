@@ -118,7 +118,7 @@ public class ConfigUiApiController {
     ) {
         return discoveryService.loadIdentityAvatar(organization, descriptor)
                 .map(avatar -> ResponseEntity.ok()
-                        .contentType(MediaType.IMAGE_PNG)
+                        .contentType(MediaType.parseMediaType(avatar.contentType()))
                         .cacheControl(CacheControl.noStore())
                         .body(avatar.bytes()))
                 .orElseGet(() -> ResponseEntity.notFound().build());

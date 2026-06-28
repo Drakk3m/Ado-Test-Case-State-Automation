@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +55,9 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private final AtomicLong identityAdoRequestCount = new AtomicLong();
     private final AtomicLong avatarCacheHitCount = new AtomicLong();
     private final AtomicLong avatarCacheMissCount = new AtomicLong();
+    private final AtomicLong avatarFailureCachedCount = new AtomicLong();
+    private final AtomicLong avatarAvailableCount = new AtomicLong();
+    private final AtomicLong avatarFallbackCount = new AtomicLong();
 
     @Autowired
     public AzureDevOpsConfigDiscoveryService(ApprovalBotProperties properties) {
@@ -440,21 +444,92 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     @Override
     public Optional<IdentityAvatar> loadIdentityAvatar(String organization, String descriptor) {
         if (isBlank(organization) || isBlank(descriptor) || isBlank(personalAccessToken)) {
+            avatarFallbackCount.incrementAndGet();
             return Optional.empty();
         }
+        var started = System.nanoTime();
+        var descriptorHash = Integer.toUnsignedString(normalizedIdentity(descriptor).hashCode(), 16);
         var cached = identityAvatarCache.get(organization, descriptor);
         if (cached.isPresent()) {
             avatarCacheHitCount.incrementAndGet();
-            return Optional.of(new IdentityAvatar(cached.get(), true));
+            if (!cached.get().available()) {
+                avatarFailureCachedCount.incrementAndGet();
+                avatarFallbackCount.incrementAndGet();
+                LOGGER.info(
+                        "ADO avatar unavailable operation=loadIdentityAvatar descriptorHash={} cacheHit=true failureCached=true durationMs={}",
+                        descriptorHash,
+                        elapsedMillis(started)
+                );
+                return Optional.empty();
+            }
+            avatarAvailableCount.incrementAndGet();
+            return Optional.of(new IdentityAvatar(cached.get().bytes(), cached.get().contentType(), true));
         }
         avatarCacheMissCount.incrementAndGet();
         identityAdoRequestCount.incrementAndGet();
-        var fetch = fetchBody("loadIdentityAvatar", () -> urlBuilder.graphAvatarUrl(organization, descriptor), AdoAvatarResponse.class);
-        if (!fetch.successful() || fetch.body().value().length == 0 || fetch.body().value().length > MAX_AVATAR_BYTES) {
+        var fetch = fetchAvatarBinary(organization, descriptor);
+        if (!fetch.successful() || fetch.bytes().length == 0 || fetch.bytes().length > MAX_AVATAR_BYTES) {
+            identityAvatarCache.putFailure(organization, descriptor);
+            avatarFallbackCount.incrementAndGet();
+            LOGGER.warn(
+                    "ADO avatar unavailable operation=loadIdentityAvatar descriptorHash={} httpStatus={} contentType={} byteSize={} cacheHit=false failureCached=true durationMs={} reason={}",
+                    descriptorHash,
+                    fetch.httpStatus(),
+                    fetch.contentType(),
+                    fetch.bytes().length,
+                    elapsedMillis(started),
+                    fetch.failureMessage()
+            );
             return Optional.empty();
         }
-        identityAvatarCache.put(organization, descriptor, fetch.body().value());
-        return Optional.of(new IdentityAvatar(fetch.body().value(), false));
+        identityAvatarCache.putSuccess(organization, descriptor, fetch.bytes(), fetch.contentType());
+        avatarAvailableCount.incrementAndGet();
+        LOGGER.info(
+                "ADO avatar loaded operation=loadIdentityAvatar descriptorHash={} httpStatus={} contentType={} byteSize={} cacheHit=false durationMs={}",
+                descriptorHash,
+                fetch.httpStatus(),
+                fetch.contentType(),
+                fetch.bytes().length,
+                elapsedMillis(started)
+        );
+        return Optional.of(new IdentityAvatar(fetch.bytes(), fetch.contentType(), false));
+    }
+
+    private AvatarBinaryFetch fetchAvatarBinary(String organization, String descriptor) {
+        try {
+            var targetUrl = urlBuilder.graphAvatarUrl(organization, descriptor);
+            return webClient.get()
+                    .uri(URI.create(targetUrl))
+                    .header(HttpHeaders.AUTHORIZATION, new AzureDevOpsAuth().basicAuthHeader(personalAccessToken))
+                    .exchangeToMono(this::handleAvatarResponse)
+                    .onErrorResume(error -> Mono.just(AvatarBinaryFetch.failure(
+                            0,
+                            "",
+                            sanitize(error.getClass().getSimpleName() + ": " + error.getMessage())
+                    )))
+                    .block();
+        } catch (IllegalArgumentException ex) {
+            return AvatarBinaryFetch.failure(0, "", sanitize(ex.getMessage()));
+        }
+    }
+
+    private Mono<AvatarBinaryFetch> handleAvatarResponse(ClientResponse response) {
+        var status = response.statusCode().value();
+        var contentType = response.headers().contentType().orElse(MediaType.APPLICATION_OCTET_STREAM);
+        var safeContentType = contentType.toString();
+        if (!response.statusCode().is2xxSuccessful()) {
+            return response.releaseBody().thenReturn(
+                    AvatarBinaryFetch.failure(status, safeContentType, "ADO avatar request failed with status " + status + ".")
+            );
+        }
+        if (!MediaType.IMAGE_PNG.isCompatibleWith(contentType)) {
+            return response.releaseBody().thenReturn(
+                    AvatarBinaryFetch.failure(status, safeContentType, "ADO avatar response was not image/png.")
+            );
+        }
+        return response.bodyToMono(byte[].class)
+                .map(bytes -> AvatarBinaryFetch.success(bytes, status, safeContentType))
+                .defaultIfEmpty(AvatarBinaryFetch.failure(status, safeContentType, "ADO avatar response was empty."));
     }
 
     private CandidatePoolLookup projectCandidates(String organization, String project) {
@@ -583,7 +658,10 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 Map.entry("candidatePoolSize", candidatePoolSize),
                 Map.entry("candidatePoolCacheHit", candidatePoolCacheHit),
                 Map.entry("avatarCacheHitCount", avatarCacheHitCount.get()),
-                Map.entry("avatarCacheMissCount", avatarCacheMissCount.get())
+                Map.entry("avatarCacheMissCount", avatarCacheMissCount.get()),
+                Map.entry("avatarFailureCachedCount", avatarFailureCachedCount.get()),
+                Map.entry("avatarAvailableCount", avatarAvailableCount.get()),
+                Map.entry("avatarFallbackCount", avatarFallbackCount.get())
         );
     }
 
@@ -940,6 +1018,26 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         }
     }
 
+    record AvatarBinaryFetch(byte[] bytes, int httpStatus, String contentType, String failureMessage) {
+        AvatarBinaryFetch {
+            bytes = bytes == null ? new byte[0] : bytes.clone();
+            contentType = contentType == null ? "" : contentType;
+            failureMessage = failureMessage == null ? "" : failureMessage;
+        }
+
+        static AvatarBinaryFetch success(byte[] bytes, int httpStatus, String contentType) {
+            return new AvatarBinaryFetch(bytes, httpStatus, contentType, "");
+        }
+
+        static AvatarBinaryFetch failure(int httpStatus, String contentType, String message) {
+            return new AvatarBinaryFetch(new byte[0], httpStatus, contentType, message);
+        }
+
+        boolean successful() {
+            return failureMessage.isBlank();
+        }
+    }
+
     record ProcessIdCandidate(String propertyName, String processId) {
     }
 
@@ -998,13 +1096,6 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             @JsonAlias("entityType")
             String subjectKind
     ) {
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record AdoAvatarResponse(byte[] value) {
-        AdoAvatarResponse {
-            value = value == null ? new byte[0] : value;
-        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

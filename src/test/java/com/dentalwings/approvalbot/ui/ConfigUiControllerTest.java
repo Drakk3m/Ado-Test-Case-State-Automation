@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -151,13 +153,17 @@ class ConfigUiControllerTest {
     @Test
     void userAvatarEndpointProxiesCachedImageWithoutExposingCredentials() throws Exception {
         when(discoveryService.loadIdentityAvatar("STMN-Group", "aad.user-1"))
-                .thenReturn(java.util.Optional.of(new IdentityAvatar(new byte[]{1, 2, 3}, true)));
+                .thenReturn(java.util.Optional.of(new IdentityAvatar(
+                        new byte[]{1, 2, 3},
+                        "image/png;api-version=7.1",
+                        true
+                )));
 
         mockMvc.perform(get("/api/config-ui/discovery/users/avatar")
                         .param("organization", "STMN-Group")
-                        .param("descriptor", "aad.user-1"))
+                .param("descriptor", "aad.user-1"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "image/png;api-version=7.1"))
                 .andExpect(content().bytes(new byte[]{1, 2, 3}));
     }
 
