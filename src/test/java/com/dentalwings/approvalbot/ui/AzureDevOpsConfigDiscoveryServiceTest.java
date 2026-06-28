@@ -532,6 +532,104 @@ class AzureDevOpsConfigDiscoveryServiceTest {
     }
 
     @Test
+    void projectCandidateCacheUsesCanonicalOrganizationAndProjectId() {
+        var cache = new ProjectIdentityCandidateCache(Duration.ofMinutes(5), 10, Clock.systemUTC());
+        var first = new ProjectIdentityCandidateCache.ProjectIdentityCandidates(
+                true, "project-id-1", "scp.1", "project-scope",
+                List.of(new ConfigSelectorOption("first@example.test", "First", "first@example.test", "project-scope"))
+        );
+        var refreshed = new ProjectIdentityCandidateCache.ProjectIdentityCandidates(
+                true, "project-id-1", "scp.1", "project-scope",
+                List.of(new ConfigSelectorOption("second@example.test", "Second", "second@example.test", "project-scope"))
+        );
+
+        cache.put("STMN-Group", "Project Name", first);
+        cache.put("stmn-group", "Project Alias", refreshed);
+
+        assertThat(cache.get("STMN-GROUP", "Project Name").orElseThrow().values())
+                .extracting(ConfigSelectorOption::value)
+                .containsExactly("second@example.test");
+    }
+
+    @Test
+    void singleProjectPoolMatchAvoidsGraphSubjectQuery() {
+        var exchange = projectIdentityExchange("""
+                {"count":1,"value":[
+                  {"descriptor":"aad.rene","displayName":"Rene Pool","principalName":"rene@example.test"}
+                ]}
+                """);
+        var service = discovery(exchange);
+
+        var result = service.searchIdentityOptions("STMN-Group", "Sandbox", "rene");
+
+        assertThat(result.values()).extracting(ConfigSelectorOption::value).containsExactly("rene@example.test");
+        assertThat(result.diagnostics())
+                .containsEntry("projectPoolMatchCount", 1)
+                .containsEntry("graphFallbackAttempted", false)
+                .containsEntry("sourceSelected", "project-scope");
+        assertThat(exchange.requests).hasSize(3);
+    }
+
+    @Test
+    void emptyGraphResultIsNegativeCachedForSameAndExtendedQueries() {
+        var exchange = projectIdentityFallbackExchange("{\"count\":0,\"value\":[]}");
+        var service = discovery(exchange);
+
+        var first = service.searchIdentityOptions("STMN-Group", "Sandbox", "abc");
+        var repeated = service.searchIdentityOptions("STMN-Group", "Sandbox", "abc");
+        var extended = service.searchIdentityOptions("STMN-Group", "Sandbox", "abcd");
+
+        assertThat(first.diagnostics()).containsEntry("graphFallbackAttempted", true);
+        assertThat(repeated.diagnostics())
+                .containsEntry("graphFallbackAttempted", false)
+                .containsEntry("graphNegativeCacheHit", true);
+        assertThat(extended.diagnostics())
+                .containsEntry("graphFallbackAttempted", false)
+                .containsEntry("graphNegativeCacheHit", true);
+        assertThat(exchange.requests).hasSize(4);
+    }
+
+    @Test
+    void graphNegativeCacheDoesNotSuppressProjectPoolMatches() {
+        var negativeCache = new GraphIdentityNegativeCache(Duration.ofMinutes(5), 10, Clock.systemUTC());
+        negativeCache.put("STMN-Group", "project-id-1", "ren");
+        var exchange = projectIdentityExchange("""
+                {"count":1,"value":[
+                  {"descriptor":"aad.rene","displayName":"Rene Pool","principalName":"rene@example.test"}
+                ]}
+                """);
+        var service = new AzureDevOpsConfigDiscoveryService(
+                "secret-pat",
+                exchange,
+                new AzureDevOpsUrlBuilder(),
+                new IdentitySearchResultCache(),
+                new ProjectIdentityCandidateCache(),
+                new IdentityAvatarCache(),
+                negativeCache
+        );
+
+        var result = service.searchIdentityOptions("STMN-Group", "Sandbox", "rene");
+
+        assertThat(result.values()).extracting(ConfigSelectorOption::value).containsExactly("rene@example.test");
+        assertThat(result.diagnostics())
+                .containsEntry("graphNegativeCacheHit", false)
+                .containsEntry("graphFallbackAttempted", false);
+        assertThat(exchange.requests).hasSize(3);
+    }
+
+    @Test
+    void graphNegativeCacheExpiresAfterItsTtl() {
+        var clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
+        var cache = new GraphIdentityNegativeCache(Duration.ofMinutes(5), 10, clock);
+
+        cache.put("STMN-Group", "project-id-1", "abc");
+        assertThat(cache.matches("stmn-group", "PROJECT-ID-1", "abcd")).isTrue();
+
+        clock.advance(Duration.ofMinutes(6));
+        assertThat(cache.matches("STMN-Group", "project-id-1", "abcd")).isFalse();
+    }
+
+    @Test
     void identitySearchResultCacheSeparatesProjects() {
         var cache = new IdentitySearchResultCache(Duration.ofMinutes(5), 10, Clock.systemUTC());
         cache.put("STMN-Group", "Project A", "rene", ConfigLookupResult.valid(List.of(

@@ -395,7 +395,12 @@ class ConfigUiStaticAssetsTest {
                 .contains("normalizedQuery.startsWith(entry.query)")
                 .contains("IDENTITY_CACHE_TTL_MS")
                 .contains("IDENTITY_CACHE_MAX_ENTRIES")
-                .contains("cached.options.length >= IDENTITY_CACHE_USEFUL_RESULT_COUNT");
+                .contains("cached.options.length >= IDENTITY_CACHE_USEFUL_RESULT_COUNT")
+                .contains("graphFallbackAttempted")
+                .contains("graphNegativeCacheHit")
+                .contains("projectPoolMatchCount")
+                .contains("avatarAdoRequestCount")
+                .contains("frontendRequestCount");
     }
 
     @Test

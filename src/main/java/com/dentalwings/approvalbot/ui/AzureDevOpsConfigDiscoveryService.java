@@ -36,7 +36,6 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private static final String MISSING_PAT_MESSAGE = "ADO_PERSONAL_ACCESS_TOKEN is required for read-only ADO discovery.";
     private static final int MAX_SAFE_DETAIL_LENGTH = 1000;
     private static final int MIN_IDENTITY_QUERY_LENGTH = 3;
-    private static final int MIN_USEFUL_PROJECT_RESULTS = 3;
     private static final int MAX_PROJECT_CANDIDATES = 250;
     private static final int MAX_AVATAR_BYTES = 128 * 1024;
     private static final List<String> PROCESS_ID_PROPERTY_PREFERENCE = List.of(
@@ -51,6 +50,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private final IdentitySearchResultCache identitySearchCache;
     private final ProjectIdentityCandidateCache projectIdentityCandidateCache;
     private final IdentityAvatarCache identityAvatarCache;
+    private final GraphIdentityNegativeCache graphIdentityNegativeCache;
     private final AtomicLong identityBackendRequestCount = new AtomicLong();
     private final AtomicLong identityAdoRequestCount = new AtomicLong();
     private final AtomicLong avatarCacheHitCount = new AtomicLong();
@@ -58,11 +58,13 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private final AtomicLong avatarFailureCachedCount = new AtomicLong();
     private final AtomicLong avatarAvailableCount = new AtomicLong();
     private final AtomicLong avatarFallbackCount = new AtomicLong();
+    private final AtomicLong avatarAdoRequestCount = new AtomicLong();
 
     @Autowired
     public AzureDevOpsConfigDiscoveryService(ApprovalBotProperties properties) {
         this(properties.getAdo().getPersonalAccessToken(), WebClient.builder().build(), new AzureDevOpsUrlBuilder(),
-                new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache());
+                new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
+                new GraphIdentityNegativeCache());
     }
 
     AzureDevOpsConfigDiscoveryService(
@@ -71,7 +73,8 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             AzureDevOpsUrlBuilder urlBuilder
     ) {
         this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
-                new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache());
+                new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
+                new GraphIdentityNegativeCache());
     }
 
     AzureDevOpsConfigDiscoveryService(
@@ -81,7 +84,8 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             IdentitySearchResultCache identitySearchCache
     ) {
         this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
-                identitySearchCache, new ProjectIdentityCandidateCache(), new IdentityAvatarCache());
+                identitySearchCache, new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
+                new GraphIdentityNegativeCache());
     }
 
     AzureDevOpsConfigDiscoveryService(
@@ -93,7 +97,20 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             IdentityAvatarCache identityAvatarCache
     ) {
         this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
-                identitySearchCache, projectIdentityCandidateCache, identityAvatarCache);
+                identitySearchCache, projectIdentityCandidateCache, identityAvatarCache, new GraphIdentityNegativeCache());
+    }
+
+    AzureDevOpsConfigDiscoveryService(
+            String personalAccessToken,
+            ExchangeFunction exchangeFunction,
+            AzureDevOpsUrlBuilder urlBuilder,
+            IdentitySearchResultCache identitySearchCache,
+            ProjectIdentityCandidateCache projectIdentityCandidateCache,
+            IdentityAvatarCache identityAvatarCache,
+            GraphIdentityNegativeCache graphIdentityNegativeCache
+    ) {
+        this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
+                identitySearchCache, projectIdentityCandidateCache, identityAvatarCache, graphIdentityNegativeCache);
     }
 
     private AzureDevOpsConfigDiscoveryService(
@@ -102,7 +119,8 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             AzureDevOpsUrlBuilder urlBuilder,
             IdentitySearchResultCache identitySearchCache,
             ProjectIdentityCandidateCache projectIdentityCandidateCache,
-            IdentityAvatarCache identityAvatarCache
+            IdentityAvatarCache identityAvatarCache,
+            GraphIdentityNegativeCache graphIdentityNegativeCache
     ) {
         this.personalAccessToken = personalAccessToken;
         this.webClient = webClient;
@@ -110,6 +128,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         this.identitySearchCache = identitySearchCache;
         this.projectIdentityCandidateCache = projectIdentityCandidateCache;
         this.identityAvatarCache = identityAvatarCache;
+        this.graphIdentityNegativeCache = graphIdentityNegativeCache;
     }
 
     @Override
@@ -377,20 +396,32 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             return ConfigLookupResult.<ConfigSelectorOption>notChecked("Type at least 3 characters to search ADO identities.")
                     .withDiagnostics(identityDiagnostics(false, backendRequests, identityAdoRequestCount.get(), "not-checked", 0, false));
         }
-        var cached = identitySearchCache.get(organization, project, normalizedQuery);
+        var poolLookup = projectCandidates(organization, project);
+        var pool = poolLookup.candidates();
+        var projectId = pool.projectId();
+        var cached = identitySearchCache.get(organization, projectId, normalizedQuery);
         if (cached.isPresent()) {
+            var graphCacheHit = cached.get().values().stream().anyMatch(option -> option.source().contains("graph"));
             var result = cached.get().toResult()
-                    .withDiagnostics(identityDiagnostics(true, backendRequests, identityAdoRequestCount.get(), "search-cache", resultCount(cached.get().values()), true));
+                    .withDiagnostics(identityDiagnostics(
+                            true, backendRequests, identityAdoRequestCount.get(), "search-cache",
+                            pool.values().size(), poolLookup.cacheHit(), projectId, cached.get().values().size(),
+                            false, graphCacheHit, false
+                    ));
             LOGGER.info(
-                    "ADO identity discovery completed operation={} organization={} project={} queryLength={} status={} resultCount={} source={} cacheHit={} backendRequestCount={} adoRequestCount={} durationMs={}",
+                    "ADO identity discovery completed operation={} organization={} project={} projectId={} queryLength={} status={} finalOptionCount={} sourceSelected={} candidatePoolCacheHit={} candidatePoolSize={} projectPoolMatchCount={} graphFallbackAttempted=false graphCacheHit={} graphNegativeCacheHit=false backendRequestCount={} adoRequestCount={} durationMs={}",
                     "searchIdentityOptions",
                     organization,
                     project,
+                    projectId,
                     normalizedQuery.length(),
                     result.status(),
                     result.optionCount(),
                     "search-cache",
-                    true,
+                    poolLookup.cacheHit(),
+                    pool.values().size(),
+                    result.optionCount(),
+                    graphCacheHit,
                     backendRequests,
                     identityAdoRequestCount.get(),
                     elapsedMillis(started)
@@ -398,42 +429,63 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             return result;
         }
 
-        var poolLookup = projectCandidates(organization, project);
-        var pool = poolLookup.candidates();
         var values = pool.values().stream()
                 .filter(option -> identityContains(option, normalizedQuery))
                 .toList();
+        var projectPoolMatchCount = values.size();
         var source = pool.available() ? "project-scope" : "graph-query";
-        ConfigLookupResult<ConfigSelectorOption> fallback = null;
-        if (values.size() < MIN_USEFUL_PROJECT_RESULTS) {
-            fallback = graphSubjectQuery(organization, normalizedQuery, pool.scopeDescriptor());
-            if (fallback.status() == ConfigValidationStatus.VALID) {
-                values = mergeIdentityOptions(values, fallback.values());
-                source = pool.available() ? "project-scope+graph-query" : "graph-query";
-            } else if (values.isEmpty()) {
-                return fallback.withDiagnostics(identityDiagnostics(
-                        false, backendRequests, identityAdoRequestCount.get(), source, pool.values().size(), poolLookup.cacheHit()
-                ));
+        var graphFallbackAttempted = false;
+        var graphNegativeCacheHit = false;
+        if (values.isEmpty()) {
+            graphNegativeCacheHit = graphIdentityNegativeCache.matches(organization, projectId, normalizedQuery);
+            if (graphNegativeCacheHit) {
+                source = "graph-negative-cache";
+            } else {
+                graphFallbackAttempted = true;
+                var fallback = graphSubjectQuery(organization, normalizedQuery, pool.scopeDescriptor());
+                if (fallback.status() == ConfigValidationStatus.VALID) {
+                    values = mergeIdentityOptions(values, fallback.values());
+                    source = pool.available() ? "project-scope+graph-query" : "graph-query";
+                } else if (fallback.status() == ConfigValidationStatus.WARNING) {
+                    graphIdentityNegativeCache.put(organization, projectId, normalizedQuery);
+                    source = "graph-query-empty";
+                } else {
+                    return fallback.withDiagnostics(identityDiagnostics(
+                            false, backendRequests, identityAdoRequestCount.get(), "graph-query-failed",
+                            pool.values().size(), poolLookup.cacheHit(), projectId, projectPoolMatchCount,
+                            true, false, false
+                    ));
+                }
             }
         }
-        var result = ConfigLookupResult.valid(values);
-        if (result.status() == ConfigValidationStatus.VALID || result.status() == ConfigValidationStatus.WARNING) {
-            identitySearchCache.put(organization, project, normalizedQuery, result);
+        var result = values.isEmpty()
+                ? ConfigLookupResult.<ConfigSelectorOption>warning(graphNegativeCacheHit
+                        ? "No project-pool match; Graph fallback skipped because a broader or identical query was already empty."
+                        : "No project-pool match; Graph fallback returned no matches.")
+                : ConfigLookupResult.valid(values);
+        if (result.status() == ConfigValidationStatus.VALID) {
+            identitySearchCache.put(organization, projectId, normalizedQuery, result);
         }
         var response = result.withDiagnostics(identityDiagnostics(
-                false, backendRequests, identityAdoRequestCount.get(), source, pool.values().size(), poolLookup.cacheHit()
+                false, backendRequests, identityAdoRequestCount.get(), source, pool.values().size(),
+                poolLookup.cacheHit(), projectId, projectPoolMatchCount, graphFallbackAttempted,
+                false, graphNegativeCacheHit
         ));
         LOGGER.info(
-                "ADO identity discovery completed operation={} organization={} project={} queryLength={} status={} resultCount={} source={} candidatePoolSize={} cacheHit={} backendRequestCount={} adoRequestCount={} durationMs={}",
+                "ADO identity discovery completed operation={} organization={} project={} projectId={} queryLength={} status={} finalOptionCount={} sourceSelected={} candidatePoolCacheHit={} candidatePoolSize={} projectPoolMatchCount={} graphFallbackAttempted={} graphCacheHit=false graphNegativeCacheHit={} backendRequestCount={} adoRequestCount={} durationMs={}",
                 "searchIdentityOptions",
                 organization,
                 project,
+                projectId,
                 normalizedQuery.length(),
                 response.status(),
                 response.optionCount(),
                 source,
+                poolLookup.cacheHit(),
                 pool.values().size(),
-                false,
+                projectPoolMatchCount,
+                graphFallbackAttempted,
+                graphNegativeCacheHit,
                 backendRequests,
                 identityAdoRequestCount.get(),
                 elapsedMillis(started)
@@ -466,7 +518,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             return Optional.of(new IdentityAvatar(cached.get().bytes(), cached.get().contentType(), true));
         }
         avatarCacheMissCount.incrementAndGet();
-        identityAdoRequestCount.incrementAndGet();
+        avatarAdoRequestCount.incrementAndGet();
         var fetch = fetchAvatarBinary(organization, descriptor);
         if (!fetch.successful() || fetch.bytes().length == 0 || fetch.bytes().length > MAX_AVATAR_BYTES) {
             identityAvatarCache.putFailure(organization, descriptor);
@@ -534,7 +586,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     private CandidatePoolLookup projectCandidates(String organization, String project) {
         if (isBlank(project)) {
-            return new CandidatePoolLookup(new ProjectIdentityCandidateCache.ProjectIdentityCandidates(false, "", "graph-query", List.of()), false);
+            return new CandidatePoolLookup(new ProjectIdentityCandidateCache.ProjectIdentityCandidates(false, "", "", "graph-query", List.of()), false);
         }
         var cached = projectIdentityCandidateCache.get(organization, project);
         if (cached.isPresent()) {
@@ -549,16 +601,17 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         identityAdoRequestCount.incrementAndGet();
         var projectFetch = fetchBody("resolveProjectForIdentitySearch", () -> urlBuilder.projectUrl(organization, project), AdoRestProjectResponse.class);
         if (!projectFetch.successful() || isBlank(projectFetch.body().id())) {
-            return new ProjectIdentityCandidateCache.ProjectIdentityCandidates(false, "", "graph-query", List.of());
+            return new ProjectIdentityCandidateCache.ProjectIdentityCandidates(false, "", "", "graph-query", List.of());
         }
+        var projectId = projectFetch.body().id();
         identityAdoRequestCount.incrementAndGet();
         var descriptorFetch = fetchBody(
                 "resolveProjectScopeDescriptor",
-                () -> urlBuilder.graphDescriptorUrl(organization, projectFetch.body().id()),
+                () -> urlBuilder.graphDescriptorUrl(organization, projectId),
                 AdoGraphDescriptorResponse.class
         );
         if (!descriptorFetch.successful() || isBlank(descriptorFetch.body().value())) {
-            return new ProjectIdentityCandidateCache.ProjectIdentityCandidates(false, "", "graph-query", List.of());
+            return new ProjectIdentityCandidateCache.ProjectIdentityCandidates(false, projectId, "", "graph-query", List.of());
         }
         var scopeDescriptor = descriptorFetch.body().value();
         identityAdoRequestCount.incrementAndGet();
@@ -568,7 +621,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 AdoGraphUserListResponse.class
         );
         if (!usersFetch.successful()) {
-            return new ProjectIdentityCandidateCache.ProjectIdentityCandidates(false, scopeDescriptor, "graph-query", List.of());
+            return new ProjectIdentityCandidateCache.ProjectIdentityCandidates(false, projectId, scopeDescriptor, "graph-query", List.of());
         }
         // Scoped Graph users are a bounded candidate set, not proof of complete project permission membership.
         var options = usersFetch.body().value().stream()
@@ -576,7 +629,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 .map(user -> graphUserOption(organization, user, "project-scope"))
                 .filter(ConfigSelectorOption::resolved)
                 .toList();
-        return new ProjectIdentityCandidateCache.ProjectIdentityCandidates(true, scopeDescriptor, "project-scope", options);
+        return new ProjectIdentityCandidateCache.ProjectIdentityCandidates(true, projectId, scopeDescriptor, "project-scope", options);
     }
 
     private ConfigLookupResult<ConfigSelectorOption> graphSubjectQuery(String organization, String query, String scopeDescriptor) {
@@ -661,8 +714,34 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 Map.entry("avatarCacheMissCount", avatarCacheMissCount.get()),
                 Map.entry("avatarFailureCachedCount", avatarFailureCachedCount.get()),
                 Map.entry("avatarAvailableCount", avatarAvailableCount.get()),
-                Map.entry("avatarFallbackCount", avatarFallbackCount.get())
+                Map.entry("avatarFallbackCount", avatarFallbackCount.get()),
+                Map.entry("avatarAdoRequestCount", avatarAdoRequestCount.get())
         );
+    }
+
+    private Map<String, Object> identityDiagnostics(
+            boolean cacheHit,
+            long backendRequestCount,
+            long adoRequestCount,
+            String source,
+            int candidatePoolSize,
+            boolean candidatePoolCacheHit,
+            String projectId,
+            int projectPoolMatchCount,
+            boolean graphFallbackAttempted,
+            boolean graphCacheHit,
+            boolean graphNegativeCacheHit
+    ) {
+        var diagnostics = new LinkedHashMap<>(identityDiagnostics(
+                cacheHit, backendRequestCount, adoRequestCount, source, candidatePoolSize, candidatePoolCacheHit
+        ));
+        diagnostics.put("projectId", projectId);
+        diagnostics.put("sourceSelected", source);
+        diagnostics.put("projectPoolMatchCount", projectPoolMatchCount);
+        diagnostics.put("graphFallbackAttempted", graphFallbackAttempted);
+        diagnostics.put("graphCacheHit", graphCacheHit);
+        diagnostics.put("graphNegativeCacheHit", graphNegativeCacheHit);
+        return Map.copyOf(diagnostics);
     }
 
     private List<ConfigSelectorOption> identityOptions(AdoRestIdentityListResponse response) {
