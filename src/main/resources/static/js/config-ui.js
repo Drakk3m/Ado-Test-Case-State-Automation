@@ -527,6 +527,11 @@ function ensureSelectorDiagnostic(selectorName, projectConfigId = "") {
             backendCacheMiss: false,
             backendRequestCount: 0,
             adoRequestCount: 0,
+            candidatePoolSource: "",
+            candidatePoolSize: 0,
+            candidatePoolCacheHit: false,
+            avatarCacheHitCount: 0,
+            avatarCacheMissCount: 0,
             enabled: false,
             message: "",
             staleIgnoredCount: 0,
@@ -638,6 +643,11 @@ function diagnosticItemMarkup(item) {
         ["backend cache miss", item.backendCacheMiss],
         ["backend requests", item.backendRequestCount],
         ["ADO requests", item.adoRequestCount],
+        ["candidate source", item.candidatePoolSource],
+        ["candidate pool size", item.candidatePoolSize],
+        ["candidate pool cache hit", item.candidatePoolCacheHit],
+        ["avatar cache hits", item.avatarCacheHitCount],
+        ["avatar cache misses", item.avatarCacheMissCount],
         ["stale ignored", item.staleIgnoredCount]
     ].filter((metric) => metric[1] !== "" && metric[1] !== null && metric[1] !== undefined);
     return `
@@ -705,7 +715,9 @@ function normalizeSelectorOption(item) {
         displayName,
         description: String(item.description ?? item.type ?? "").trim(),
         source: String(item.source ?? "").trim(),
-        referenceName: String(item.referenceName ?? value).trim()
+        referenceName: String(item.referenceName ?? value).trim(),
+        avatarUrl: String(item.avatarUrl ?? "").trim(),
+        resolved: item.resolved !== false
     };
 }
 
@@ -941,7 +953,12 @@ function ensureIdentitySearchState(projectConfigId, role) {
             backendRequestCount: 0,
             adoRequestCount: 0,
             backendCacheHit: false,
-            backendCacheMiss: false
+            backendCacheMiss: false,
+            candidatePoolSource: "",
+            candidatePoolSize: 0,
+            candidatePoolCacheHit: false,
+            avatarCacheHitCount: 0,
+            avatarCacheMissCount: 0
         };
     }
     return identitySearchState[key];
@@ -961,6 +978,10 @@ function setRoleUsers(project, role, users) {
 
 function normalizedIdentity(value) {
     return String(value || "").trim().toLowerCase();
+}
+
+function normalizedIdentityQuery(value) {
+    return normalizedIdentity(value).replace(/\s+/g, " ");
 }
 
 function isResolvableIdentityValue(value) {
@@ -1002,6 +1023,36 @@ function userInitials(option) {
         return "?";
     }
     return words.slice(0, 2).map((word) => word[0].toUpperCase()).join("");
+}
+
+function identityOption(optionOrValue) {
+    return typeof optionOrValue === "string"
+            ? identityOptionCache[normalizedIdentity(optionOrValue)] || { value: optionOrValue }
+            : (optionOrValue || {});
+}
+
+function identityAvatarMarkup(optionOrValue) {
+    const option = identityOption(optionOrValue);
+    const initials = escapeHtml(userInitials(optionOrValue));
+    if (!option.avatarUrl) {
+        return `<span class="identity-avatar"><span class="identity-avatar-fallback">${initials}</span></span>`;
+    }
+    return `<span class="identity-avatar">
+        <img data-identity-avatar src="${escapeHtml(option.avatarUrl)}" alt="" loading="lazy">
+        <span class="identity-avatar-fallback" hidden>${initials}</span>
+    </span>`;
+}
+
+function wireIdentityAvatarFallbacks(root) {
+    for (const image of root?.querySelectorAll?.("[data-identity-avatar]") || []) {
+        image.addEventListener("error", () => {
+            image.hidden = true;
+            const fallback = image.nextElementSibling;
+            if (fallback) {
+                fallback.hidden = false;
+            }
+        }, { once: true });
+    }
 }
 
 function identityDisplayName(optionOrValue) {
@@ -1049,8 +1100,10 @@ function identityContainsQuery(option, query) {
             .includes(normalizedQuery);
 }
 
-function identitySearchCacheKey(organization, query) {
-    return `${normalizedIdentity(organization)}::${normalizedIdentity(query)}`;
+function identitySearchCacheKey(projectConfigId, role, organization, project, query) {
+    return [projectConfigId, role, organization, project, normalizedIdentityQuery(query)]
+            .map(normalizedIdentity)
+            .join("::");
 }
 
 function pruneIdentitySearchCache(now = Date.now()) {
@@ -1064,28 +1117,36 @@ function pruneIdentitySearchCache(now = Date.now()) {
     }
 }
 
-function putIdentitySearchCache(organization, query, options) {
-    const key = identitySearchCacheKey(organization, query);
+function putIdentitySearchCache(projectConfigId, role, organization, project, query, options) {
+    const key = identitySearchCacheKey(projectConfigId, role, organization, project, query);
     identitySearchResultCache.delete(key);
     identitySearchResultCache.set(key, {
         organization: normalizedIdentity(organization),
-        query: normalizedIdentity(query),
+        projectConfigId,
+        role,
+        project: normalizedIdentity(project),
+        query: normalizedIdentityQuery(query),
         options: (options || []).map((option) => ({ ...option })),
         createdAt: Date.now()
     });
     pruneIdentitySearchCache();
 }
 
-function findIdentitySearchCache(organization, query) {
+function findIdentitySearchCache(projectConfigId, role, organization, project, query) {
     pruneIdentitySearchCache();
     const normalizedOrganization = normalizedIdentity(organization);
-    const normalizedQuery = normalizedIdentity(query);
-    const exact = identitySearchResultCache.get(identitySearchCacheKey(organization, query));
+    const normalizedProject = normalizedIdentity(project);
+    const normalizedQuery = normalizedIdentityQuery(query);
+    const exact = identitySearchResultCache.get(identitySearchCacheKey(projectConfigId, role, organization, project, query));
     if (exact) {
         return { exact: true, options: exact.options.filter((option) => identityContainsQuery(option, normalizedQuery)) };
     }
     const broader = Array.from(identitySearchResultCache.values())
-            .filter((entry) => entry.organization === normalizedOrganization && normalizedQuery.startsWith(entry.query))
+            .filter((entry) => entry.projectConfigId === projectConfigId
+                    && entry.role === role
+                    && entry.organization === normalizedOrganization
+                    && entry.project === normalizedProject
+                    && normalizedQuery.startsWith(entry.query))
             .sort((left, right) => right.query.length - left.query.length)[0];
     if (!broader) {
         return null;
@@ -1185,6 +1246,11 @@ function identitySearchStatus(projectConfigId, role, project) {
         backendCacheMiss: stateForRole.backendCacheMiss,
         backendRequestCount: stateForRole.backendRequestCount,
         adoRequestCount: stateForRole.adoRequestCount,
+        candidatePoolSource: stateForRole.candidatePoolSource,
+        candidatePoolSize: stateForRole.candidatePoolSize,
+        candidatePoolCacheHit: stateForRole.candidatePoolCacheHit,
+        avatarCacheHitCount: stateForRole.avatarCacheHitCount,
+        avatarCacheMissCount: stateForRole.avatarCacheMissCount,
         enabled: true,
         message: sanitizeMessage(stateForRole.lookup.message)
     }, projectConfigId);
@@ -1217,6 +1283,7 @@ function updateIdentityPicker(projectConfigId, role) {
     if (selectedEl) {
         selectedEl.innerHTML = selectedUserChips(project, role);
     }
+    wireIdentityAvatarFallbacks(picker);
     identitySearchStatus(projectConfigId, role, project);
 }
 
@@ -1232,7 +1299,7 @@ function selectedUserChips(project, role) {
     }
     return `<div class="identity-chip-list">${users.map((user) => `
         <span class="identity-chip">
-            <span class="identity-avatar">${escapeHtml(userInitials(user))}</span>
+            ${identityAvatarMarkup(user)}
             <span class="identity-chip-text">
                 <strong>${escapeHtml(identityDisplayName(user))}</strong>
                 <small>${escapeHtml(identityEmail(user))}</small>
@@ -1247,7 +1314,7 @@ function pendingIdentityPreview(project, role, pending) {
     const selected = new Set((roleUsers(project, role) || []).map(normalizedIdentity));
     const canAdd = normalized && isResolvableIdentityValue(normalized) && !selected.has(normalized);
     const pendingBody = pending ? `
-        <span class="identity-avatar">${escapeHtml(userInitials(pending))}</span>
+        ${identityAvatarMarkup(pending)}
         <span class="identity-result-text">
             <strong>${escapeHtml(identityDisplayName(pending))}</strong>
             <small>${escapeHtml(identityEmail(pending))}</small>
@@ -1281,7 +1348,7 @@ function identitySearchResults(project, role, searchState) {
         const email = identityEmail(option);
         return `
             <button type="button" class="identity-result${selectedClass}" data-action="select-pending-user" data-role="${role}" data-user-value="${escapeHtml(option.value)}" ${disabled}>
-                <span class="identity-avatar">${escapeHtml(userInitials(option))}</span>
+                ${identityAvatarMarkup(option)}
                 <span class="identity-result-text">
                     <strong>${escapeHtml(identityDisplayName(option))}</strong>
                     <small>${escapeHtml(email)}</small>
@@ -2016,6 +2083,7 @@ function renderProjects() {
         });
 
         projectsEl.appendChild(card);
+        wireIdentityAvatarFallbacks(card);
     });
 }
 
@@ -2092,7 +2160,7 @@ function handleIdentitySearchInput(projectConfigId, role, query) {
     stateForRole.backendCacheMiss = false;
     stateForRole.debouncePending = false;
     clearTimeout(identitySearchTimers[identityKey(projectConfigId, role)]);
-    const normalizedQuery = normalizedIdentity(stateForRole.query);
+    const normalizedQuery = normalizedIdentityQuery(stateForRole.query);
     if (normalizedQuery.length < IDENTITY_MIN_QUERY_LENGTH) {
         stateForRole.lookup = { status: "NOT_CHECKED", message: t("identity.typeToSearch"), values: [], optionCount: 0 };
         stateForRole.searching = false;
@@ -2100,7 +2168,14 @@ function handleIdentitySearchInput(projectConfigId, role, query) {
         return;
     }
 
-    const cached = findIdentitySearchCache(state.ado.organization, normalizedQuery);
+    const project = projectByConfigId(projectConfigId);
+    const cached = findIdentitySearchCache(
+            projectConfigId,
+            role,
+            state.ado.organization,
+            project?.name || "",
+            normalizedQuery
+    );
     if (cached) {
         stateForRole.frontendCacheHit = true;
         stateForRole.frontendCacheHits += 1;
@@ -2380,8 +2455,8 @@ async function loadIdentityOptions(projectConfigId, role, query, requestVersion)
         return;
     }
     const searchState = ensureIdentitySearchState(projectConfigId, role);
-    const requestQuery = normalizedIdentity(query);
-    if (searchState.requestVersion !== requestVersion || normalizedIdentity(searchState.query) !== requestQuery) {
+    const requestQuery = normalizedIdentityQuery(query);
+    if (searchState.requestVersion !== requestVersion || normalizedIdentityQuery(searchState.query) !== requestQuery) {
         incrementStaleIgnored(`${role}Users`, "identity-query-changed-before-request", projectConfigId);
         return;
     }
@@ -2395,7 +2470,7 @@ async function loadIdentityOptions(projectConfigId, role, query, requestVersion)
         query: requestQuery
     });
     if (ensureIdentitySearchState(projectConfigId, role).requestVersion !== requestVersion
-            || normalizedIdentity(ensureIdentitySearchState(projectConfigId, role).query) !== requestQuery) {
+            || normalizedIdentityQuery(ensureIdentitySearchState(projectConfigId, role).query) !== requestQuery) {
         incrementStaleIgnored(`${role}Users`, "identity-query-changed", projectConfigId);
         return;
     }
@@ -2407,13 +2482,25 @@ async function loadIdentityOptions(projectConfigId, role, query, requestVersion)
     );
     cacheIdentityOptions(selectorOptions(searchState.lookup));
     if (searchState.lookup.status === "VALID" || searchState.lookup.status === "WARNING") {
-        putIdentitySearchCache(state.ado.organization, requestQuery, selectorOptions(searchState.lookup));
+        putIdentitySearchCache(
+                projectConfigId,
+                role,
+                state.ado.organization,
+                project.name,
+                requestQuery,
+                selectorOptions(searchState.lookup)
+        );
     }
     const backendDiagnostics = result.diagnostics || {};
     searchState.backendCacheHit = backendDiagnostics.backendCacheHit === true;
     searchState.backendCacheMiss = backendDiagnostics.backendCacheMiss === true;
     searchState.backendRequestCount = Number(backendDiagnostics.backendRequestCount ?? searchState.backendRequestCount);
     searchState.adoRequestCount = Number(backendDiagnostics.adoRequestCount ?? searchState.adoRequestCount);
+    searchState.candidatePoolSource = String(backendDiagnostics.candidatePoolSource ?? "");
+    searchState.candidatePoolSize = Number(backendDiagnostics.candidatePoolSize ?? 0);
+    searchState.candidatePoolCacheHit = backendDiagnostics.candidatePoolCacheHit === true;
+    searchState.avatarCacheHitCount = Number(backendDiagnostics.avatarCacheHitCount ?? 0);
+    searchState.avatarCacheMissCount = Number(backendDiagnostics.avatarCacheMissCount ?? 0);
     searchState.searching = false;
     debugDiscovery("selector-populated", {
         projectConfigId,

@@ -390,11 +390,27 @@ class ConfigUiStaticAssetsTest {
                 .contains("option.value || \"\"")
                 .contains("option.description || \"\"")
                 .contains("identityOptionsForSearch(searchState)")
-                .contains("function findIdentitySearchCache(organization, query)")
+                .contains("function findIdentitySearchCache(projectConfigId, role, organization, project, query)")
+                .contains("identitySearchCacheKey(projectConfigId, role, organization, project, query)")
                 .contains("normalizedQuery.startsWith(entry.query)")
                 .contains("IDENTITY_CACHE_TTL_MS")
                 .contains("IDENTITY_CACHE_MAX_ENTRIES")
                 .contains("cached.options.length >= IDENTITY_CACHE_USEFUL_RESULT_COUNT");
+    }
+
+    @Test
+    void javascriptRendersAdoAvatarsWithInitialsFallback() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("option.avatarUrl")
+                .contains("identityAvatarMarkup(option)")
+                .contains("wireIdentityAvatarFallbacks")
+                .contains("data-identity-avatar")
+                .contains("identity-avatar-fallback")
+                .contains("image.nextElementSibling")
+                .contains("fallback.hidden = false")
+                .doesNotContain("Authorization: Bearer");
     }
 
     @Test

@@ -9,6 +9,7 @@ public class AzureDevOpsUrlBuilder {
     public static final String WORK_ITEM_API_VERSION = "7.1";
     public static final String COMMENTS_API_VERSION = "7.1-preview";
     public static final String PROJECT_PROPERTIES_API_VERSION = "7.1-preview.1";
+    public static final String GRAPH_PREVIEW_API_VERSION = "7.1-preview.1";
 
     public String workItemUrl(AdoWorkItemKey key) {
         validateKey(key);
@@ -129,6 +130,47 @@ public class AzureDevOpsUrlBuilder {
                 + "/_apis/identities?searchFilter=General&filterValue="
                 + encode(query)
                 + "&queryMembership=None&api-version="
+                + WORK_ITEM_API_VERSION;
+    }
+
+    public String graphDescriptorUrl(String organization, String projectId) {
+        requireComponent("organization", organization);
+        requireComponent("project id", projectId);
+        return "https://vssps.dev.azure.com/"
+                + encode(organization)
+                + "/_apis/graph/descriptors/"
+                + encode(projectId)
+                + "?api-version="
+                + GRAPH_PREVIEW_API_VERSION;
+    }
+
+    public String scopedGraphUsersUrl(String organization, String scopeDescriptor) {
+        requireComponent("organization", organization);
+        requireComponent("scope descriptor", scopeDescriptor);
+        return "https://vssps.dev.azure.com/"
+                + encode(organization)
+                + "/_apis/graph/users?scopeDescriptor="
+                + encode(scopeDescriptor)
+                + "&api-version="
+                + GRAPH_PREVIEW_API_VERSION;
+    }
+
+    public String graphSubjectQueryUrl(String organization) {
+        requireComponent("organization", organization);
+        return "https://vssps.dev.azure.com/"
+                + encode(organization)
+                + "/_apis/graph/subjectquery?api-version="
+                + GRAPH_PREVIEW_API_VERSION;
+    }
+
+    public String graphAvatarUrl(String organization, String descriptor) {
+        requireComponent("organization", organization);
+        requireComponent("identity descriptor", descriptor);
+        return "https://vssps.dev.azure.com/"
+                + encode(organization)
+                + "/_apis/graph/Subjects/"
+                + encode(descriptor)
+                + "/avatars?size=small&format=png&api-version="
                 + WORK_ITEM_API_VERSION;
     }
 

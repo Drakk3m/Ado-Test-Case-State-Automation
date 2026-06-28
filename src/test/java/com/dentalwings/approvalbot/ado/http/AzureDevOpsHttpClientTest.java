@@ -117,6 +117,20 @@ class AzureDevOpsHttpClientTest {
     }
 
     @Test
+    void projectScopedIdentityUrlsUseOfficialGraphEndpointsAndEncodeOnce() {
+        var builder = new AzureDevOpsUrlBuilder();
+
+        assertThat(builder.graphDescriptorUrl("my org", "project id"))
+                .isEqualTo("https://vssps.dev.azure.com/my%20org/_apis/graph/descriptors/project%20id?api-version=7.1-preview.1");
+        assertThat(builder.scopedGraphUsersUrl("my org", "scp.project descriptor"))
+                .isEqualTo("https://vssps.dev.azure.com/my%20org/_apis/graph/users?scopeDescriptor=scp.project%20descriptor&api-version=7.1-preview.1");
+        assertThat(builder.graphSubjectQueryUrl("my org"))
+                .isEqualTo("https://vssps.dev.azure.com/my%20org/_apis/graph/subjectquery?api-version=7.1-preview.1");
+        assertThat(builder.graphAvatarUrl("my org", "aad.user descriptor"))
+                .isEqualTo("https://vssps.dev.azure.com/my%20org/_apis/graph/Subjects/aad.user%20descriptor/avatars?size=small&format=png&api-version=7.1");
+    }
+
+    @Test
     void urlBuilderRejectsNullWorkItemKeyWithClearMessage() {
         assertThatThrownBy(() -> new AzureDevOpsUrlBuilder().workItemUrl(null))
                 .isInstanceOf(IllegalArgumentException.class)

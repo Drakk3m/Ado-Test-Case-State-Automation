@@ -472,17 +472,109 @@ class AzureDevOpsConfigDiscoveryServiceTest {
     @Test
     void identitySearchCacheStoresOnlyNormalizedSelectorOptions() {
         var cache = new IdentitySearchResultCache(Duration.ofMinutes(5), 10, Clock.systemUTC());
-        cache.put("STMN-Group", "rene", ConfigLookupResult.valid(List.of(
+        cache.put("STMN-Group", "Sandbox", "rene", ConfigLookupResult.valid(List.of(
                 new ConfigSelectorOption("rene@example.test", "Rene Example", "rene@example.test", "ADO", "aad.user-1")
         )));
 
-        var cached = cache.get("STMN-Group", "rene").orElseThrow().toResult();
+        var cached = cache.get("STMN-Group", "Sandbox", "rene").orElseThrow().toResult();
 
         assertThat(cached.values()).containsExactly(
                 new ConfigSelectorOption("rene@example.test", "Rene Example", "rene@example.test", "ADO")
         );
         assertThat(cached.values().getFirst().referenceName()).isEmpty();
         assertThat(cached.diagnostics()).isEmpty();
+    }
+
+    @Test
+    void projectScopedIdentitySearchUsesContainsMatchingAndReturnsAvatarProxyUrls() {
+        var exchange = projectIdentityExchange("""
+                {"count":3,"value":[
+                  {"descriptor":"aad.rene-1","displayName":"Rene Alpha","principalName":"rene.alpha@example.test"},
+                  {"descriptor":"aad.rene-2","displayName":"Irene Beta","mailAddress":"irene.beta@example.test"},
+                  {"descriptor":"aad.rene-3","displayName":"Serene Gamma","principalName":"serene.gamma@example.test"}
+                ]}
+                """);
+        var service = discovery(exchange);
+
+        var result = service.searchIdentityOptions("STMN-Group", "ADOnis 2.0 Test Project", "rene");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.values()).hasSize(3).allSatisfy(option -> {
+            assertThat(option.resolved()).isTrue();
+            assertThat(option.value()).endsWith("@example.test");
+            assertThat(option.avatarUrl())
+                    .startsWith("/api/config-ui/discovery/users/avatar?organization=STMN-Group&descriptor=aad.");
+        });
+        assertThat(exchange.requests).hasSize(3);
+        assertThat(exchange.requests.get(1).url().toString()).contains("/_apis/graph/descriptors/project-id-1");
+        assertThat(exchange.requests.get(2).url().toString()).contains("scopeDescriptor=scp.project-1");
+    }
+
+    @Test
+    void projectCandidateCacheSupportsNewQueriesWithoutMoreAdoCalls() {
+        var exchange = projectIdentityExchange("""
+                {"count":3,"value":[
+                  {"descriptor":"aad.1","displayName":"Rene Example One","principalName":"rene.one@example.test"},
+                  {"descriptor":"aad.2","displayName":"Rene Example Two","principalName":"rene.two@example.test"},
+                  {"descriptor":"aad.3","displayName":"Rene Example Three","principalName":"rene.three@example.test"}
+                ]}
+                """);
+        var service = discovery(exchange);
+
+        service.searchIdentityOptions("STMN-Group", "Sandbox", "rene");
+        var second = service.searchIdentityOptions("STMN-Group", "Sandbox", "example");
+
+        assertThat(exchange.requests).hasSize(3);
+        assertThat(second.diagnostics())
+                .containsEntry("candidatePoolCacheHit", true)
+                .containsEntry("candidatePoolSize", 3);
+    }
+
+    @Test
+    void identitySearchResultCacheSeparatesProjects() {
+        var cache = new IdentitySearchResultCache(Duration.ofMinutes(5), 10, Clock.systemUTC());
+        cache.put("STMN-Group", "Project A", "rene", ConfigLookupResult.valid(List.of(
+                new ConfigSelectorOption("rene@example.test", "Rene", "rene@example.test", "project-scope")
+        )));
+
+        assertThat(cache.get("STMN-Group", "Project A", "rene")).isPresent();
+        assertThat(cache.get("STMN-Group", "Project B", "rene")).isEmpty();
+    }
+
+    @Test
+    void sparseProjectCandidatesFallBackToOfficialGraphSubjectQuery() {
+        var exchange = new RecordingExchangeFunction(List.of(
+                new RecordedResponse("{\"id\":\"project-id-1\",\"name\":\"Sandbox\"}", HttpStatus.OK),
+                new RecordedResponse("{\"value\":\"scp.project-1\"}", HttpStatus.OK),
+                new RecordedResponse("{\"count\":0,\"value\":[]}", HttpStatus.OK),
+                new RecordedResponse("""
+                        [{"descriptor":"aad.fallback","displayName":"Rene Fallback","principalName":"rene@example.test"}]
+                        """, HttpStatus.OK)
+        ));
+        var service = discovery(exchange);
+
+        var result = service.searchIdentityOptions("STMN-Group", "Sandbox", "rene");
+
+        assertThat(result.values()).extracting(ConfigSelectorOption::value).containsExactly("rene@example.test");
+        assertThat(result.diagnostics()).containsEntry("candidatePoolSource", "project-scope+graph-query");
+        assertThat(exchange.requests.getLast().method().name()).isEqualTo("POST");
+        assertThat(exchange.requests.getLast().url().toString()).contains("/_apis/graph/subjectquery?api-version=7.1-preview.1");
+    }
+
+    @Test
+    void identityAvatarIsFetchedOnceAndThenServedFromCache() {
+        var exchange = new RecordingExchangeFunction("{\"value\":\"AQID\"}", HttpStatus.OK);
+        var service = discovery(exchange);
+
+        var first = service.loadIdentityAvatar("STMN-Group", "aad.user-1").orElseThrow();
+        var second = service.loadIdentityAvatar("stmn-group", "AAD.USER-1").orElseThrow();
+
+        assertThat(first.bytes()).containsExactly(1, 2, 3);
+        assertThat(first.cacheHit()).isFalse();
+        assertThat(second.bytes()).containsExactly(1, 2, 3);
+        assertThat(second.cacheHit()).isTrue();
+        assertThat(exchange.requests).hasSize(1);
+        assertThat(exchange.requests.getFirst().url().toString()).contains("/avatars?size=small&format=png&api-version=7.1");
     }
 
 
@@ -499,6 +591,14 @@ class AzureDevOpsConfigDiscoveryServiceTest {
                         {"value":[{"name":"System.CurrentProcessTemplateId","value":"process-id-1"}]}
                         """, HttpStatus.OK),
                 new RecordedResponse(processWorkItemTypesBody, processStatus)
+        ));
+    }
+
+    private RecordingExchangeFunction projectIdentityExchange(String graphUsersBody) {
+        return new RecordingExchangeFunction(List.of(
+                new RecordedResponse("{\"id\":\"project-id-1\",\"name\":\"Sandbox\"}", HttpStatus.OK),
+                new RecordedResponse("{\"value\":\"scp.project-1\"}", HttpStatus.OK),
+                new RecordedResponse(graphUsersBody, HttpStatus.OK)
         ));
     }
 

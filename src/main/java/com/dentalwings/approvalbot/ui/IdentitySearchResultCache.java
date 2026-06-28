@@ -35,8 +35,8 @@ final class IdentitySearchResultCache {
         this.clock = clock;
     }
 
-    synchronized Optional<CachedIdentitySearch> get(String organization, String query) {
-        var key = key(organization, query);
+    synchronized Optional<CachedIdentitySearch> get(String organization, String project, String query) {
+        var key = key(organization, project, query);
         var entry = entries.get(key);
         if (entry == null) {
             return Optional.empty();
@@ -48,25 +48,27 @@ final class IdentitySearchResultCache {
         return Optional.of(entry.result());
     }
 
-    synchronized void put(String organization, String query, ConfigLookupResult<ConfigSelectorOption> result) {
+    synchronized void put(String organization, String project, String query, ConfigLookupResult<ConfigSelectorOption> result) {
         var sanitizedValues = result.values().stream()
                 .map(option -> new ConfigSelectorOption(
                         option.value(),
                         option.displayName(),
                         option.description(),
-                        "ADO",
-                        ""
+                        option.source(),
+                        "",
+                        option.avatarUrl(),
+                        option.resolved()
                 ))
                 .toList();
         var cached = new CachedIdentitySearch(result.status(), result.message(), sanitizedValues);
-        entries.put(key(organization, query), new CacheEntry(clock.instant(), cached));
+        entries.put(key(organization, project, query), new CacheEntry(clock.instant(), cached));
         while (entries.size() > maxEntries) {
             entries.remove(entries.keySet().iterator().next());
         }
     }
 
-    private CacheKey key(String organization, String query) {
-        return new CacheKey(normalized(organization), normalized(query));
+    private CacheKey key(String organization, String project, String query) {
+        return new CacheKey(normalized(organization), normalized(project), normalized(query));
     }
 
     private String normalized(String value) {
@@ -88,7 +90,7 @@ final class IdentitySearchResultCache {
         }
     }
 
-    private record CacheKey(String organization, String query) {
+    private record CacheKey(String organization, String project, String query) {
     }
 
     private record CacheEntry(Instant createdAt, CachedIdentitySearch result) {
