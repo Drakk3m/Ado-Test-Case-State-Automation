@@ -117,9 +117,17 @@ class ConfigUiControllerTest {
 
     @Test
     void userSearchEndpointReturnsSelectorOptionShapeWithoutSecrets() throws Exception {
-        when(discoveryService.searchIdentityOptions(any(), any()))
+        when(discoveryService.searchIdentityOptions(any(), any(), any()))
                 .thenReturn(ConfigLookupResult.valid(List.of(
-                        new ConfigSelectorOption("sme@example.test", "SME Sandbox <sme@example.test>", "sme@example.test", "ADO", "aad.user-1")
+                        new ConfigSelectorOption(
+                                "sme@example.test",
+                                "SME Sandbox <sme@example.test>",
+                                "sme@example.test",
+                                "project-scope",
+                                "aad.user-1",
+                                "/api/config-ui/discovery/users/avatar?organization=STMN-Group&descriptor=aad.user-1",
+                                true
+                        )
                 )));
 
         mockMvc.perform(post("/api/config-ui/discovery/users/search")
@@ -138,6 +146,19 @@ class ConfigUiControllerTest {
                 .andExpect(content().string(containsString("\"optionCount\":1")))
                 .andExpect(content().string(not(containsString("secret-pat"))))
                 .andExpect(content().string(not(containsString("Authorization"))));
+    }
+
+    @Test
+    void userAvatarEndpointProxiesCachedImageWithoutExposingCredentials() throws Exception {
+        when(discoveryService.loadIdentityAvatar("STMN-Group", "aad.user-1"))
+                .thenReturn(java.util.Optional.of(new IdentityAvatar(new byte[]{1, 2, 3}, true)));
+
+        mockMvc.perform(get("/api/config-ui/discovery/users/avatar")
+                        .param("organization", "STMN-Group")
+                        .param("descriptor", "aad.user-1"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                .andExpect(content().bytes(new byte[]{1, 2, 3}));
     }
 
     @Test

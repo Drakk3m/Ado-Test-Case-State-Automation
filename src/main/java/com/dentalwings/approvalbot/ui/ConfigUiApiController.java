@@ -6,12 +6,15 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -104,8 +107,21 @@ public class ConfigUiApiController {
         return withDiscoveryDiagnostics(
                 "configUiSearchUsers",
                 request,
-                () -> discoveryService.searchIdentityOptions(request.organization(), request.query())
+                () -> discoveryService.searchIdentityOptions(request.organization(), request.project(), request.query())
         );
+    }
+
+    @GetMapping("/discovery/users/avatar")
+    public ResponseEntity<byte[]> userAvatar(
+            @RequestParam String organization,
+            @RequestParam String descriptor
+    ) {
+        return discoveryService.loadIdentityAvatar(organization, descriptor)
+                .map(avatar -> ResponseEntity.ok()
+                        .contentType(MediaType.IMAGE_PNG)
+                        .cacheControl(CacheControl.noStore())
+                        .body(avatar.bytes()))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     private <T> ConfigLookupResult<T> withDiscoveryDiagnostics(

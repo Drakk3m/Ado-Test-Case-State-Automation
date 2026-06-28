@@ -5,10 +5,16 @@ public record ConfigSelectorOption(
         String displayName,
         String description,
         String source,
-        String referenceName
+        String referenceName,
+        String avatarUrl,
+        boolean resolved
 ) {
     public ConfigSelectorOption(String value, String displayName, String description, String source) {
-        this(value, displayName, description, source, "");
+        this(value, displayName, description, source, "", "", value != null && !value.isBlank());
+    }
+
+    public ConfigSelectorOption(String value, String displayName, String description, String source, String referenceName) {
+        this(value, displayName, description, source, referenceName, "", value != null && !value.isBlank());
     }
 
     public ConfigSelectorOption {
@@ -17,6 +23,8 @@ public record ConfigSelectorOption(
         description = description == null ? "" : description;
         source = source == null || source.isBlank() ? "ADO" : source;
         referenceName = referenceName == null ? "" : referenceName;
+        avatarUrl = avatarUrl == null ? "" : avatarUrl;
+        resolved = resolved && !value.isBlank();
     }
 
     public static ConfigSelectorOption ado(String value) {

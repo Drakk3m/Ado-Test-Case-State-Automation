@@ -463,6 +463,28 @@ button.remove {
     color: #0b1220;
     font-size: 12px;
     font-weight: 700;
+    overflow: hidden;
+}
+
+.identity-avatar img,
+.identity-avatar-fallback {
+    width: 100%;
+    height: 100%;
+}
+
+.identity-avatar-fallback[hidden] {
+    display: none;
+}
+
+.identity-avatar img {
+    display: block;
+    object-fit: cover;
+}
+
+.identity-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .identity-result-text {

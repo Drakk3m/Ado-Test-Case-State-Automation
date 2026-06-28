@@ -36,6 +36,14 @@ public interface AdoConfigDiscoveryService {
         return ConfigLookupResult.warning("ADO user discovery is not available yet; use email/login values, not display names.");
     }
 
+    default ConfigLookupResult<ConfigSelectorOption> searchIdentityOptions(String organization, String project, String query) {
+        return searchIdentityOptions(organization, query);
+    }
+
+    default java.util.Optional<IdentityAvatar> loadIdentityAvatar(String organization, String descriptor) {
+        return java.util.Optional.empty();
+    }
+
     private ConfigLookupResult<ConfigSelectorOption> toOptions(ConfigLookupResult<String> lookup) {
         return new ConfigLookupResult<>(
                 lookup.status(),
