@@ -780,6 +780,103 @@ class AzureDevOpsConfigDiscoveryServiceTest {
     }
 
 
+    @Test
+    void repeatedProjectValidationUsesCachedMetadataWithoutAnotherAdoRequest() {
+        var exchange = new RecordingExchangeFunction("""
+                {"id":"project-id-1","name":"ADOnis 2.0 Test Project"}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+        var first = service.validateProject("STMN-Group", "ADOnis 2.0 Test Project");
+        var second = service.validateProject("stmn-group", "  adonis 2.0 test project  ");
+        assertThat(first.diagnostics()).containsEntry("projectMetadataCacheHit", false);
+        assertThat(second.diagnostics()).containsEntry("projectMetadataCacheHit", true)
+                .containsEntry("adoDiscoveryRequestCount", 1L);
+        assertThat(exchange.requests).hasSize(1);
+    }
+
+    @Test
+    void discoveryCacheSeparatesOrganizations() {
+        var exchange = new RecordingExchangeFunction(List.of(
+                new RecordedResponse("{\"id\":\"project-a\",\"name\":\"Sandbox\"}", HttpStatus.OK),
+                new RecordedResponse("{\"id\":\"project-b\",\"name\":\"Sandbox\"}", HttpStatus.OK)));
+        var service = discovery(exchange);
+        service.validateProject("Organization-A", "Sandbox");
+        service.validateProject("Organization-B", "Sandbox");
+        assertThat(exchange.requests).hasSize(2);
+    }
+
+    @Test
+    void repeatedWorkItemTypeDiscoveryReusesProjectProcessAndOptions() {
+        var exchange = processDiscoveryExchange("""
+                {"count":1,"value":[{"name":"Test Case","referenceName":"Microsoft.VSTS.WorkItemTypes.TestCase"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+        var first = service.listWorkItemTypeOptions("STMN-Group", "ADOnis 2.0 Test Project");
+        var second = service.listWorkItemTypeOptions("STMN-Group", "ADOnis 2.0 Test Project");
+        assertThat(first.diagnostics()).containsEntry("workItemTypeOptionsCacheHit", false);
+        assertThat(second.diagnostics()).containsEntry("projectMetadataCacheHit", true)
+                .containsEntry("processIdCacheHit", true)
+                .containsEntry("workItemTypeOptionsCacheHit", true)
+                .containsEntry("adoDiscoveryRequestCount", 3L);
+        assertThat(exchange.requests).hasSize(3);
+    }
+
+    @Test
+    void cachedSuccessfulProcessSkipsPreviouslyFailedCandidate() {
+        var exchange = new RecordingExchangeFunction(List.of(
+                new RecordedResponse("{\"id\":\"project-id-1\",\"name\":\"Sandbox\"}", HttpStatus.OK),
+                new RecordedResponse("""
+                        {"value":[
+                          {"name":"System.CurrentProcessTemplateId","value":"bad-process-id"},
+                          {"name":"System.ProcessTemplateType","value":"process-id-1"}
+                        ]}
+                        """, HttpStatus.OK),
+                new RecordedResponse("{\"message\":\"not a process\"}", HttpStatus.NOT_FOUND),
+                new RecordedResponse("{\"value\":[{\"name\":\"Test Case\"}]}", HttpStatus.OK)));
+        var service = discovery(exchange);
+        service.listWorkItemTypeOptions("STMN-Group", "Sandbox");
+        var repeated = service.listWorkItemTypeOptions("STMN-Group", "Sandbox");
+        assertThat(repeated.diagnostics()).containsEntry("failedProcessCandidateSkippedDueToCache", true)
+                .containsEntry("processPropertyUsed", "System.ProcessTemplateType");
+        assertThat(exchange.requests).hasSize(4);
+    }
+
+    @Test
+    void fieldAndStateOptionsAreCachedPerWorkItemType() {
+        var fieldExchange = new RecordingExchangeFunction("""
+                {"value":[{"name":"Approver Tech","referenceName":"Custom.ApproverTech","type":"identity"}]}
+                """, HttpStatus.OK);
+        var fieldService = discovery(fieldExchange);
+        var stateExchange = new RecordingExchangeFunction("""
+                {"value":[{"name":"Design"},{"name":"In Review"}]}
+                """, HttpStatus.OK);
+        var stateService = discovery(stateExchange);
+        fieldService.listFieldOptions("STMN-Group", "Sandbox", "Test Case");
+        var cachedFields = fieldService.listFieldOptions("STMN-Group", "Sandbox", "Test Case");
+        stateService.listStateOptions("STMN-Group", "Sandbox", "Test Case");
+        var cachedStates = stateService.listStateOptions("STMN-Group", "Sandbox", "Test Case");
+        assertThat(cachedFields.diagnostics()).containsEntry("fieldOptionsCacheHit", true);
+        assertThat(cachedStates.diagnostics()).containsEntry("stateOptionsCacheHit", true);
+        assertThat(fieldExchange.requests).hasSize(1);
+        assertThat(stateExchange.requests).hasSize(1);
+    }
+
+    @Test
+    void expiredDiscoveryCacheEntryIsFetchedAgain() {
+        var clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
+        var cache = new ConfigUiAdoDiscoveryCache(Duration.ofMinutes(5), 10, clock);
+        var exchange = new RecordingExchangeFunction("""
+                {"id":"project-id-1","name":"Sandbox"}
+                """, HttpStatus.OK);
+        var service = new AzureDevOpsConfigDiscoveryService("secret-pat", exchange,
+                new AzureDevOpsUrlBuilder(), cache);
+        service.validateProject("STMN-Group", "Sandbox");
+        clock.advance(Duration.ofMinutes(6));
+        var refreshed = service.validateProject("STMN-Group", "Sandbox");
+        assertThat(refreshed.diagnostics()).containsEntry("projectMetadataCacheHit", false);
+        assertThat(exchange.requests).hasSize(2);
+    }
+
     private AzureDevOpsConfigDiscoveryService discovery(RecordingExchangeFunction exchange) {
         return new AzureDevOpsConfigDiscoveryService("secret-pat", exchange, new AzureDevOpsUrlBuilder());
     }

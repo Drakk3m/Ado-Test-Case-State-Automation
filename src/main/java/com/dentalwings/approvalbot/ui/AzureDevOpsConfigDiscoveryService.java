@@ -51,6 +51,8 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private final ProjectIdentityCandidateCache projectIdentityCandidateCache;
     private final IdentityAvatarCache identityAvatarCache;
     private final GraphIdentityNegativeCache graphIdentityNegativeCache;
+    private final ConfigUiAdoDiscoveryCache discoveryCache;
+    private final AtomicLong discoveryAdoRequestCount = new AtomicLong();
     private final AtomicLong identityBackendRequestCount = new AtomicLong();
     private final AtomicLong identityAdoRequestCount = new AtomicLong();
     private final AtomicLong avatarCacheHitCount = new AtomicLong();
@@ -64,7 +66,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     public AzureDevOpsConfigDiscoveryService(ApprovalBotProperties properties) {
         this(properties.getAdo().getPersonalAccessToken(), WebClient.builder().build(), new AzureDevOpsUrlBuilder(),
                 new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
-                new GraphIdentityNegativeCache());
+                new GraphIdentityNegativeCache(), new ConfigUiAdoDiscoveryCache());
     }
 
     AzureDevOpsConfigDiscoveryService(
@@ -74,7 +76,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     ) {
         this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
                 new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
-                new GraphIdentityNegativeCache());
+                new GraphIdentityNegativeCache(), new ConfigUiAdoDiscoveryCache());
     }
 
     AzureDevOpsConfigDiscoveryService(
@@ -85,7 +87,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     ) {
         this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
                 identitySearchCache, new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
-                new GraphIdentityNegativeCache());
+                new GraphIdentityNegativeCache(), new ConfigUiAdoDiscoveryCache());
     }
 
     AzureDevOpsConfigDiscoveryService(
@@ -97,7 +99,8 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             IdentityAvatarCache identityAvatarCache
     ) {
         this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
-                identitySearchCache, projectIdentityCandidateCache, identityAvatarCache, new GraphIdentityNegativeCache());
+                identitySearchCache, projectIdentityCandidateCache, identityAvatarCache, new GraphIdentityNegativeCache(),
+                new ConfigUiAdoDiscoveryCache());
     }
 
     AzureDevOpsConfigDiscoveryService(
@@ -110,7 +113,19 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             GraphIdentityNegativeCache graphIdentityNegativeCache
     ) {
         this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
-                identitySearchCache, projectIdentityCandidateCache, identityAvatarCache, graphIdentityNegativeCache);
+                identitySearchCache, projectIdentityCandidateCache, identityAvatarCache, graphIdentityNegativeCache,
+                new ConfigUiAdoDiscoveryCache());
+    }
+
+    AzureDevOpsConfigDiscoveryService(
+            String personalAccessToken,
+            ExchangeFunction exchangeFunction,
+            AzureDevOpsUrlBuilder urlBuilder,
+            ConfigUiAdoDiscoveryCache discoveryCache
+    ) {
+        this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
+                new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
+                new GraphIdentityNegativeCache(), discoveryCache);
     }
 
     private AzureDevOpsConfigDiscoveryService(
@@ -120,7 +135,8 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             IdentitySearchResultCache identitySearchCache,
             ProjectIdentityCandidateCache projectIdentityCandidateCache,
             IdentityAvatarCache identityAvatarCache,
-            GraphIdentityNegativeCache graphIdentityNegativeCache
+            GraphIdentityNegativeCache graphIdentityNegativeCache,
+            ConfigUiAdoDiscoveryCache discoveryCache
     ) {
         this.personalAccessToken = personalAccessToken;
         this.webClient = webClient;
@@ -129,6 +145,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         this.projectIdentityCandidateCache = projectIdentityCandidateCache;
         this.identityAvatarCache = identityAvatarCache;
         this.graphIdentityNegativeCache = graphIdentityNegativeCache;
+        this.discoveryCache = discoveryCache;
     }
 
     @Override
@@ -158,12 +175,21 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         if (isBlank(project)) {
             return ConfigLookupResult.error("Project name is required.");
         }
-        return readOne(
-                "validateProject",
-                () -> urlBuilder.projectUrl(organization, project),
-                AdoRestProjectResponse.class,
-                response -> List.of(response.name())
-        );
+        var cached = discoveryCache.project(organization, project);
+        if (cached.isPresent()) {
+            return new ConfigLookupResult<>(ConfigValidationStatus.VALID, "", List.of(cached.get().projectName()))
+                    .withDiagnostics(discoveryDiagnostics("validateProject", true,
+                            Map.of("projectMetadataCacheHit", true)));
+        }
+        var fetched = fetchBody("validateProject", () -> urlBuilder.projectUrl(organization, project),
+                AdoRestProjectResponse.class);
+        if (!fetched.successful()) {
+            return failedLookup(fetched);
+        }
+        discoveryCache.putProject(organization, project, fetched.body().id(), fetched.body().name());
+        return new ConfigLookupResult<>(ConfigValidationStatus.VALID, "", List.of(fetched.body().name()))
+                .withDiagnostics(discoveryDiagnostics("validateProject", false,
+                        Map.of("projectMetadataCacheHit", false)));
     }
 
     @Override
@@ -182,17 +208,55 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         if (isBlank(project)) {
             return ConfigLookupResult.error("Project name is required.");
         }
-        var projectFetch = fetchBody(
-                "resolveProjectForWorkItemTypes",
-                () -> urlBuilder.projectUrl(organization, project),
-                AdoRestProjectResponse.class
-        );
-        if (!projectFetch.successful()) {
-            return failedLookup(projectFetch);
+        var cachedProject = discoveryCache.project(organization, project);
+        var projectCacheHit = cachedProject.isPresent();
+        ConfigUiAdoDiscoveryCache.ProjectMetadata projectMetadata;
+        if (cachedProject.isPresent()) {
+            projectMetadata = cachedProject.get();
+        } else {
+            var projectFetch = fetchBody(
+                    "resolveProjectForWorkItemTypes",
+                    () -> urlBuilder.projectUrl(organization, project),
+                    AdoRestProjectResponse.class
+            );
+            if (!projectFetch.successful()) {
+                return failedLookup(projectFetch);
+            }
+            projectMetadata = new ConfigUiAdoDiscoveryCache.ProjectMetadata(
+                    projectFetch.body().id(), projectFetch.body().name());
+            discoveryCache.putProject(organization, project, projectMetadata.projectId(), projectMetadata.projectName());
         }
-        var projectId = projectFetch.body().id();
+        var projectId = projectMetadata.projectId();
         if (isBlank(projectId)) {
             return ConfigLookupResult.error("ADO project id was not returned by project discovery.");
+        }
+
+        var cachedProcess = discoveryCache.process(organization, projectId);
+        if (cachedProcess.isPresent()) {
+            var selection = cachedProcess.get();
+            var cachedOptions = discoveryCache.options("work-item-types", organization, projectId,
+                    selection.processId());
+            if (cachedOptions.isPresent()) {
+                return cachedOptions.get().toResult().withDiagnostics(discoveryDiagnostics(
+                        "listWorkItemTypeOptions", true,
+                        Map.of("projectMetadataCacheHit", projectCacheHit, "processIdCacheHit", true,
+                                "workItemTypeOptionsCacheHit", true, "processPropertyUsed", selection.propertyName(),
+                                "failedProcessCandidateSkippedDueToCache", true)));
+            }
+            var processFetch = fetchBody(
+                    "listProcessWorkItemTypes",
+                    () -> urlBuilder.processWorkItemTypesUrl(organization, selection.processId()),
+                    AdoRestWorkItemTypeListResponse.class
+            );
+            if (processFetch.successful()) {
+                var result = workItemTypeOptions(processFetch.body());
+                discoveryCache.putOptions("work-item-types", organization, projectId, selection.processId(), result);
+                return result.withDiagnostics(discoveryDiagnostics("listWorkItemTypeOptions", false,
+                        Map.of("projectMetadataCacheHit", projectCacheHit, "processIdCacheHit", true,
+                                "workItemTypeOptionsCacheHit", false, "processPropertyUsed", selection.propertyName(),
+                                "failedProcessCandidateSkippedDueToCache", true)));
+            }
+            discoveryCache.removeProcess(organization, projectId);
         }
 
         var propertiesFetch = fetchBody(
@@ -242,16 +306,10 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                     AdoRestWorkItemTypeListResponse.class
             );
             if (processFetch.successful()) {
-                var values = processFetch.body().value().stream()
-                        .map(type -> new ConfigSelectorOption(
-                                type.name(),
-                                type.name(),
-                                type.description(),
-                                "ADO",
-                                type.referenceName()
-                        ))
-                        .toList();
-                var result = ConfigLookupResult.valid(values);
+                var result = workItemTypeOptions(processFetch.body());
+                var values = result.values();
+                discoveryCache.putProcess(organization, projectId, candidate.propertyName(), candidate.processId());
+                discoveryCache.putOptions("work-item-types", organization, projectId, candidate.processId(), result);
                 LOGGER.info(
                         "ADO config discovery completed operation={} organization={} project={} projectId={} processPropertyUsed={} processId={} path={} httpStatus={} rawAdoCount={} mappedOptionCount={} finalOptionCount={} durationMs={}",
                         "listWorkItemTypeOptions",
@@ -267,7 +325,10 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                         result.optionCount(),
                         elapsedMillis(started)
                 );
-                return result;
+                return result.withDiagnostics(discoveryDiagnostics("listWorkItemTypeOptions", false,
+                        Map.of("projectMetadataCacheHit", projectCacheHit, "processIdCacheHit", false,
+                                "workItemTypeOptionsCacheHit", false, "processPropertyUsed", candidate.propertyName(),
+                                "failedProcessCandidateSkippedDueToCache", false)));
             }
             logProcessDiscoveryFailure("listWorkItemTypeOptions", organization, project, projectId, candidate.propertyName(), candidate.processId(), processFetch, started);
             lastFailure = failedLookup(processFetch);
@@ -277,17 +338,21 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     @Override
     public ConfigLookupResult<String> listFieldReferenceNames(String organization, String project, String workItemType) {
-        return readList(
-                "listFieldReferenceNames",
-                () -> urlBuilder.workItemTypeFieldsUrl(organization, project, workItemType),
-                AdoRestFieldListResponse.class,
-                response -> response.value().stream().map(AdoRestFieldResponse::referenceName).toList()
-        );
+        var options = listFieldOptions(organization, project, workItemType);
+        return new ConfigLookupResult<>(options.status(), options.message(),
+                options.values().stream().map(ConfigSelectorOption::value).toList(), options.optionCount(),
+                options.diagnostics());
     }
 
     @Override
     public ConfigLookupResult<ConfigSelectorOption> listFieldOptions(String organization, String project, String workItemType) {
-        return readList(
+        var scope = discoveryScope(organization, project);
+        var cached = discoveryCache.options("fields", organization, scope, workItemType);
+        if (cached.isPresent()) {
+            return cached.get().toResult().withDiagnostics(discoveryDiagnostics("listFieldOptions", true,
+                    Map.of("fieldOptionsCacheHit", true)));
+        }
+        var result = readList(
                 "listFieldOptions",
                 () -> urlBuilder.workItemTypeFieldsUrl(organization, project, workItemType),
                 AdoRestFieldListResponse.class,
@@ -300,21 +365,28 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                         ))
                         .toList()
         );
+        discoveryCache.putOptions("fields", organization, scope, workItemType, result);
+        return result.withDiagnostics(discoveryDiagnostics("listFieldOptions", false,
+                Map.of("fieldOptionsCacheHit", false)));
     }
 
     @Override
     public ConfigLookupResult<String> listObservedStateNames(String organization, String project, String workItemType) {
-        return readList(
-                "listObservedStateNames",
-                () -> urlBuilder.workItemTypeStatesUrl(organization, project, workItemType),
-                AdoRestStateListResponse.class,
-                response -> response.value().stream().map(AdoRestStateResponse::name).toList()
-        );
+        var options = listStateOptions(organization, project, workItemType);
+        return new ConfigLookupResult<>(options.status(), options.message(),
+                options.values().stream().map(ConfigSelectorOption::value).toList(), options.optionCount(),
+                options.diagnostics());
     }
 
     @Override
     public ConfigLookupResult<ConfigSelectorOption> listStateOptions(String organization, String project, String workItemType) {
-        return readList(
+        var scope = discoveryScope(organization, project);
+        var cached = discoveryCache.options("states", organization, scope, workItemType);
+        if (cached.isPresent()) {
+            return cached.get().toResult().withDiagnostics(discoveryDiagnostics("listStateOptions", true,
+                    Map.of("stateOptionsCacheHit", true)));
+        }
+        var result = readList(
                 "listStateOptions",
                 () -> urlBuilder.workItemTypeStatesUrl(organization, project, workItemType),
                 AdoRestStateListResponse.class,
@@ -322,6 +394,9 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                         .map(state -> new ConfigSelectorOption(state.name(), state.name(), "", "ADO"))
                         .toList()
         );
+        discoveryCache.putOptions("states", organization, scope, workItemType, result);
+        return result.withDiagnostics(discoveryDiagnostics("listStateOptions", false,
+                Map.of("stateOptionsCacheHit", false)));
     }
 
     @Override
@@ -821,6 +896,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         try {
             var targetUrl = url.get();
             var safePath = safePath(targetUrl);
+            discoveryAdoRequestCount.incrementAndGet();
             return webClient.get()
                     .uri(URI.create(targetUrl))
                     .header(HttpHeaders.AUTHORIZATION, new AzureDevOpsAuth().basicAuthHeader(personalAccessToken))
@@ -843,6 +919,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         try {
             var targetUrl = url.get();
             var safePath = safePath(targetUrl);
+            discoveryAdoRequestCount.incrementAndGet();
             return webClient.get()
                     .uri(URI.create(targetUrl))
                     .header(HttpHeaders.AUTHORIZATION, new AzureDevOpsAuth().basicAuthHeader(personalAccessToken))
@@ -978,6 +1055,30 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             return response.rawCount();
         }
         return null;
+    }
+
+    private ConfigLookupResult<ConfigSelectorOption> workItemTypeOptions(AdoRestWorkItemTypeListResponse response) {
+        return ConfigLookupResult.valid(response.value().stream()
+                .map(type -> new ConfigSelectorOption(type.name(), type.name(), type.description(), "ADO",
+                        type.referenceName()))
+                .toList());
+    }
+
+    private String discoveryScope(String organization, String project) {
+        return discoveryCache.project(organization, project)
+                .map(ConfigUiAdoDiscoveryCache.ProjectMetadata::projectId)
+                .filter(projectId -> !isBlank(projectId))
+                .orElse(project);
+    }
+
+    private Map<String, Object> discoveryDiagnostics(String operation, boolean cacheHit,
+            Map<String, Object> details) {
+        var diagnostics = new LinkedHashMap<String, Object>();
+        diagnostics.put("lastDiscoveryOperation", operation);
+        diagnostics.put("discoveryCacheHit", cacheHit);
+        diagnostics.put("adoDiscoveryRequestCount", discoveryAdoRequestCount.get());
+        diagnostics.putAll(details);
+        return Map.copyOf(diagnostics);
     }
 
     private List<ProcessIdCandidate> processIdCandidates(AdoRestProjectPropertiesResponse response) {

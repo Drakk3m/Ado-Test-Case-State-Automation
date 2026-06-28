@@ -226,6 +226,13 @@ class ConfigUiStaticAssetsTest {
                 .contains("lastUpdated")
                 .contains("selectorDiagnostics")
                 .contains("function diagnosticGroups()")
+                .contains("adoDiscoveryRequestCount")
+                .contains("projectMetadataCacheHit")
+                .contains("processIdCacheHit")
+                .contains("workItemTypeOptionsCacheHit")
+                .contains("fieldOptionsCacheHit")
+                .contains("stateOptionsCacheHit")
+                .contains("function adoDiscoveryDiagnostics(lookup)")
                 .contains("function diagnosticGroupMarkup(group)")
                 .contains("function diagnosticItemMarkup(item)")
                 .doesNotContain("class=\"diagnostics-table\"");
