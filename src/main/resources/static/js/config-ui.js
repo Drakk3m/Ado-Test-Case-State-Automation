@@ -536,6 +536,13 @@ function ensureSelectorDiagnostic(selectorName, projectConfigId = "") {
             workItemTypeOptionsCacheHit: false,
             fieldOptionsCacheHit: false,
             stateOptionsCacheHit: false,
+            processFailureCacheHit: false,
+            frontendValidateProjectCallCount: 0,
+            frontendLoadWitCallCount: 0,
+            frontendLoadFieldsCallCount: 0,
+            frontendLoadStatesCallCount: 0,
+            inFlightDedupedCount: 0,
+            skippedBecauseCurrentCount: 0,
             candidatePoolSource: "",
             candidatePoolSize: 0,
             candidatePoolCacheHit: false,
@@ -666,6 +673,13 @@ function diagnosticItemMarkup(item) {
         ["Work Item Type cache hit", item.workItemTypeOptionsCacheHit],
         ["field cache hit", item.fieldOptionsCacheHit],
         ["state cache hit", item.stateOptionsCacheHit],
+        ["process failure cache hit", item.processFailureCacheHit],
+        ["frontend validate calls", item.frontendValidateProjectCallCount],
+        ["frontend WIT calls", item.frontendLoadWitCallCount],
+        ["frontend field calls", item.frontendLoadFieldsCallCount],
+        ["frontend state calls", item.frontendLoadStatesCallCount],
+        ["in-flight deduped", item.inFlightDedupedCount],
+        ["skipped because current", item.skippedBecauseCurrentCount],
         ["candidate source", item.candidatePoolSource],
         ["candidate pool size", item.candidatePoolSize],
         ["candidate pool cache hit", item.candidatePoolCacheHit],
@@ -1475,6 +1489,21 @@ function projectControlId(projectConfigId, controlName) {
 function createDiscoveryState() {
     return {
         requestToken: 0,
+        projectId: "",
+        projectValidationCurrentFor: "",
+        workItemTypesCurrentForProjectId: "",
+        fieldsCurrentForProjectIdAndWorkItemType: "",
+        statesCurrentForProjectIdAndWorkItemType: "",
+        inFlight: {},
+        frontendValidateProjectCallCount: 0,
+        frontendLoadWitCallCount: 0,
+        frontendLoadFieldsCallCount: 0,
+        frontendLoadStatesCallCount: 0,
+        inFlightDedupedCount: 0,
+        skippedBecauseCurrentCount: 0,
+        backendCacheHit: false,
+        processIdCacheHit: false,
+        processFailureCacheHit: false,
         projectStatus: { status: "NOT_CHECKED", message: t("message.projectNotLoaded") },
         workItemTypes: { status: "NOT_CHECKED", message: t("message.loadProjectFirst"), values: [] },
         fields: { status: "NOT_CHECKED", message: t("message.selectWorkItemTypeFirst"), values: [] },
@@ -1589,6 +1618,11 @@ function clearDiscovery(projectConfigId, level) {
     discovery.requestToken = ++discoveryRequestSequence;
     debugDiscovery("dependent-selectors-cleared", { projectConfigId, level });
     if (level === "project") {
+        discovery.projectId = "";
+        discovery.projectValidationCurrentFor = "";
+        discovery.workItemTypesCurrentForProjectId = "";
+        discovery.fieldsCurrentForProjectIdAndWorkItemType = "";
+        discovery.statesCurrentForProjectIdAndWorkItemType = "";
         discovery.projectStatus = { status: "NOT_CHECKED", message: t("message.projectSelectionChanged") };
         discovery.workItemTypes = { status: "NOT_CHECKED", message: t("message.loadProjectAgain"), values: [] };
         discovery.fields = { status: "NOT_CHECKED", message: t("message.selectWorkItemTypeFirst"), values: [] };
@@ -1607,6 +1641,8 @@ function clearDiscovery(projectConfigId, level) {
         }
     }
     if (level === "type") {
+        discovery.fieldsCurrentForProjectIdAndWorkItemType = "";
+        discovery.statesCurrentForProjectIdAndWorkItemType = "";
         discovery.fields = { status: "NOT_CHECKED", message: t("message.workItemTypeChanged"), values: [] };
         discovery.states = { status: "NOT_CHECKED", message: t("message.workItemTypeChanged"), values: [] };
         for (const selector of ["approvedBySmeField", "approvedBySqaField", "reversibleBusinessFields", "designState", "inReviewState", "approvedState"]) {
@@ -1808,7 +1844,8 @@ function adoDiscoveryDiagnostics(lookup) {
         processIdCacheHit: diagnostics.processIdCacheHit === true,
         workItemTypeOptionsCacheHit: diagnostics.workItemTypeOptionsCacheHit === true,
         fieldOptionsCacheHit: diagnostics.fieldOptionsCacheHit === true,
-        stateOptionsCacheHit: diagnostics.stateOptionsCacheHit === true
+        stateOptionsCacheHit: diagnostics.stateOptionsCacheHit === true,
+        processFailureCacheHit: diagnostics.processFailureCacheHit === true
     };
 }
 
@@ -2389,6 +2426,67 @@ async function loadProjects() {
     schedulePreview();
 }
 
+function structuralProjectKey(project) {
+    return `${normalizedText(state.ado.organization)}|${normalizedText(project?.name)}`;
+}
+
+function structuralLookupIsCurrent(lookup) {
+    return lookup?.status === "VALID" || lookup?.status === "WARNING";
+}
+
+function structuralTypeKey(discovery, project, workItemType) {
+    return `${normalizedText(discovery.projectId || structuralProjectKey(project))}|${normalizedText(workItemType)}`;
+}
+
+function updateStructuralDiscoveryDiagnostics(projectConfigId, discovery, result = null) {
+    const backend = result?.diagnostics || {};
+    if (result) {
+        discovery.backendCacheHit = backend.discoveryCacheHit === true;
+        discovery.processIdCacheHit = backend.processIdCacheHit === true;
+        discovery.processFailureCacheHit = backend.processFailureCacheHit === true;
+    }
+    updateSelectorDiagnostics("structuralDiscovery", {
+        status: discovery.projectStatus.status || "NOT_CHECKED",
+        frontendValidateProjectCallCount: discovery.frontendValidateProjectCallCount,
+        frontendLoadWitCallCount: discovery.frontendLoadWitCallCount,
+        frontendLoadFieldsCallCount: discovery.frontendLoadFieldsCallCount,
+        frontendLoadStatesCallCount: discovery.frontendLoadStatesCallCount,
+        inFlightDedupedCount: discovery.inFlightDedupedCount,
+        skippedBecauseCurrentCount: discovery.skippedBecauseCurrentCount,
+        backendCacheHit: discovery.backendCacheHit,
+        processIdCacheHit: discovery.processIdCacheHit,
+        processFailureCacheHit: discovery.processFailureCacheHit,
+        ...(result ? adoDiscoveryDiagnostics(result) : {})
+    }, projectConfigId);
+}
+
+function skipCurrentStructuralDiscovery(projectConfigId, discovery) {
+    discovery.skippedBecauseCurrentCount += 1;
+    updateStructuralDiscoveryDiagnostics(projectConfigId, discovery);
+}
+
+function runStructuralDiscovery(projectConfigId, discovery, operation, dependencyKey, counterName, loader) {
+    const inFlightKey = `${operation}:${dependencyKey}`;
+    if (discovery.inFlight[inFlightKey]) {
+        discovery.inFlightDedupedCount += 1;
+        updateStructuralDiscoveryDiagnostics(projectConfigId, discovery);
+        return discovery.inFlight[inFlightKey];
+    }
+    discovery[counterName] += 1;
+    const request = Promise.resolve()
+        .then(loader)
+        .then((result) => {
+            updateStructuralDiscoveryDiagnostics(projectConfigId, discovery, result);
+            return result;
+        })
+        .finally(() => {
+            delete discovery.inFlight[inFlightKey];
+        });
+    discovery.inFlight[inFlightKey] = request;
+    updateStructuralDiscoveryDiagnostics(projectConfigId, discovery);
+    return request;
+}
+
 async function loadProject(projectConfigId) {
     readFormToState();
     ensureDiscovery();
@@ -2399,28 +2497,39 @@ async function loadProject(projectConfigId) {
     }
     const projectName = (project.name || "").trim();
     debugDiscovery("verify-project-clicked", { projectConfigId, project: projectName });
-    clearChildSelections(project);
-    clearDiscovery(projectConfigId, "project");
-    const requestToken = ++discoveryRequestSequence;
-    discovery.requestToken = requestToken;
-    const projectStatus = await discover("verify-project", "/api/config-ui/discovery/validate-project", {
-        organization: state.ado.organization,
-        project: projectName
-    });
+    const dependencyKey = structuralProjectKey(project);
+    const requestToken = discovery.requestToken;
+    const projectStatus = await runStructuralDiscovery(projectConfigId, discovery, "validateProject", dependencyKey,
+            "frontendValidateProjectCallCount", () => discover("verify-project",
+                "/api/config-ui/discovery/validate-project", {
+                    organization: state.ado.organization,
+                    project: projectName
+                }));
     if (!isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName)) {
         return;
     }
     discovery.projectStatus = projectStatus;
+    discovery.projectId = String(projectStatus.diagnostics?.projectId || discovery.projectId || "");
+    discovery.projectValidationCurrentFor = dependencyKey;
     updateSelectorDiagnostics("projectValidation", {
         status: projectStatus.status || "NOT_CHECKED",
         message: sanitizeMessage(projectStatus.message),
         ...adoDiscoveryDiagnostics(projectStatus)
     }, projectConfigId);
     if (isProjectVerified(discovery, project)) {
-        const workItemTypes = await discover("load-work-item-types", "/api/config-ui/discovery/work-item-types", {
-            organization: state.ado.organization,
-            project: projectName
-        });
+        const witDependencyKey = normalizedText(discovery.projectId || dependencyKey);
+        let workItemTypes = discovery.workItemTypes;
+        if (discovery.workItemTypesCurrentForProjectId === witDependencyKey
+                && structuralLookupIsCurrent(discovery.workItemTypes)) {
+            skipCurrentStructuralDiscovery(projectConfigId, discovery);
+        } else {
+            workItemTypes = await runStructuralDiscovery(projectConfigId, discovery, "loadWorkItemTypes",
+                    witDependencyKey, "frontendLoadWitCallCount", () => discover("load-work-item-types",
+                        "/api/config-ui/discovery/work-item-types", {
+                            organization: state.ado.organization,
+                            project: projectName
+                        }));
+        }
         if (!isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName)) {
             return;
         }
@@ -2430,6 +2539,10 @@ async function loadProject(projectConfigId) {
                 "workItemType",
                 projectConfigId
         );
+        discovery.projectId = String(workItemTypes.diagnostics?.projectId || discovery.projectId || "");
+        discovery.workItemTypesCurrentForProjectId = structuralLookupIsCurrent(discovery.workItemTypes)
+            ? normalizedText(discovery.projectId || dependencyKey)
+            : "";
         debugDiscovery("selector-populated", {
             projectConfigId,
             selector: "workItemType",
@@ -2438,6 +2551,8 @@ async function loadProject(projectConfigId) {
             renderedOptionCount: renderedOptionCount(discovery.workItemTypes)
         });
     } else {
+        discovery.projectValidationCurrentFor = "";
+        discovery.workItemTypesCurrentForProjectId = "";
         projectLayout(projectConfigId).collapsed = false;
         discovery.workItemTypes = { status: "NOT_CHECKED", message: t("message.verifyBeforeType"), values: [], optionCount: 0 };
     }
@@ -2465,26 +2580,46 @@ async function loadFieldAndStateOptions(projectConfigId) {
         return;
     }
     const projectName = (project.name || "").trim();
-    const requestToken = ++discoveryRequestSequence;
-    discovery.requestToken = requestToken;
-    const fields = await discover("load-fields", "/api/config-ui/discovery/fields", {
-        organization: state.ado.organization,
-        project: projectName,
-        workItemType: type
-    });
+    const requestToken = discovery.requestToken;
+    const dependencyKey = structuralTypeKey(discovery, project, type);
+    let fields = discovery.fields;
+    if (discovery.fieldsCurrentForProjectIdAndWorkItemType === dependencyKey
+            && structuralLookupIsCurrent(discovery.fields)) {
+        skipCurrentStructuralDiscovery(projectConfigId, discovery);
+    } else {
+        fields = await runStructuralDiscovery(projectConfigId, discovery, "loadFields", dependencyKey,
+                "frontendLoadFieldsCallCount", () => discover("load-fields", "/api/config-ui/discovery/fields", {
+                    organization: state.ado.organization,
+                    project: projectName,
+                    workItemType: type
+                }));
+    }
     if (!isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName, type)) {
         return;
     }
-    const states = await discover("load-states", "/api/config-ui/discovery/states", {
-        organization: state.ado.organization,
-        project: projectName,
-        workItemType: type
-    });
+    let states = discovery.states;
+    if (discovery.statesCurrentForProjectIdAndWorkItemType === dependencyKey
+            && structuralLookupIsCurrent(discovery.states)) {
+        skipCurrentStructuralDiscovery(projectConfigId, discovery);
+    } else {
+        states = await runStructuralDiscovery(projectConfigId, discovery, "loadStates", dependencyKey,
+                "frontendLoadStatesCallCount", () => discover("load-states", "/api/config-ui/discovery/states", {
+                    organization: state.ado.organization,
+                    project: projectName,
+                    workItemType: type
+                }));
+    }
     if (!isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName, type)) {
         return;
     }
     discovery.fields = normalizeOptionsLookup(fields, t("message.noFields"), "fields", projectConfigId);
     discovery.states = normalizeOptionsLookup(states, t("message.noStates"), "states", projectConfigId);
+    discovery.fieldsCurrentForProjectIdAndWorkItemType = structuralLookupIsCurrent(discovery.fields)
+        ? dependencyKey
+        : "";
+    discovery.statesCurrentForProjectIdAndWorkItemType = structuralLookupIsCurrent(discovery.states)
+        ? dependencyKey
+        : "";
     debugDiscovery("selector-populated", {
         projectConfigId,
         selector: "fields",

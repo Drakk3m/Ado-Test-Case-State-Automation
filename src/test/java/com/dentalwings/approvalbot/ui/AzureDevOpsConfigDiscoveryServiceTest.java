@@ -877,6 +877,63 @@ class AzureDevOpsConfigDiscoveryServiceTest {
         assertThat(exchange.requests).hasSize(2);
     }
 
+    @Test
+    void cachedFailedProcessCandidateIsSkippedBeforeSuccessfulFallback() {
+        var cache = new ConfigUiAdoDiscoveryCache();
+        cache.putProcessFailure("STMN-Group", "project-id-1", "bad-process-id");
+        var exchange = new RecordingExchangeFunction(List.of(
+                new RecordedResponse("{\"id\":\"project-id-1\",\"name\":\"Sandbox\"}", HttpStatus.OK),
+                new RecordedResponse("""
+                        {"value":[
+                          {"name":"System.CurrentProcessTemplateId","value":"bad-process-id"},
+                          {"name":"System.ProcessTemplateType","value":"process-id-1"}
+                        ]}
+                        """, HttpStatus.OK),
+                new RecordedResponse("{\"value\":[{\"name\":\"Test Case\"}]}", HttpStatus.OK)));
+        var service = new AzureDevOpsConfigDiscoveryService("secret-pat", exchange,
+                new AzureDevOpsUrlBuilder(), cache);
+
+        var result = service.listWorkItemTypeOptions("STMN-Group", "Sandbox");
+
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(result.diagnostics()).containsEntry("processFailureCacheHit", true)
+                .containsEntry("processFallbackAttempted", true)
+                .containsEntry("processPropertyUsed", "System.ProcessTemplateType");
+        assertThat(exchange.requests).hasSize(3);
+        assertThat(exchange.requests).extracting(request -> request.url().toString())
+                .noneMatch(url -> url.contains("bad-process-id"));
+    }
+
+    @Test
+    void fieldReferenceNamesAndFieldOptionsShareTheSameCacheEntry() {
+        var exchange = new RecordingExchangeFunction("""
+                {"value":[{"name":"Approver Tech","referenceName":"Custom.ApproverTech","type":"identity"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+
+        var names = service.listFieldReferenceNames("STMN-Group", "Sandbox", "Test Case");
+        var options = service.listFieldOptions("STMN-Group", "Sandbox", "Test Case");
+
+        assertThat(names.values()).containsExactly("Custom.ApproverTech");
+        assertThat(options.diagnostics()).containsEntry("fieldOptionsCacheHit", true);
+        assertThat(exchange.requests).hasSize(1);
+    }
+
+    @Test
+    void observedStateNamesAndStateOptionsShareTheSameCacheEntry() {
+        var exchange = new RecordingExchangeFunction("""
+                {"value":[{"name":"Design"},{"name":"In Review"}]}
+                """, HttpStatus.OK);
+        var service = discovery(exchange);
+
+        var names = service.listObservedStateNames("STMN-Group", "Sandbox", "Test Case");
+        var options = service.listStateOptions("STMN-Group", "Sandbox", "Test Case");
+
+        assertThat(names.values()).containsExactly("Design", "In Review");
+        assertThat(options.diagnostics()).containsEntry("stateOptionsCacheHit", true);
+        assertThat(exchange.requests).hasSize(1);
+    }
+
     private AzureDevOpsConfigDiscoveryService discovery(RecordingExchangeFunction exchange) {
         return new AzureDevOpsConfigDiscoveryService("secret-pat", exchange, new AzureDevOpsUrlBuilder());
     }

@@ -56,6 +56,16 @@ final class ConfigUiAdoDiscoveryCache {
         entries.remove(new CacheKey("process", normalized(organization), normalized(projectId), ""));
     }
 
+    synchronized boolean processFailure(String organization, String projectId, String processId) {
+        return get(new CacheKey("process-failure", normalized(organization), normalized(projectId),
+                normalized(processId)), ProcessFailure.class).isPresent();
+    }
+
+    synchronized void putProcessFailure(String organization, String projectId, String processId) {
+        put(new CacheKey("process-failure", normalized(organization), normalized(projectId), normalized(processId)),
+                new ProcessFailure());
+    }
+
     synchronized Optional<CachedOptions> options(String kind, String organization, String scope, String qualifier) {
         return get(new CacheKey(kind, normalized(organization), normalized(scope), normalized(qualifier)), CachedOptions.class);
     }
@@ -98,6 +108,7 @@ final class ConfigUiAdoDiscoveryCache {
 
     record ProjectMetadata(String projectId, String projectName) { }
     record ProcessSelection(String propertyName, String processId) { }
+    private record ProcessFailure() { }
     record CachedOptions(ConfigValidationStatus status, String message, List<ConfigSelectorOption> values) {
         CachedOptions {
             message = message == null ? "" : message;
