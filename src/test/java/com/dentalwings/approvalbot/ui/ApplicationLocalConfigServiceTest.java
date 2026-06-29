@@ -136,8 +136,29 @@ class ApplicationLocalConfigServiceTest
     }
 
     @Test
-    void loadReadsExistingYamlIntoUiModel() throws Exception
-    {
+    void duplicateProjectsNeverProduceYamlAndRemovingDuplicateRestoresPreview() {
+        var service = new ApplicationLocalConfigService(tempDir.resolve("application-local.yml"), validatingService(validDiscovery()));
+        var model = validModel();
+        model.getAdo().getProjects().add(model.getAdo().getProjects().getFirst());
+
+        var duplicatePreview = service.previewLocalDraft(model);
+
+        assertThat(duplicatePreview.draftYamlAvailable()).isFalse();
+        assertThat(duplicatePreview.finalYamlAllowed()).isFalse();
+        assertThat(duplicatePreview.yaml()).isEmpty();
+        assertThatThrownBy(() -> service.save(model))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Final YAML cannot be saved");
+
+        model.getAdo().getProjects().removeLast();
+        var uniquePreview = service.previewLocalDraft(model);
+
+        assertThat(uniquePreview.draftYamlAvailable()).isTrue();
+        assertThat(uniquePreview.yaml()).containsOnlyOnce("'[ADOnis 2.0 Test Project]':");
+    }
+
+    @Test
+    void loadReadsExistingYamlIntoUiModel() throws Exception {
         Path configFile = tempDir.resolve("application-local.yml");
         Files.writeString(configFile, """
                 ado:

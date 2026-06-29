@@ -76,6 +76,18 @@ public class ApplicationLocalConfigService
                 validation.canGenerateFinalYaml());
     }
 
+    public AdoConfigPreview previewLocalDraft(ConfigUiModel model)
+    {
+        var validation = validationService.validateLocalDraft(model);
+        var yaml = validation.canGenerateDraftYaml() ? toYaml(model) : "";
+        return new AdoConfigPreview(
+                yaml,
+                validation,
+                validation.canGenerateDraftYaml(),
+                validation.canGenerateFinalYaml()
+        );
+    }
+
     public ConfigValidationResult validate(ConfigUiModel model)
     {
         return validationService.validate(model);

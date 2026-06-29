@@ -43,23 +43,40 @@ public class ConfigUiApiController
     }
 
     @PostMapping("/preview")
-    public AdoConfigPreview preview(@RequestBody ConfigUiModel model)
-    {
-        return configService.preview(model);
+    public AdoConfigPreview preview(@RequestBody ConfigUiModel model) {
+        var preview = configService.previewLocalDraft(model);
+        LOGGER.info(
+                "Config UI local preview completed operation=configUiPreviewLocalOnly blockingErrors={} uncheckedItems={} draftYamlAvailable={} finalYamlAllowed={}",
+                preview.validation().hasBlockingErrors(),
+                preview.validation().hasUncheckedItems(),
+                preview.draftYamlAvailable(),
+                preview.finalYamlAllowed()
+        );
+        return preview;
     }
 
     @PostMapping("/validate")
-    public ConfigValidationResult validate(@RequestBody ConfigUiModel model)
-    {
-        return configService.validate(model);
+    public ConfigValidationResult validate(@RequestBody ConfigUiModel model) {
+        var validation = configService.validate(model);
+        LOGGER.info(
+                "Config UI strict validation completed operation=configUiStrictValidation trigger=validate-generated-config blockingErrors={} uncheckedItems={} fieldCount={}",
+                validation.hasBlockingErrors(),
+                validation.hasUncheckedItems(),
+                validation.fields().size()
+        );
+        return validation;
     }
 
     @PostMapping("/save")
-    public Map<String, Object> save(@RequestBody ConfigUiModel model)
-    {
+    public Map<String, Object> save(@RequestBody ConfigUiModel model) {
+        LOGGER.info("Config UI strict validation started operation=configUiStrictValidation trigger=save");
         var path = configService.save(model);
-        return Map.of("message", "application-local.yml actualizado sin persistir secretos.", "path", path.toString(),
-                "preview", configService.preview(model));
+        LOGGER.info("Config UI strict validation completed operation=configUiStrictValidation trigger=save success=true");
+        return Map.of(
+                "message", "application-local.yml actualizado sin persistir secretos.",
+                "path", path.toString(),
+                "preview", configService.previewLocalDraft(model)
+        );
     }
 
     @PostMapping("/discovery/projects")
@@ -144,23 +161,47 @@ public class ConfigUiApiController
         if (result.status() == ConfigValidationStatus.VALID && result.optionCount() > 0)
         {
             LOGGER.info(
-                    "Config UI discovery completed operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} durationMs={} failureCategory={} message={}",
-                    operation, requestId, safe(request.organization()), safe(request.project()),
-                    safe(request.workItemType()), queryLength(request), result.status(), result.optionCount(),
-                    durationMs, failureCategory, message);
+                    "Config UI discovery completed operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} cacheHit={} skippedBecauseCurrent=false inFlightDeduped=false processFailureCacheHit={} durationMs={} failureCategory={} message={}",
+                    operation,
+                    requestId,
+                    safe(request.organization()),
+                    safe(request.project()),
+                    safe(request.workItemType()),
+                    queryLength(request),
+                    result.status(),
+                    result.optionCount(),
+                    diagnosticFlag(result, "discoveryCacheHit"),
+                    diagnosticFlag(result, "processFailureCacheHit"),
+                    durationMs,
+                    failureCategory,
+                    message
+            );
             return;
         }
         LOGGER.warn(
-                "Config UI discovery needs attention operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} durationMs={} failureCategory={} message={}",
-                operation, requestId, safe(request.organization()), safe(request.project()),
-                safe(request.workItemType()), queryLength(request), result.status(), result.optionCount(), durationMs,
-                failureCategory, message);
+                "Config UI discovery needs attention operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} cacheHit={} skippedBecauseCurrent=false inFlightDeduped=false processFailureCacheHit={} durationMs={} failureCategory={} message={}",
+                operation,
+                requestId,
+                safe(request.organization()),
+                safe(request.project()),
+                safe(request.workItemType()),
+                queryLength(request),
+                result.status(),
+                result.optionCount(),
+                diagnosticFlag(result, "discoveryCacheHit"),
+                diagnosticFlag(result, "processFailureCacheHit"),
+                durationMs,
+                failureCategory,
+                message
+        );
     }
 
-    private String failureCategory(ConfigLookupResult<?> result)
-    {
-        if (result.status() == ConfigValidationStatus.VALID && result.optionCount() == 0)
-        {
+    private boolean diagnosticFlag(ConfigLookupResult<?> result, String key) {
+        return Boolean.TRUE.equals(result.diagnostics().get(key));
+    }
+
+    private String failureCategory(ConfigLookupResult<?> result) {
+        if (result.status() == ConfigValidationStatus.VALID && result.optionCount() == 0) {
             return "empty";
         }
         return switch (result.status())

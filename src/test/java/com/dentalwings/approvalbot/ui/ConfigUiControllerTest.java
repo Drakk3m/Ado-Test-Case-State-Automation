@@ -4,6 +4,9 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -43,18 +46,72 @@ class ConfigUiControllerTest
     }
 
     @Test
-    void discoveryEndpointReturnsSafeOptionsWithoutSecrets() throws Exception
-    {
-        when(discoveryService.listFieldOptions(any(), any(), any())).thenReturn(ConfigLookupResult
-                .valid(List.of(new ConfigSelectorOption("Custom.ApproverTech", "Approver Tech", "identity", "ADO"))));
+    void yamlPreviewUsesLocalValidationWithoutStructuralDiscovery() throws Exception {
+        var validation = new ConfigValidationResult();
+        when(configService.previewLocalDraft(any()))
+                .thenReturn(new AdoConfigPreview("ado:\n", validation, true, true));
 
-        mockMvc.perform(post("/api/config-ui/discovery/fields").contentType(MediaType.APPLICATION_JSON).content("""
-                        {
-                          "organization": "STMN-Group",
-                          "project": "ADOnis 2.0 Test Project",
-                          "workItemType": "Test Case"
-                        }
-                        """)).andExpect(status().isOk()).andExpect(content().string(containsString("Custom.ApproverTech")))
+        mockMvc.perform(post("/api/config-ui/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("ado:")));
+
+        verify(configService).previewLocalDraft(any());
+        verifyNoInteractions(discoveryService);
+    }
+
+    @Test
+    void explicitValidationEndpointRunsStrictConfigValidation() throws Exception {
+        var validation = new ConfigValidationResult();
+        when(configService.validate(any())).thenReturn(validation);
+
+        mockMvc.perform(post("/api/config-ui/validate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        verify(configService).validate(any());
+        verify(configService, never()).previewLocalDraft(any());
+        verifyNoInteractions(discoveryService);
+    }
+
+    @Test
+    void saveDoesNotRepeatAdoValidationForResponsePreview() throws Exception {
+        var validation = new ConfigValidationResult();
+        when(configService.save(any())).thenReturn(java.nio.file.Path.of("application-local.yml"));
+        when(configService.previewLocalDraft(any()))
+                .thenReturn(new AdoConfigPreview("ado:\n", validation, true, true));
+
+        mockMvc.perform(post("/api/config-ui/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        verify(configService).save(any());
+        verify(configService).previewLocalDraft(any());
+        verify(configService, never()).preview(any());
+        verifyNoInteractions(discoveryService);
+    }
+
+    @Test
+    void discoveryEndpointReturnsSafeOptionsWithoutSecrets() throws Exception {
+        when(discoveryService.listFieldOptions(any(), any(), any()))
+                .thenReturn(ConfigLookupResult.valid(List.of(
+                        new ConfigSelectorOption("Custom.ApproverTech", "Approver Tech", "identity", "ADO")
+                )));
+
+        mockMvc.perform(post("/api/config-ui/discovery/fields")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organization": "STMN-Group",
+                                  "project": "ADOnis 2.0 Test Project",
+                                  "workItemType": "Test Case"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Custom.ApproverTech")))
                 .andExpect(content().string(containsString("Approver Tech")))
                 .andExpect(content().string(containsString("\"optionCount\":1")))
                 .andExpect(content().string(not(containsString("secret-pat"))))

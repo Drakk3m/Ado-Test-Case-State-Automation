@@ -151,17 +151,100 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
+    void discoveredProjectsDebugListIsReadOnlyAndCardSelectionIsScoped() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function renderDiscoveredProjectsDebug(options)")
+                .contains("<span>${escapeHtml(optionLabel(option))}</span>")
+                .contains("handleProjectInput(projectConfigId, event)")
+                .contains("projectByConfigId(projectConfigId)")
+                .doesNotContain("data-project-value")
+                .doesNotContain("state.ado.projects[0].name =");
+    }
+
+    @Test
+    void javascriptBlocksDuplicateProjectsWithoutSharingCardState() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("const DUPLICATE_PROJECT_MESSAGE = \"This project is already configured.\"")
+                .contains("function duplicateProjectConfigIds()")
+                .contains("const normalizedName = normalizedText(project.name)")
+                .contains("duplicateProjectConfigIds().size === 0")
+                .contains("projectLayoutState.get(projectConfigId)")
+                .contains("projectDiscovery.get(projectConfigId)")
+                .contains("selectedProjectName")
+                .contains("normalizedProjectName")
+                .contains("duplicateProjectStatus");
+    }
+
+    @Test
     void javascriptDiagnosticsPanelShowsSelectorHydrationCounts() throws Exception {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
-        assertThat(javascript).contains("backend optionCount").contains("received length").contains("normalized length")
-                .contains("rendered count").contains("DOM options").contains("raw fields").contains("approval fields")
-                .contains("reversible fields").contains("duplicate errors").contains("query length")
-                .contains("user results").contains("pending identity").contains("selected users")
-                .contains("unresolved users").contains("identity warnings").contains("stale ignored")
-                .contains("lastUpdated").contains("selectorDiagnostics").contains("function diagnosticGroups()")
-                .contains("function diagnosticGroupMarkup(group)").contains("function diagnosticItemMarkup(item)")
+        assertThat(javascript)
+                .contains("backend optionCount")
+                .contains("received length")
+                .contains("normalized length")
+                .contains("rendered count")
+                .contains("DOM options")
+                .contains("raw fields")
+                .contains("approval fields")
+                .contains("reversible fields")
+                .contains("duplicate errors")
+                .contains("query length")
+                .contains("user results")
+                .contains("pending identity")
+                .contains("selected users")
+                .contains("unresolved users")
+                .contains("identity warnings")
+                .contains("stale ignored")
+                .contains("lastUpdated")
+                .contains("selectorDiagnostics")
+                .contains("function diagnosticGroups()")
+                .contains("adoDiscoveryRequestCount")
+                .contains("projectMetadataCacheHit")
+                .contains("processIdCacheHit")
+                .contains("workItemTypeOptionsCacheHit")
+                .contains("fieldOptionsCacheHit")
+                .contains("stateOptionsCacheHit")
+                .contains("function adoDiscoveryDiagnostics(lookup)")
+                .contains("function diagnosticGroupMarkup(group)")
+                .contains("function diagnosticItemMarkup(item)")
                 .doesNotContain("class=\"diagnostics-table\"");
+    }
+
+    @Test
+    void javascriptGuardsStructuralDiscoveryByFreshnessAndInFlightRequest() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("projectValidationCurrentFor")
+                .contains("workItemTypesCurrentForProjectId")
+                .contains("fieldsCurrentForProjectIdAndWorkItemType")
+                .contains("statesCurrentForProjectIdAndWorkItemType")
+                .contains("function runStructuralDiscovery(")
+                .contains("discovery.inFlight[inFlightKey]")
+                .contains("inFlightDedupedCount")
+                .contains("skippedBecauseCurrentCount")
+                .contains("frontendValidateProjectCallCount")
+                .contains("frontendLoadWitCallCount")
+                .contains("frontendLoadFieldsCallCount")
+                .contains("frontendLoadStatesCallCount")
+                .contains("function structuralLookupIsCurrent(")
+                .contains("function updateStructuralDiscoveryDiagnostics(")
+                .contains("STRUCTURAL_DISCOVERY_TTL_MS")
+                .contains("structuralDiscoverySuppressedCount")
+                .contains("lastStructuralDiscoveryReason")
+                .contains("lastStructuralDiscoveryDependencyKey")
+                .contains("function suppressStructuralDiscovery(")
+                .contains("validateProject:current")
+                .contains("loadWorkItemTypes:current")
+                .contains("loadFields:current")
+                .contains("loadStates:current")
+                .contains("yaml-preview")
+                .contains("identity-search");
     }
 
     @Test
@@ -402,8 +485,71 @@ class ConfigUiStaticAssetsTest {
     void javascriptRefreshesYamlPreviewFromSelectorChanges() throws Exception {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
-        assertThat(javascript).contains("schedulePreview()").contains("previewDraft(false)")
-                .contains("loadFieldAndStateOptions(projectConfigId)").contains("/api/config-ui/preview");
+        assertThat(javascript)
+                .contains("scheduleLocalPreview(")
+                .contains("updateYamlPreviewLocalOnly(false, trigger)")
+                .contains("runExplicitFieldAndStateDiscovery(projectConfigId)")
+                .contains("/api/config-ui/preview");
+    }
+
+    @Test
+    void normalEditingUsesLocalValidationWithoutStrictAdoCalls() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+        var workItemTypeHandler = section(
+                javascript,
+                "if (field === \"supportedWorkItemTypes.0\")",
+                "if (field === \"fields.reversibleBusinessFields\")"
+        );
+        var renderProjects = section(javascript, "function renderProjects()", "function handleProjectInput(");
+        var diagnostics = section(javascript, "function renderDiagnosticsPanel()", "function diagnosticGroups()");
+
+        assertThat(javascript)
+                .contains("function scheduleLocalPreview(trigger = \"edit\", countStrictSkip = true)")
+                .contains("function updateYamlPreviewLocalOnly(showStatus = true, trigger = \"manual-preview\")")
+                .contains("strictValidationSkippedDuringEditCount")
+                .doesNotContain("card.addEventListener(\"input\"");
+        assertThat(workItemTypeHandler)
+                .contains("scheduleLocalPreview(\"work-item-type-change\")")
+                .doesNotContain("runExplicitFieldAndStateDiscovery")
+                .doesNotContain("/api/config-ui/validate");
+        assertThat(renderProjects).doesNotContain("/api/config-ui/validate", "postConfig(");
+        assertThat(diagnostics).doesNotContain("/api/config-ui/validate", "postConfig(", "discover(");
+    }
+
+    @Test
+    void strictValidationAndStructuralDiscoveryRequireExplicitButtons() throws Exception {
+        var html = read("src/main/resources/templates/index.html");
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(html).contains("id=\"validateConfigBtn\"");
+        assertThat(javascript)
+                .contains("data-action=\"load-project\"")
+                .contains("data-action=\"load-fields-states\"")
+                .contains("loadFieldsStatesButton.addEventListener(\"click\"")
+                .contains("function runExplicitProjectVerification(projectConfigId)")
+                .contains("function runExplicitFieldAndStateDiscovery(projectConfigId)")
+                .contains("function runStrictAdoValidation(trigger)")
+                .contains("function saveWithStrictAdoValidation()")
+                .contains("document.getElementById(\"validateConfigBtn\").addEventListener(\"click\"")
+                .contains("runStrictAdoValidation(\"validate-generated-config\")")
+                .contains("recordStrictValidation(\"save\")")
+                .containsOnlyOnce("/api/config-ui/validate");
+    }
+
+    @Test
+    void validationBoundaryDiagnosticsExposeSafeTriggerCounters() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("localValidationRunCount")
+                .contains("strictValidationRunCount")
+                .contains("strictValidationSkippedDuringEditCount")
+                .contains("yamlPreviewLocalOnlyCount")
+                .contains("backendStrictValidationCallCount")
+                .contains("lastStrictValidationTrigger")
+                .contains("lastStrictValidationAt")
+                .contains("function recordLocalValidation(trigger)")
+                .contains("function recordStrictValidation(trigger)");
     }
 
     @Test
@@ -444,5 +590,13 @@ class ConfigUiStaticAssetsTest {
 
     private String read(String path) throws Exception {
         return Files.readString(Path.of(path), StandardCharsets.UTF_8);
+    }
+
+    private String section(String text, String startMarker, String endMarker) {
+        var start = text.indexOf(startMarker);
+        var end = text.indexOf(endMarker, start);
+        assertThat(start).isGreaterThanOrEqualTo(0);
+        assertThat(end).isGreaterThan(start);
+        return text.substring(start, end);
     }
 }
