@@ -39,17 +39,34 @@ public class ConfigUiApiController {
 
     @PostMapping("/preview")
     public AdoConfigPreview preview(@RequestBody ConfigUiModel model) {
-        return configService.previewLocalDraft(model);
+        var preview = configService.previewLocalDraft(model);
+        LOGGER.info(
+                "Config UI local preview completed operation=configUiPreviewLocalOnly blockingErrors={} uncheckedItems={} draftYamlAvailable={} finalYamlAllowed={}",
+                preview.validation().hasBlockingErrors(),
+                preview.validation().hasUncheckedItems(),
+                preview.draftYamlAvailable(),
+                preview.finalYamlAllowed()
+        );
+        return preview;
     }
 
     @PostMapping("/validate")
     public ConfigValidationResult validate(@RequestBody ConfigUiModel model) {
-        return configService.validate(model);
+        var validation = configService.validate(model);
+        LOGGER.info(
+                "Config UI strict validation completed operation=configUiStrictValidation trigger=validate-generated-config blockingErrors={} uncheckedItems={} fieldCount={}",
+                validation.hasBlockingErrors(),
+                validation.hasUncheckedItems(),
+                validation.fields().size()
+        );
+        return validation;
     }
 
     @PostMapping("/save")
     public Map<String, Object> save(@RequestBody ConfigUiModel model) {
+        LOGGER.info("Config UI strict validation started operation=configUiStrictValidation trigger=save");
         var path = configService.save(model);
+        LOGGER.info("Config UI strict validation completed operation=configUiStrictValidation trigger=save success=true");
         return Map.of(
                 "message", "application-local.yml actualizado sin persistir secretos.",
                 "path", path.toString(),

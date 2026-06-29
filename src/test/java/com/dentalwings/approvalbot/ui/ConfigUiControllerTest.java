@@ -61,6 +61,21 @@ class ConfigUiControllerTest {
     }
 
     @Test
+    void explicitValidationEndpointRunsStrictConfigValidation() throws Exception {
+        var validation = new ConfigValidationResult();
+        when(configService.validate(any())).thenReturn(validation);
+
+        mockMvc.perform(post("/api/config-ui/validate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        verify(configService).validate(any());
+        verify(configService, never()).previewLocalDraft(any());
+        verifyNoInteractions(discoveryService);
+    }
+
+    @Test
     void saveDoesNotRepeatAdoValidationForResponsePreview() throws Exception {
         var validation = new ConfigValidationResult();
         when(configService.save(any())).thenReturn(java.nio.file.Path.of("application-local.yml"));
