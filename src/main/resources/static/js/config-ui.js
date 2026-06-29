@@ -5,7 +5,6 @@ const validationSummaryEl = document.getElementById("validationSummary");
 const saveBtn = document.getElementById("saveBtn");
 const diagnosticsPanelEl = document.getElementById("configUiDiagnosticsPanel");
 const diagnosticsContentEl = document.getElementById("configUiDiagnosticsContent");
-const discoveredProjectsDebugEl = document.getElementById("discoveredProjectsDebug");
 const languageSelectorEl = document.getElementById("languageSelector");
 
 let state = { ado: { projects: [] } };
@@ -147,7 +146,8 @@ const I18N = {
         "message.smeFieldAlsoReversible": "SME approval field cannot also be reversible.",
         "message.sqaFieldAlsoReversible": "SQA approval field cannot also be reversible.",
         "message.duplicateIdentity": "{role} users contain duplicate identity: {identity}.",
-        "message.crossRoleIdentity": "Same identity appears in both SME and SQA lists."
+        "message.crossRoleIdentity": "Same identity appears in both SME and SQA lists.",
+        "message.duplicateProjectSelection": "That project is already selected in another card."
     },
     fr: {
         "language.label": "Langue",
@@ -266,7 +266,8 @@ const I18N = {
         "message.smeFieldAlsoReversible": "Le champ d'approbation SME ne peut pas aussi être réversible.",
         "message.sqaFieldAlsoReversible": "Le champ d'approbation SQA ne peut pas aussi être réversible.",
         "message.duplicateIdentity": "Les utilisateurs {role} contiennent une identité dupliquée : {identity}.",
-        "message.crossRoleIdentity": "La même identité apparaît dans les listes SME et SQA."
+        "message.crossRoleIdentity": "La même identité apparaît dans les listes SME et SQA.",
+        "message.duplicateProjectSelection": "Ce projet est déjà sélectionné dans une autre carte."
     },
     es: {
         "language.label": "Idioma",
@@ -385,7 +386,8 @@ const I18N = {
         "message.smeFieldAlsoReversible": "El campo de aprobación SME no puede ser reversible también.",
         "message.sqaFieldAlsoReversible": "El campo de aprobación SQA no puede ser reversible también.",
         "message.duplicateIdentity": "Los usuarios {role} contienen una identidad duplicada: {identity}.",
-        "message.crossRoleIdentity": "La misma identidad aparece en las listas SME y SQA."
+        "message.crossRoleIdentity": "La misma identidad aparece en las listas SME y SQA.",
+        "message.duplicateProjectSelection": "Ese proyecto ya está seleccionado en otra tarjeta."
     }
 };
 if (!I18N[currentLanguage]) {
@@ -570,9 +572,6 @@ function renderDiagnosticsPanel() {
     const debugEnabled = isConfigUiDebugEnabled();
     if (diagnosticsPanelEl) {
         diagnosticsPanelEl.hidden = !debugEnabled;
-    }
-    if (discoveredProjectsDebugEl) {
-        discoveredProjectsDebugEl.hidden = !debugEnabled;
     }
     if (!debugEnabled || !diagnosticsContentEl) {
         return;
@@ -1853,7 +1852,7 @@ function isUiAdoDiscoveryCurrent() {
         && state.ado.projects.every((project) => isProjectDiscoveryCurrent(project, projectDiscovery.get(ensureProjectConfigId(project))));
 }
 
-function selectOptions(selectorName, lookup, selected, placeholder, enabled = false, projectConfigId = "") {
+function selectOptions(selectorName, lookup, selected, placeholder, enabled = false, projectConfigId = "", disabledValues = new Set()) {
     const options = selectorOptions(lookup);
     const hasSelected = options.some((option) => option.value === selected);
     const rows = [`<option value="">${escapeHtml(placeholder)}</option>`];
@@ -1861,7 +1860,8 @@ function selectOptions(selectorName, lookup, selected, placeholder, enabled = fa
         rows.push(`<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)} - ${escapeHtml(t("message.manualUncheckedSuffix"))}</option>`);
     }
     for (const option of options) {
-        rows.push(`<option value="${escapeHtml(option.value)}" ${option.value === selected ? "selected" : ""}>${escapeHtml(optionLabel(option, selectorName))}</option>`);
+        const isDisabled = disabledValues.has(normalizedText(option.value));
+        rows.push(`<option value="${escapeHtml(option.value)}" ${option.value === selected ? "selected" : ""} ${isDisabled ? "disabled" : ""}>${escapeHtml(optionLabel(option, selectorName))}</option>`);
     }
     debugDiscovery("selector-rendered", {
         selector: selectorName,
@@ -1901,6 +1901,12 @@ function renderProjects() {
         const fieldAndStateEnabled = !fieldAndStateDisabled;
         const projectSelectorEnabled = lookupHasOptions(projectOptionLookup);
         const projectSelectorDisabled = projectSelectorEnabled ? "" : "disabled";
+        const selectedProjectNamesByOtherProjects = new Set(
+            state.ado.projects
+                .filter((candidate) => ensureProjectConfigId(candidate) !== projectConfigId)
+                .map((candidate) => normalizedText(candidate.name))
+                .filter((candidateName) => candidateName.length > 0)
+        );
         const fieldLookups = filteredFieldLookups(project, discovery.fields);
         const fieldDuplicateMessages = duplicateFieldMessages(project);
         const identityMessages = duplicateIdentityMessages(project);
@@ -1967,7 +1973,7 @@ function renderProjects() {
                     <div class="selector-grid">
                         <label>${escapeHtml(t("project.projectLabel"))}
                             <select id="${projectControlId(projectConfigId, "project")}" data-field="name" data-selector-name="project" ${projectSelectorDisabled}>
-                                ${selectOptions("project", projectOptionLookup, project.name || "", t("message.loadProjectFirst"), projectSelectorEnabled, projectConfigId)}
+                                ${selectOptions("project", projectOptionLookup, project.name || "", t("message.loadProjectFirst"), projectSelectorEnabled, projectConfigId, selectedProjectNamesByOtherProjects)}
                             </select>
                         </label>
                         <button type="button" data-action="load-project">${escapeHtml(t("button.verifyProject"))}</button>
@@ -2120,6 +2126,13 @@ function handleProjectInput(projectConfigId, event) {
     if (!field) {
         return;
     }
+    const projectCard = event.target.closest(".project-card");
+    if (!projectCard || projectCard.dataset.projectConfigId !== projectConfigId) {
+        return;
+    }
+    if (projectLayout(projectConfigId).collapsed) {
+        return;
+    }
     if (event.type === "input" && event.target.tagName === "SELECT") {
         return;
     }
@@ -2131,7 +2144,14 @@ function handleProjectInput(projectConfigId, event) {
     }
 
     if (field === "name") {
-        project.name = event.target.value;
+        const nextProjectName = event.target.value;
+        if (isProjectNameTakenByOtherConfig(projectConfigId, nextProjectName)) {
+            event.target.value = project.name || "";
+            setStatus(t("message.duplicateProjectSelection"), true);
+            renderProjects();
+            return;
+        }
+        project.name = nextProjectName;
         projectLayout(projectConfigId).collapsed = false;
         clearChildSelections(project);
         clearDiscovery(projectConfigId, "project");
@@ -2576,42 +2596,16 @@ function renderProjectSelectors() {
         enabled: options.length > 0,
         message: sanitizeMessage(projectOptionLookup.message || t("message.projectSelectorRendered"))
     });
-    renderDiscoveredProjectsDebug(options);
 }
 
-function renderDiscoveredProjectsDebug(options) {
-    if (!discoveredProjectsDebugEl) {
-        return;
+function isProjectNameTakenByOtherConfig(projectConfigId, projectName) {
+    const normalizedProjectName = normalizedText(projectName);
+    if (!normalizedProjectName) {
+        return false;
     }
-    if (!isConfigUiDebugEnabled()) {
-        discoveredProjectsDebugEl.hidden = true;
-        discoveredProjectsDebugEl.innerHTML = "";
-        return;
-    }
-    discoveredProjectsDebugEl.hidden = false;
-    const rows = options.map((option) => `
-        <li>
-            <button type="button" data-project-value="${escapeHtml(option.value)}">${escapeHtml(optionLabel(option))}</button>
-        </li>
-    `).join("");
-    discoveredProjectsDebugEl.innerHTML = `
-        <strong>${escapeHtml(t("diagnostics.discoveredProjects"))}</strong>
-        <p class="note compact">${escapeHtml(t("diagnostics.discoveredProjectsNote"))}</p>
-        <ul>${rows || `<li>${escapeHtml(t("diagnostics.noProjectsRendered"))}</li>`}</ul>
-    `;
-    for (const button of discoveredProjectsDebugEl.querySelectorAll("[data-project-value]")) {
-        button.addEventListener("click", () => {
-            if (state.ado.projects.length === 0) {
-                state.ado.projects.push(createProjectModel());
-                ensureDiscovery();
-            }
-            state.ado.projects[0].name = button.getAttribute("data-project-value") || "";
-            clearChildSelections(state.ado.projects[0]);
-            clearDiscovery(ensureProjectConfigId(state.ado.projects[0]), "project");
-            renderProjects();
-            schedulePreview();
-        });
-    }
+    return state.ado.projects
+        .filter((project) => ensureProjectConfigId(project) !== projectConfigId)
+        .some((project) => normalizedText(project.name) === normalizedProjectName);
 }
 
 function handleGlobalInput() {
