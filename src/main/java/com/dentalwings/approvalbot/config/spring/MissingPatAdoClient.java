@@ -19,7 +19,7 @@ public class MissingPatAdoClient implements AdoClient
 {
 
     private static final String MESSAGE =
-            "ADO_PERSONAL_ACCESS_TOKEN is missing while ado.http-client-enabled=true; ADO calls are non-retryable until configured.";
+            "NOT_CONFIGURED: ADO_PERSONAL_ACCESS_TOKEN is missing while ado.http-client-enabled=true; ADO calls are disabled until configured.";
 
     private final AdoProperties properties;
     private final RuntimeAdoCredentialService credentialService;

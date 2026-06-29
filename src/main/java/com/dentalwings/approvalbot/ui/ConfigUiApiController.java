@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+import com.dentalwings.approvalbot.webhook.spring.RuntimeWebhookSecretService;
 
 @RestController
 @RequestMapping("/api/config-ui")
@@ -31,14 +32,17 @@ public class ConfigUiApiController
     private final ApplicationLocalConfigService configService;
     private final AdoConfigDiscoveryService discoveryService;
     private final RuntimeAdoCredentialService credentialService;
+    private final RuntimeWebhookSecretService webhookSecretService;
 
     public ConfigUiApiController(ApplicationLocalConfigService configService,
             AdoConfigDiscoveryService discoveryService,
-            RuntimeAdoCredentialService credentialService)
+            RuntimeAdoCredentialService credentialService,
+            RuntimeWebhookSecretService webhookSecretService)
     {
         this.configService = configService;
         this.discoveryService = discoveryService;
         this.credentialService = credentialService;
+        this.webhookSecretService = webhookSecretService;
     }
 
     @GetMapping("/credentials/ado-pat")
@@ -55,6 +59,23 @@ public class ConfigUiApiController
             throw new IllegalArgumentException("ADO PAT request is required.");
         }
         credentialService.submitPersonalAccessToken(request.personalAccessToken());
+        return Map.of("configured", true);
+    }
+
+    @GetMapping("/credentials/webhook-secret")
+    public Map<String, Object> webhookSecretStatus()
+    {
+        return Map.of("configured", webhookSecretService.isConfigured(), "required", webhookSecretService.isRequired());
+    }
+
+    @PostMapping("/credentials/webhook-secret")
+    public Map<String, Object> submitWebhookSecret(@RequestBody RuntimeWebhookSecretRequest request)
+    {
+        if (request == null)
+        {
+            throw new IllegalArgumentException("Webhook shared secret request is required.");
+        }
+        webhookSecretService.submitSecret(request.sharedSecret());
         return Map.of("configured", true);
     }
 
@@ -274,6 +295,10 @@ public class ConfigUiApiController
     }
 
     record RuntimePatRequest(String personalAccessToken)
+    {
+    }
+
+    record RuntimeWebhookSecretRequest(String sharedSecret)
     {
     }
 }

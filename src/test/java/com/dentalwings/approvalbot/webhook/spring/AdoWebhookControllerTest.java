@@ -91,6 +91,20 @@ class AdoWebhookControllerTest
     }
 
     @Test
+    void missingRequiredSharedSecretReturnsNotConfiguredAndDoesNotCallPipeline() throws Exception
+    {
+        when(sharedSecretValidator.validate(any())).thenReturn(WebhookSharedSecretValidator.ValidationResult
+                .invalid(WebhookSharedSecretValidator.FailureReason.NOT_CONFIGURED));
+
+        mockMvc.perform(post("/api/ado/webhooks/work-item-updated").contentType(MediaType.APPLICATION_JSON)
+                        .content(minimalPayload())).andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value("NOT_CONFIGURED"))
+                .andExpect(jsonPath("$.reason").value("Webhook shared secret is required but not configured."));
+
+        verifyNoInteractions(pipeline);
+    }
+
+    @Test
     void sharedSecretEnabledRejectsRequestWithWrongHeaderAndDoesNotLeakSecretValuesInLogs() throws Exception
     {
         when(sharedSecretValidator.validate("received-secret-value"))

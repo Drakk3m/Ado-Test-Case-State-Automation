@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
+import com.dentalwings.approvalbot.webhook.spring.RuntimeWebhookSecretService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 class ApplicationLocalConfigServiceTest
@@ -87,7 +88,8 @@ class ApplicationLocalConfigServiceTest
         var configFile = tempDir.resolve("application-local.yml");
         var discovery = validDiscovery();
         var service = new ApplicationLocalConfigService(configFile, validatingService(discovery));
-        var controller = new ConfigUiApiController(service, discovery, runtimeCredentialService());
+        var controller = new ConfigUiApiController(service, discovery, runtimeCredentialService(),
+                runtimeWebhookSecretService());
 
         var response = controller.save(validModel());
         var json = new ObjectMapper().writeValueAsString(response);
@@ -102,7 +104,8 @@ class ApplicationLocalConfigServiceTest
         var configFile = tempDir.resolve("application-local.yml");
         var discovery = validDiscovery();
         var service = new ApplicationLocalConfigService(configFile, validatingService(discovery));
-        var controller = new ConfigUiApiController(service, discovery, runtimeCredentialService());
+        var controller = new ConfigUiApiController(service, discovery, runtimeCredentialService(),
+                runtimeWebhookSecretService());
 
         var response = controller
                 .fields(new ConfigDiscoveryRequest("STMN-Group", "ADOnis 2.0 Test Project", "Test Case", ""));
@@ -215,6 +218,13 @@ class ApplicationLocalConfigServiceTest
         var properties = new ApprovalBotProperties();
         properties.getAdo().setPersonalAccessToken("real-pat");
         return new RuntimeAdoCredentialService(properties);
+    }
+
+    private static RuntimeWebhookSecretService runtimeWebhookSecretService()
+    {
+        var properties = new ApprovalBotProperties();
+        properties.getWebhook().getSharedSecret().setValue("real-secret");
+        return new RuntimeWebhookSecretService(properties);
     }
 
     static ConfigUiModel validModel()

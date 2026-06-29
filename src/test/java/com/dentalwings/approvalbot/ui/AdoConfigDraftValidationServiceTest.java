@@ -7,6 +7,10 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
+import com.dentalwings.approvalbot.webhook.spring.RuntimeWebhookSecretService;
+
 class AdoConfigDraftValidationServiceTest {
 
     @Test
@@ -240,6 +244,42 @@ class AdoConfigDraftValidationServiceTest {
             assertThat(field.status()).isEqualTo(ConfigValidationStatus.NOT_CONFIGURED);
             assertThat(field.message()).contains("submit a runtime PAT");
         });
+    }
+
+    @Test
+    void missingWebhookSecretIsNotConfiguredWithoutBlockingLocalYaml()
+    {
+        var service = new AdoConfigDraftValidationService(ApplicationLocalConfigServiceTest.validDiscovery(),
+                java.util.Map.of("ADO_PERSONAL_ACCESS_TOKEN", "real-pat"));
+
+        var result = service.validateLocalDraft(ApplicationLocalConfigServiceTest.validModel());
+
+        assertThat(result.canGenerateDraftYaml()).isTrue();
+        assertThat(result.fields()).anySatisfy(field -> {
+            assertThat(field.field()).isEqualTo("webhook.shared-secret.value");
+            assertThat(field.status()).isEqualTo(ConfigValidationStatus.NOT_CONFIGURED);
+            assertThat(field.message()).contains("runtime secret").doesNotContain("real-secret");
+        });
+    }
+
+    @Test
+    void runtimeWebhookSecretChangesValidationToConfiguredWithoutExposingValue()
+    {
+        var properties = new ApprovalBotProperties();
+        var adoCredentials = new RuntimeAdoCredentialService(properties);
+        adoCredentials.submitPersonalAccessToken("runtime-pat");
+        var webhookCredentials = new RuntimeWebhookSecretService(properties);
+        webhookCredentials.submitSecret("runtime-webhook-secret");
+        var service = new AdoConfigDraftValidationService(ApplicationLocalConfigServiceTest.validDiscovery(),
+                java.util.Map.of(), adoCredentials, webhookCredentials);
+
+        var result = service.validateLocalDraft(ApplicationLocalConfigServiceTest.validModel());
+
+        assertThat(result.fields()).filteredOn(field -> field.field().equals("webhook.shared-secret.value"))
+                .singleElement().satisfies(field -> {
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.VALID);
+                    assertThat(field.message()).doesNotContain("runtime-webhook-secret");
+                });
     }
 
     @Test

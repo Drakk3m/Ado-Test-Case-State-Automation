@@ -60,6 +60,29 @@ class ApprovalBotSpringConfigurationTest {
     }
 
     @Test
+    void springContextStartsWhenPatAndRequiredWebhookSecretAreMissing()
+    {
+        new ApplicationContextRunner().withUserConfiguration(ApprovalBotApplication.class)
+                .withPropertyValues("ado.organization=my-org", "ado.http-client-enabled=true",
+                        "ado.personal-access-token=", "ado.projects.ProjectA.enabled=true",
+                        "ado.projects.ProjectA.supported-work-item-types[0]=Test Case",
+                        "ado.projects.ProjectA.fields.approved-by-sme=Custom.ApprovedBySME",
+                        "ado.projects.ProjectA.fields.approved-by-sqa=Custom.ApprovedBySQA",
+                        "ado.projects.ProjectA.fields.reversible-business-fields[0]=System.Title",
+                        "ado.projects.ProjectA.approvals.sme-users[0]=ana.perez@company.com",
+                        "ado.projects.ProjectA.approvals.sqa-users[0]=carlos.gomez@company.com",
+                        "bot.identity-email=ado-approval-bot@company.com",
+                        "webhook.shared-secret.enabled=true", "webhook.shared-secret.value=",
+                        "idempotency.type=in-memory")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService.class);
+                    assertThat(context).hasSingleBean(
+                            com.dentalwings.approvalbot.webhook.spring.RuntimeWebhookSecretService.class);
+                });
+    }
+
+    @Test
     void boundPropertiesMapToProjectApprovalConfig() {
         var properties = bind(validYaml());
         var mapper = new ProjectApprovalConfigMapper();
@@ -145,13 +168,15 @@ class ApprovalBotSpringConfigurationTest {
     }
 
     @Test
-    void missingWebhookSharedSecretFailsStartupValidationWhenEnabled() {
+    void missingWebhookSharedSecretAllowsStartupInNotConfiguredState() {
         var validator = startupValidator(bind(validYaml().replace("value: test-webhook-secret", "value: \"\"")));
 
-        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
-                .hasMessageContaining(
-                        "webhook.shared-secret.value is missing while webhook.shared-secret.enabled=true.")
-                .hasMessageNotContaining("test-webhook-secret");
+        var report = validator.validate();
+
+        assertThat(report.fatalMessages()).isEmpty();
+        assertThat(report.warningMessages()).singleElement()
+                .asString().contains("webhook.shared-secret.value is not configured")
+                .doesNotContain("test-webhook-secret");
     }
 
     @Test

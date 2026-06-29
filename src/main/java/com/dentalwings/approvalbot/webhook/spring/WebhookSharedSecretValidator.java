@@ -3,6 +3,7 @@ package com.dentalwings.approvalbot.webhook.spring;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
 
@@ -11,10 +12,18 @@ public class WebhookSharedSecretValidator
 {
 
     private final ApprovalBotProperties properties;
+    private final RuntimeWebhookSecretService secretService;
 
-    public WebhookSharedSecretValidator(ApprovalBotProperties properties)
+    @Autowired
+    public WebhookSharedSecretValidator(ApprovalBotProperties properties, RuntimeWebhookSecretService secretService)
     {
         this.properties = properties;
+        this.secretService = secretService;
+    }
+
+    WebhookSharedSecretValidator(ApprovalBotProperties properties)
+    {
+        this(properties, new RuntimeWebhookSecretService(properties));
     }
 
     public String headerName()
@@ -29,11 +38,16 @@ public class WebhookSharedSecretValidator
         {
             return ValidationResult.accepted();
         }
+        var expectedSecret = secretService.currentSecret();
+        if (expectedSecret.isBlank())
+        {
+            return ValidationResult.invalid(FailureReason.NOT_CONFIGURED);
+        }
         if (receivedSecret == null || receivedSecret.isEmpty())
         {
             return ValidationResult.invalid(FailureReason.MISSING_HEADER);
         }
-        if (!constantTimeEquals(sharedSecret.getValue(), receivedSecret))
+        if (!constantTimeEquals(expectedSecret, receivedSecret))
         {
             return ValidationResult.invalid(FailureReason.INVALID_HEADER);
         }
@@ -54,6 +68,7 @@ public class WebhookSharedSecretValidator
 
     public enum FailureReason
     {
+        NOT_CONFIGURED("secret not configured"),
         MISSING_HEADER("missing header"),
         INVALID_HEADER("invalid header");
 
