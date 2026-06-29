@@ -5,6 +5,7 @@ const validationSummaryEl = document.getElementById("validationSummary");
 const saveBtn = document.getElementById("saveBtn");
 const diagnosticsPanelEl = document.getElementById("configUiDiagnosticsPanel");
 const diagnosticsContentEl = document.getElementById("configUiDiagnosticsContent");
+const discoveredProjectsDebugEl = document.getElementById("discoveredProjectsDebug");
 const languageSelectorEl = document.getElementById("languageSelector");
 
 let state = { ado: { projects: [] } };
@@ -24,7 +25,6 @@ const IDENTITY_CACHE_TTL_MS = 10 * 60 * 1000;
 const IDENTITY_CACHE_MAX_ENTRIES = 50;
 const IDENTITY_CACHE_USEFUL_RESULT_COUNT = 3;
 const STRUCTURAL_DISCOVERY_TTL_MS = 10 * 60 * 1000;
-const DUPLICATE_PROJECT_MESSAGE = "This project is already configured.";
 let projectLayoutState = new Map();
 let localProjectSequence = 0;
 const LANGUAGE_STORAGE_KEY = "configUiLanguage";
@@ -117,6 +117,7 @@ const I18N = {
         "status.yamlBlocked": "Blocking errors: YAML was not generated.",
         "status.resolveBeforeCollapse": "Resolve project validation before collapsing this section.",
         "status.saveBlocked": "Verify project and select current ADO-backed values before saving final YAML.",
+        "status.savedAt": "Configuration saved to {path}.",
         "message.staleIgnored": "Stale response ignored.",
         "message.staleIgnoredReason": "Stale response ignored: {reason}.",
         "message.projectNotLoaded": "Project has not been loaded.",
@@ -239,6 +240,7 @@ const I18N = {
         "status.yamlBlocked": "Erreurs bloquantes : aucun YAML généré.",
         "status.resolveBeforeCollapse": "Résolvez la validation du projet avant de réduire cette section.",
         "status.saveBlocked": "Vérifiez le projet et sélectionnez des valeurs ADO courantes avant d'enregistrer le YAML final.",
+        "status.savedAt": "Configuration enregistrée dans {path}.",
         "message.staleIgnored": "Réponse obsolète ignorée.",
         "message.staleIgnoredReason": "Réponse obsolète ignorée : {reason}.",
         "message.projectNotLoaded": "Le projet n'a pas été chargé.",
@@ -361,6 +363,7 @@ const I18N = {
         "status.yamlBlocked": "Errores bloqueantes: no se generó YAML.",
         "status.resolveBeforeCollapse": "Resuelve la validación del proyecto antes de colapsar esta sección.",
         "status.saveBlocked": "Verifica el proyecto y selecciona valores ADO actuales antes de guardar el YAML final.",
+        "status.savedAt": "Configuración guardada en {path}.",
         "message.staleIgnored": "Respuesta obsoleta ignorada.",
         "message.staleIgnoredReason": "Respuesta obsoleta ignorada: {reason}.",
         "message.projectNotLoaded": "El proyecto no se ha cargado.",
@@ -428,6 +431,7 @@ function localizeMessage(message) {
 
 function applyStaticTranslations() {
     document.documentElement.lang = currentLanguage;
+    document.title = t("app.title");
     if (languageSelectorEl) {
         languageSelectorEl.value = currentLanguage;
     }
@@ -2113,7 +2117,7 @@ function renderProjects() {
             normalizedProjectName: normalizedText(project.name),
             duplicateProjectStatus: duplicateProject,
             enabled: !duplicateProject,
-            message: duplicateProject ? DUPLICATE_PROJECT_MESSAGE : ""
+            message: duplicateProject ? t("message.duplicateProjectSelection") : ""
         }, projectConfigId);
         updateSelectorDiagnostics("reversibleBusinessFields", {
             status: discovery.fields?.status || "NOT_CHECKED",
@@ -2143,7 +2147,7 @@ function renderProjects() {
             ${collapsed ? `
                 <div class="project-collapsed-body">
                     <span>${escapeHtml(t("project.workItemTypeCount", { count: (project.supportedWorkItemTypes || []).length }))}</span>
-                    ${duplicateProject ? `<span>${validationBadge("ERROR")} ${escapeHtml(DUPLICATE_PROJECT_MESSAGE)}</span>` : ""}
+                    ${duplicateProject ? `<span>${validationBadge("ERROR")} ${escapeHtml(t("message.duplicateProjectSelection"))}</span>` : ""}
                     ${fieldDuplicateMessages.length ? `<span>${validationBadge("ERROR")} ${escapeHtml(fieldDuplicateMessages.join(" "))}</span>` : ""}
                     ${identityMessages.length ? `<span>${validationBadge("WARNING")} ${escapeHtml(identityMessages.join(" "))}</span>` : ""}
                 </div>
@@ -2157,7 +2161,7 @@ function renderProjects() {
                         </label>
                         <button type="button" data-action="load-project">${escapeHtml(t("button.verifyProject"))}</button>
                     </div>
-                    ${duplicateProject ? `<span class="lookup-status">${validationBadge("ERROR")} ${escapeHtml(DUPLICATE_PROJECT_MESSAGE)}</span>` : ""}
+                    ${duplicateProject ? `<span class="lookup-status">${validationBadge("ERROR")} ${escapeHtml(t("message.duplicateProjectSelection"))}</span>` : ""}
                     ${lookupBadge(discovery.projectStatus)}
                     <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> ${escapeHtml(t("project.enabled"))}</label>
                     <label>${escapeHtml(t("project.workItemType"))}
@@ -2978,18 +2982,12 @@ function renderDiscoveredProjectsDebug(options) {
         <p class="note compact">${escapeHtml(t("diagnostics.discoveredProjectsNote"))}</p>
         <ul>${rows || `<li>${escapeHtml(t("diagnostics.noProjectsRendered"))}</li>`}</ul>
     `;
-    for (const button of discoveredProjectsDebugEl.querySelectorAll("[data-project-value]")) {
-        button.addEventListener("click", () => {
-            if (state.ado.projects.length === 0) {
-                state.ado.projects.push(createProjectModel());
-                ensureDiscovery();
-            }
-            state.ado.projects[0].name = button.getAttribute("data-project-value") || "";
-            clearChildSelections(state.ado.projects[0]);
-            clearDiscovery(ensureProjectConfigId(state.ado.projects[0]), "project");
-            renderProjects();
-            scheduleLocalPreview("debug-project-selection");
-        });
+}
+
+function isProjectNameTakenByOtherConfig(projectConfigId, projectName) {
+    const normalizedProjectName = normalizedText(projectName);
+    if (!normalizedProjectName) {
+        return false;
     }
     return state.ado.projects
         .filter((project) => ensureProjectConfigId(project) !== projectConfigId)
@@ -3093,7 +3091,7 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
         const payload = await saveWithStrictAdoValidation();
         yamlOutputEl.textContent = payload.preview?.yaml || "";
         renderValidation(payload.preview);
-        setStatus(`${payload.message} (${payload.path})`);
+        setStatus(t("status.savedAt", { path: payload.path }));
     } catch (error) {
         setStatus(error.message, true);
     }

@@ -2,15 +2,20 @@ package com.dentalwings.approvalbot.ui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.regex.Pattern;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import org.junit.jupiter.api.Test;
 
-class ConfigUiStaticAssetsTest {
+class ConfigUiStaticAssetsTest
+{
 
     @Test
-    void javascriptUsesAdoDiscoveryEndpointsForSelectorOptions() throws Exception {
+    void javascriptUsesAdoDiscoveryEndpointsForSelectorOptions() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("/api/config-ui/discovery/projects")
@@ -21,7 +26,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptMakesProjectVerificationTheFirstAdoDiscoveryGate() throws Exception {
+    void javascriptMakesProjectVerificationTheFirstAdoDiscoveryGate() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("button.verifyProject").contains("isProjectVerified(discovery, project)")
@@ -32,7 +38,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptDoesNotEnableEmptySelectorListsSilently() throws Exception {
+    void javascriptDoesNotEnableEmptySelectorListsSilently() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("lookupHasOptions(lookup)").contains("lookupOptionCount(lookup)")
@@ -44,7 +51,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptNormalizesBackendSelectorResponseShapesBeforeRendering() throws Exception {
+    void javascriptNormalizesBackendSelectorResponseShapesBeforeRendering() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("rawOptionItems(lookup)").contains("Array.isArray(lookup?.values)")
@@ -54,11 +62,12 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptRendersSelectorsFromValueAndDisplayName() throws Exception {
+    void javascriptRendersSelectorsFromValueAndDisplayName() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains(
-                "selectOptions(selectorName, lookup, selected, placeholder, enabled = false, projectConfigId = \"\", disabledValues = new Set())")
+                        "selectOptions(selectorName, lookup, selected, placeholder, enabled = false, projectConfigId = \"\", disabledValues = new Set())")
                 .contains("option.value === selected").contains("optionLabel(option, selectorName)")
                 .contains("selectorOptions(projectOptionLookup)")
                 .contains("data-field=\"name\" data-selector-name=\"project\"")
@@ -68,17 +77,19 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptFormatsProjectAndFieldOptionLabelsForHumans() throws Exception {
+    void javascriptFormatsProjectAndFieldOptionLabelsForHumans() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function optionLabel(option, selectorName = \"\")").contains(
-                "[\"approvedBySmeField\", \"approvedBySqaField\", \"reversibleBusinessFields\"].includes(selectorName)")
+                        "[\"approvedBySmeField\", \"approvedBySqaField\", \"reversibleBusinessFields\"].includes(selectorName)")
                 .contains("return fieldSelector ? `${option.displayName} - ${option.value}` : option.displayName")
                 .doesNotContain("option.description ? ` - ${option.description}`");
     }
 
     @Test
-    void javascriptFiltersFieldSelectorsByPurposeAndKnownSandboxFields() throws Exception {
+    void javascriptFiltersFieldSelectorsByPurposeAndKnownSandboxFields() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function isApprovalFieldOption(option)")
@@ -90,7 +101,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptHidesIncompatibleFieldOptionsAndBlocksDuplicateSelections() throws Exception {
+    void javascriptHidesIncompatibleFieldOptionsAndBlocksDuplicateSelections() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function filteredFieldLookups(project, fieldsLookup)").contains("smeLookup")
@@ -101,7 +113,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptIgnoresStaleDiscoveryResponsesAfterParentChanges() throws Exception {
+    void javascriptIgnoresStaleDiscoveryResponsesAfterParentChanges() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("discoveryRequestSequence").contains("discovery.requestToken")
@@ -110,7 +123,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptDiagnosticsAreOptInAndAvoidSecretKeys() throws Exception {
+    void javascriptDiagnosticsAreOptInAndAvoidSecretKeys() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("isConfigUiDebugEnabled()").contains("debugConfigUi")
@@ -120,7 +134,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptDiscoveryDiagnosticsRecordRequestsAndFailures() throws Exception {
+    void javascriptDiscoveryDiagnosticsRecordRequestsAndFailures() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("request-started").contains("request-completed").contains("request-failed")
@@ -130,7 +145,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void pageDefinesVisibleDiagnosticsPanelHiddenByDefault() throws Exception {
+    void pageDefinesVisibleDiagnosticsPanelHiddenByDefault() throws Exception
+    {
         var html = read("src/main/resources/templates/index.html");
         var css = read("src/main/resources/static/css/nova-lite.css");
 
@@ -142,16 +158,19 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptShowsDiagnosticsPanelWhenDebugIsEnabled() throws Exception {
+    void javascriptShowsDiagnosticsPanelWhenDebugIsEnabled() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("diagnosticsPanelEl.hidden = !debugEnabled")
                 .contains("debugConfigUi").contains("localStorage.getItem(\"configUiDebug\") === \"true\"")
-                .contains("renderDiagnosticsPanel()").doesNotContain("renderDiscoveredProjectsDebug");
+                .contains("renderDiagnosticsPanel()")
+                .contains("function renderDiscoveredProjectsDebug(options)");
     }
 
     @Test
-    void discoveredProjectsDebugListIsReadOnlyAndCardSelectionIsScoped() throws Exception {
+    void discoveredProjectsDebugListIsReadOnlyAndCardSelectionIsScoped() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
@@ -164,11 +183,13 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptBlocksDuplicateProjectsWithoutSharingCardState() throws Exception {
+    void javascriptBlocksDuplicateProjectsWithoutSharingCardState() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("const DUPLICATE_PROJECT_MESSAGE = \"This project is already configured.\"")
+                .contains("t(\"message.duplicateProjectSelection\")")
+                .doesNotContain("const DUPLICATE_PROJECT_MESSAGE")
                 .contains("function duplicateProjectConfigIds()")
                 .contains("const normalizedName = normalizedText(project.name)")
                 .contains("duplicateProjectConfigIds().size === 0")
@@ -180,7 +201,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptDiagnosticsPanelShowsSelectorHydrationCounts() throws Exception {
+    void javascriptDiagnosticsPanelShowsSelectorHydrationCounts() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
@@ -216,7 +238,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptGuardsStructuralDiscoveryByFreshnessAndInFlightRequest() throws Exception {
+    void javascriptGuardsStructuralDiscoveryByFreshnessAndInFlightRequest() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
@@ -248,7 +271,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void pageProvidesLanguageSelectorAndSupportedLanguages() throws Exception {
+    void pageProvidesLanguageSelectorAndSupportedLanguages() throws Exception
+    {
         var html = read("src/main/resources/templates/index.html");
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
@@ -262,7 +286,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptDefinesEnglishFrenchAndSpanishTranslations() throws Exception {
+    void javascriptDefinesEnglishFrenchAndSpanishTranslations() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("const I18N = {").contains("en: {").contains("fr: {").contains("es: {")
@@ -273,18 +298,24 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void changingLanguageRerendersUiWithoutClearingFormStateOrYamlKeys() throws Exception {
+    void changingLanguageUpdatesDocumentTitleFromLocalizedAppTitle() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
-        assertThat(javascript).contains("readFormToState();").contains("applyStaticTranslations();")
-                .contains("renderProjects();").contains("renderValidation(lastPreview);")
-                .contains("state.ado.organization = document.getElementById(\"adoOrganization\").value.trim()")
-                .contains("yamlOutputEl.textContent = payload.yaml || \"\"")
-                .contains("states: { design: \"Design\", inReview: \"In Review\", approved: \"Approved\" }");
+        var applySection = section(javascript, "function applyStaticTranslations()", "function setLanguage(");
+        var setLanguageSection = section(javascript, "function setLanguage(language)", "function splitLines(");
+
+        assertThat(applySection).contains("document.title = t(\"app.title\")");
+        assertThat(setLanguageSection).contains("applyStaticTranslations();");
+        assertThat(javascript)
+                .contains("\"app.title\": \"Approval Bot configuration\"")
+                .contains("\"app.title\": \"Configuration Approval Bot\"")
+                .contains("\"app.title\": \"Configuración de Approval Bot\"");
     }
 
     @Test
-    void javascriptSupportsCollapsibleProjectSections() throws Exception {
+    void javascriptSupportsCollapsibleProjectSections() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("let projectLayoutState = new Map()")
@@ -297,7 +328,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptOnlyCollapsesValidatedProjectSections() throws Exception {
+    void javascriptOnlyCollapsesValidatedProjectSections() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
@@ -309,7 +341,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void cssStylesProjectSectionsAndResponsiveDiagnosticsWithoutWideTable() throws Exception {
+    void cssStylesProjectSectionsAndResponsiveDiagnosticsWithoutWideTable() throws Exception
+    {
         var css = read("src/main/resources/static/css/nova-lite.css");
 
         assertThat(css).contains(".project-card.collapsed").contains(".project-card-header")
@@ -319,7 +352,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptUsesAdoBackedIdentitySearchAndChipsForUsers() throws Exception {
+    void javascriptUsesAdoBackedIdentitySearchAndChipsForUsers() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function identityUserPicker(project, projectConfigId, role, enabled)")
@@ -335,7 +369,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptIdentitySelectionStoresNormalizedValuesAndShowsCrossRoleWarnings() throws Exception {
+    void javascriptIdentitySelectionStoresNormalizedValuesAndShowsCrossRoleWarnings() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function normalizedIdentity(value)")
@@ -348,7 +383,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptKeepsIdentitySearchInputStableWhileTyping() throws Exception {
+    void javascriptKeepsIdentitySearchInputStableWhileTyping() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("handleIdentitySearchInput(projectConfigId, role, query)")
@@ -360,7 +396,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptClientFiltersIdentityResultsByDisplayNameOrEmail() throws Exception {
+    void javascriptClientFiltersIdentityResultsByDisplayNameOrEmail() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function identityContainsQuery(option, query)")
@@ -376,7 +413,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptRendersAdoAvatarsWithInitialsFallback() throws Exception {
+    void javascriptRendersAdoAvatarsWithInitialsFallback() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("option.avatarUrl").contains("identityAvatarMarkup(option)")
@@ -386,7 +424,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void cssStylesIdentityPickerResultsAndChips() throws Exception {
+    void cssStylesIdentityPickerResultsAndChips() throws Exception
+    {
         var css = read("src/main/resources/static/css/nova-lite.css");
 
         assertThat(css).contains(".identity-picker").contains(".identity-chip-list").contains(".identity-chip")
@@ -395,7 +434,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptRendersProjectOptionsWithRealSelectorDiagnostics() throws Exception {
+    void javascriptRendersProjectOptionsWithRealSelectorDiagnostics() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("selector: \"project\"").contains("data-selector-name=\"project\"")
@@ -405,7 +445,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptProjectSelectionIsScopedByProjectConfigId() throws Exception {
+    void javascriptProjectSelectionIsScopedByProjectConfigId() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("const projectCard = event.target.closest(\".project-card\")")
@@ -414,7 +455,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptCollapsedCardsIgnoreExternalMutations() throws Exception {
+    void javascriptCollapsedCardsIgnoreExternalMutations() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("if (projectLayout(projectConfigId).collapsed)")
@@ -422,7 +464,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptBlocksDuplicateProjectSelectionImmediatelyAndRestoresPreviousValue() throws Exception {
+    void javascriptBlocksDuplicateProjectSelectionImmediatelyAndRestoresPreviousValue() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("isProjectNameTakenByOtherConfig(projectConfigId, nextProjectName)")
@@ -431,7 +474,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptDisablesProjectsAlreadySelectedInOtherCardsAndReenablesAfterRemoval() throws Exception {
+    void javascriptDisablesProjectsAlreadySelectedInOtherCardsAndReenablesAfterRemoval() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("const selectedProjectNamesByOtherProjects = new Set(")
@@ -441,7 +485,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void pageDoesNotUseBrowserDatalistForRequiredSelectors() throws Exception {
+    void pageDoesNotUseBrowserDatalistForRequiredSelectors() throws Exception
+    {
         var html = read("src/main/resources/templates/index.html");
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
@@ -451,7 +496,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptTracksSelectorNamesRequiredForSandboxDiagnostics() throws Exception {
+    void javascriptTracksSelectorNamesRequiredForSandboxDiagnostics() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("selector: \"project\"").contains("workItemType").contains("approvedBySmeField")
@@ -460,7 +506,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptBlocksFinalSaveUntilAdoSelectorStateIsCurrent() throws Exception {
+    void javascriptBlocksFinalSaveUntilAdoSelectorStateIsCurrent() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("isUiAdoDiscoveryCurrent()")
@@ -470,7 +517,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptClearsDependentSelectionsWhenParentsChange() throws Exception {
+    void javascriptClearsDependentSelectionsWhenParentsChange() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("clearChildSelections(project)").contains("clearTypeSelections(project)")
@@ -482,7 +530,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptRefreshesYamlPreviewFromSelectorChanges() throws Exception {
+    void javascriptRefreshesYamlPreviewFromSelectorChanges() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
@@ -493,7 +542,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void normalEditingUsesLocalValidationWithoutStrictAdoCalls() throws Exception {
+    void normalEditingUsesLocalValidationWithoutStrictAdoCalls() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
         var workItemTypeHandler = section(
                 javascript,
@@ -517,7 +567,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void strictValidationAndStructuralDiscoveryRequireExplicitButtons() throws Exception {
+    void strictValidationAndStructuralDiscoveryRequireExplicitButtons() throws Exception
+    {
         var html = read("src/main/resources/templates/index.html");
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
@@ -537,7 +588,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void validationBoundaryDiagnosticsExposeSafeTriggerCounters() throws Exception {
+    void validationBoundaryDiagnosticsExposeSafeTriggerCounters() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
@@ -553,7 +605,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptIsolatesEveryProjectCardByStableLocalId() throws Exception {
+    void javascriptIsolatesEveryProjectCardByStableLocalId() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function ensureProjectConfigId(project)")
@@ -566,7 +619,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptCreatesFreshNestedProjectCollections() throws Exception {
+    void javascriptCreatesFreshNestedProjectCollections() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function createProjectModel()").contains("supportedWorkItemTypes: []")
@@ -578,7 +632,8 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
-    void javascriptScopesControlsIdentityStateAndDiagnosticsToProjectId() throws Exception {
+    void javascriptScopesControlsIdentityStateAndDiagnosticsToProjectId() throws Exception
+    {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript).contains("function projectControlId(projectConfigId, controlName)")
@@ -588,11 +643,135 @@ class ConfigUiStaticAssetsTest {
                 .contains("}, projectConfigId);");
     }
 
-    private String read(String path) throws Exception {
+    @Test
+    void allEnglishTranslationKeysArePresentInFrenchAndSpanish() throws Exception
+    {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        var enSection = section(javascript, "en: {", "fr: {");
+        var frSection = section(javascript, "fr: {", "es: {");
+        var esSection = section(javascript, "es: {", "if (!I18N[currentLanguage])");
+
+        var keyMatcher = Pattern.compile("\"([a-zA-Z][a-zA-Z0-9.]+)\":").matcher(enSection);
+        var enKeys = new ArrayList<String>();
+        while (keyMatcher.find())
+        {
+            enKeys.add(keyMatcher.group(1));
+        }
+        assertThat(enKeys).isNotEmpty();
+
+        for (var key : enKeys)
+        {
+            assertThat(frSection).as("French locale missing key: %s", key).contains("\"" + key + "\":");
+            assertThat(esSection).as("Spanish locale missing key: %s", key).contains("\"" + key + "\":");
+        }
+    }
+
+    @Test
+    void allHtmlI18nAttributeKeysExistInAllLocales() throws Exception
+    {
+        var html = read("src/main/resources/templates/index.html");
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        var enSection = section(javascript, "en: {", "fr: {");
+        var frSection = section(javascript, "fr: {", "es: {");
+        var esSection = section(javascript, "es: {", "if (!I18N[currentLanguage])");
+
+        var htmlKeys = new ArrayList<String>();
+        var matcher = Pattern.compile("data-i18n(?:-html)?=\"([^\"]+)\"").matcher(html);
+        while (matcher.find())
+        {
+            htmlKeys.add(matcher.group(1));
+        }
+        assertThat(htmlKeys).isNotEmpty();
+
+        for (var key : htmlKeys)
+        {
+            assertThat(enSection).as("English locale missing HTML key: %s", key).contains("\"" + key + "\":");
+            assertThat(frSection).as("French locale missing HTML key: %s", key).contains("\"" + key + "\":");
+            assertThat(esSection).as("Spanish locale missing HTML key: %s", key).contains("\"" + key + "\":");
+        }
+    }
+
+    @Test
+    void allTCallKeysInJavascriptExistInAllLocales() throws Exception
+    {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        var enSection = section(javascript, "en: {", "fr: {");
+        var frSection = section(javascript, "fr: {", "es: {");
+        var esSection = section(javascript, "es: {", "if (!I18N[currentLanguage])");
+
+        var tCallMatcher = Pattern.compile("\\bt\\(\"([^\"]+)\"").matcher(javascript);
+        var usedKeys = new ArrayList<String>();
+        while (tCallMatcher.find())
+        {
+            var key = tCallMatcher.group(1);
+            if (!usedKeys.contains(key))
+            {
+                usedKeys.add(key);
+            }
+        }
+        assertThat(usedKeys).isNotEmpty();
+
+        for (var key : usedKeys)
+        {
+            assertThat(enSection).as("English locale missing t() key: %s", key).contains("\"" + key + "\":");
+            assertThat(frSection).as("French locale missing t() key: %s", key).contains("\"" + key + "\":");
+            assertThat(esSection).as("Spanish locale missing t() key: %s", key).contains("\"" + key + "\":");
+        }
+    }
+
+    @Test
+    void applyStaticTranslationsSetsDocumentTitle() throws Exception
+    {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        var applySection = section(javascript, "function applyStaticTranslations()", "function setLanguage(");
+        assertThat(applySection).contains("document.title = t(\"app.title\")");
+    }
+
+    @Test
+    void duplicateProjectCardUsesTranslatedKeyNotHardcodedEnglish() throws Exception
+    {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .doesNotContain("const DUPLICATE_PROJECT_MESSAGE")
+                .contains("t(\"message.duplicateProjectSelection\")")
+                .containsPattern(
+                        Pattern.compile("escapeHtml\\(t\\(\"message\\.duplicateProjectSelection\"\\)\\)"));
+    }
+
+    @Test
+    void saveSuccessUsesLocalizedStatusKeyNotRawBackendMessage() throws Exception
+    {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("t(\"status.savedAt\", { path: payload.path })")
+                .doesNotContain("payload.message} (${payload.path");
+    }
+
+    @Test
+    void yamlOutputIsNotClearedWhenLanguageChanges() throws Exception
+    {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        var setLanguageSection = section(javascript, "function setLanguage(language)", "function splitLines(");
+        assertThat(setLanguageSection)
+                .contains("readFormToState()")
+                .doesNotContain("yamlOutputEl")
+                .doesNotContain("lastPreview = null");
+    }
+
+    private String read(String path) throws Exception
+    {
         return Files.readString(Path.of(path), StandardCharsets.UTF_8);
     }
 
-    private String section(String text, String startMarker, String endMarker) {
+    private String section(String text, String startMarker, String endMarker)
+    {
         var start = text.indexOf(startMarker);
         var end = text.indexOf(endMarker, start);
         assertThat(start).isGreaterThanOrEqualTo(0);
