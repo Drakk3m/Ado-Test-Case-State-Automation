@@ -28,6 +28,14 @@ public class AdoConfigDraftValidationService {
     }
 
     public ConfigValidationResult validate(ConfigUiModel model) {
+        return validate(model, true);
+    }
+
+    public ConfigValidationResult validateLocalDraft(ConfigUiModel model) {
+        return validate(model, false);
+    }
+
+    private ConfigValidationResult validate(ConfigUiModel model, boolean useAdoDiscovery) {
         var result = new ConfigValidationResult();
         if (model == null) {
             result.add("root", ConfigValidationStatus.ERROR, "Configuration draft is required.");
@@ -37,7 +45,7 @@ public class AdoConfigDraftValidationService {
         validateAdo(model, result);
         validateBot(model, result);
         validateWebhook(model, result);
-        validateProjects(model, result);
+        validateProjects(model, result, useAdoDiscovery);
         validateReloadNotice(result);
         return result;
     }
@@ -83,7 +91,7 @@ public class AdoConfigDraftValidationService {
         }
     }
 
-    private void validateProjects(ConfigUiModel model, ConfigValidationResult result) {
+    private void validateProjects(ConfigUiModel model, ConfigValidationResult result, boolean useAdoDiscovery) {
         var projects = model.getAdo().getProjects();
         if (projects.isEmpty()) {
             result.add("ado.projects", ConfigValidationStatus.ERROR, "At least one sandbox project is required.");
@@ -93,7 +101,7 @@ public class AdoConfigDraftValidationService {
         var organization = model.getAdo().getOrganization();
         var seen = new HashSet<String>();
         for (int i = 0; i < projects.size(); i++) {
-            validateProject(model, projects.get(i), i, seen, result);
+            validateProject(model, projects.get(i), i, seen, result, useAdoDiscovery);
         }
     }
 
@@ -102,7 +110,8 @@ public class AdoConfigDraftValidationService {
             ConfigUiModel.ProjectConfig project,
             int index,
             Set<String> seen,
-            ConfigValidationResult result
+            ConfigValidationResult result,
+            boolean useAdoDiscovery
     ) {
         var prefix = "ado.projects[" + index + "]";
         if (isBlank(project.getName())) {
@@ -113,41 +122,56 @@ public class AdoConfigDraftValidationService {
         var normalizedName = normalize(project.getName());
         if (!seen.add(normalizedName)) {
             result.add(prefix + ".name", ConfigValidationStatus.ERROR, "Duplicate project name.");
-        } else {
+        } else if (useAdoDiscovery) {
             var projectLookup = discoveryService.validateProject(model.getAdo().getOrganization(), project.getName());
             validateValueFromLookup(prefix + ".name", project.getName(), projectLookup, "Project was found in ADO.", "Project was not found in ADO.", result);
+        } else {
+            result.add(prefix + ".name", ConfigValidationStatus.VALID,
+                    "Project value is locally valid; current UI discovery state controls final save eligibility.");
         }
 
-        validateWorkItemTypes(model, project, prefix, result);
-        validateFields(model, project, prefix, result);
-        validateStates(model, project, prefix, result);
-        validateUsers(model, project, prefix, result);
+        validateWorkItemTypes(model, project, prefix, result, useAdoDiscovery);
+        validateFields(model, project, prefix, result, useAdoDiscovery);
+        validateStates(model, project, prefix, result, useAdoDiscovery);
+        validateUsers(model, project, prefix, result, useAdoDiscovery);
     }
 
-    private void validateWorkItemTypes(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix, ConfigValidationResult result) {
+    private void validateWorkItemTypes(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix,
+            ConfigValidationResult result, boolean useAdoDiscovery) {
         if (project.getSupportedWorkItemTypes().isEmpty()) {
             result.add(prefix + ".supported-work-item-types", ConfigValidationStatus.ERROR, "At least one supported Work Item type is required.");
             return;
         }
 
-        var lookup = discoveryService.listWorkItemTypes(model.getAdo().getOrganization(), project.getName());
+        var lookup = useAdoDiscovery
+                ? discoveryService.listWorkItemTypes(model.getAdo().getOrganization(), project.getName())
+                : null;
         for (var type : project.getSupportedWorkItemTypes()) {
             if (isBlank(type)) {
                 result.add(prefix + ".supported-work-item-types", ConfigValidationStatus.ERROR, "Work Item type must not be blank.");
-            } else {
+            } else if (useAdoDiscovery) {
                 validateValueFromLookup(prefix + ".supported-work-item-types", type, lookup, "Work Item type was found in ADO.", "Work Item type was not found in ADO.", result);
+            } else {
+                result.add(prefix + ".supported-work-item-types", ConfigValidationStatus.VALID,
+                        "Work Item type value is locally valid.");
             }
         }
     }
 
-    private void validateFields(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix, ConfigValidationResult result) {
+    private void validateFields(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix,
+            ConfigValidationResult result, boolean useAdoDiscovery) {
         var firstType = project.getSupportedWorkItemTypes().isEmpty() ? "" : project.getSupportedWorkItemTypes().get(0);
-        var lookup = discoveryService.listFieldReferenceNames(model.getAdo().getOrganization(), project.getName(), firstType);
+        var lookup = useAdoDiscovery
+                ? discoveryService.listFieldReferenceNames(model.getAdo().getOrganization(), project.getName(), firstType)
+                : null;
         validateFieldUniqueness(project, prefix, result);
-        validateRequiredField(prefix + ".fields.approved-by-sme", project.getFields().getApprovedBySme(), lookup, result);
-        validateRequiredField(prefix + ".fields.approved-by-sqa", project.getFields().getApprovedBySqa(), lookup, result);
+        validateRequiredField(prefix + ".fields.approved-by-sme", project.getFields().getApprovedBySme(), lookup,
+                result, useAdoDiscovery);
+        validateRequiredField(prefix + ".fields.approved-by-sqa", project.getFields().getApprovedBySqa(), lookup,
+                result, useAdoDiscovery);
         for (var field : project.getFields().getReversibleBusinessFields()) {
-            validateRequiredField(prefix + ".fields.reversible-business-fields", field, lookup, result);
+            validateRequiredField(prefix + ".fields.reversible-business-fields", field, lookup, result,
+                    useAdoDiscovery);
         }
     }
 
@@ -178,39 +202,58 @@ public class AdoConfigDraftValidationService {
         }
     }
 
-    private void validateRequiredField(String fieldName, String value, ConfigLookupResult<String> lookup, ConfigValidationResult result) {
+    private void validateRequiredField(String fieldName, String value, ConfigLookupResult<String> lookup,
+            ConfigValidationResult result, boolean useAdoDiscovery) {
         if (isBlank(value)) {
             result.add(fieldName, ConfigValidationStatus.ERROR, "Field reference name is required.");
             return;
         }
-        validateValueFromLookup(fieldName, value, lookup, "Field reference name was found in ADO.", "Field reference name was not found in ADO.", result);
+        if (useAdoDiscovery) {
+            validateValueFromLookup(fieldName, value, lookup, "Field reference name was found in ADO.",
+                    "Field reference name was not found in ADO.", result);
+        } else {
+            result.add(fieldName, ConfigValidationStatus.VALID, "Field reference name is locally valid.");
+        }
     }
 
-    private void validateStates(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix, ConfigValidationResult result) {
+    private void validateStates(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix,
+            ConfigValidationResult result, boolean useAdoDiscovery) {
         var states = project.getStates();
         var firstType = project.getSupportedWorkItemTypes().isEmpty() ? "" : project.getSupportedWorkItemTypes().get(0);
-        var lookup = discoveryService.listObservedStateNames(model.getAdo().getOrganization(), project.getName(), firstType);
+        var lookup = useAdoDiscovery
+                ? discoveryService.listObservedStateNames(model.getAdo().getOrganization(), project.getName(), firstType)
+                : null;
 
-        validateState(prefix + ".states.design", states.getDesign(), lookup, result);
-        validateState(prefix + ".states.in-review", states.getInReview(), lookup, result);
-        validateState(prefix + ".states.approved", states.getApproved(), lookup, result);
+        validateState(prefix + ".states.design", states.getDesign(), lookup, result, useAdoDiscovery);
+        validateState(prefix + ".states.in-review", states.getInReview(), lookup, result, useAdoDiscovery);
+        validateState(prefix + ".states.approved", states.getApproved(), lookup, result, useAdoDiscovery);
     }
 
-    private void validateState(String field, String state, ConfigLookupResult<String> lookup, ConfigValidationResult result) {
+    private void validateState(String field, String state, ConfigLookupResult<String> lookup,
+            ConfigValidationResult result, boolean useAdoDiscovery) {
         if (isBlank(state)) {
             result.add(field, ConfigValidationStatus.ERROR, "Workflow state value is required.");
             return;
         }
-        validateValueFromLookup(field, state, lookup, "State value has been observed in ADO.", "State value was not observed in ADO.", result);
+        if (useAdoDiscovery) {
+            validateValueFromLookup(field, state, lookup, "State value has been observed in ADO.",
+                    "State value was not observed in ADO.", result);
+        } else {
+            result.add(field, ConfigValidationStatus.VALID, "State value is locally valid.");
+        }
     }
 
-    private void validateUsers(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix, ConfigValidationResult result) {
-        validateUserList(model, prefix + ".approvals.sme-users", project.getApprovals().getSmeUsers(), result);
-        validateUserList(model, prefix + ".approvals.sqa-users", project.getApprovals().getSqaUsers(), result);
+    private void validateUsers(ConfigUiModel model, ConfigUiModel.ProjectConfig project, String prefix,
+            ConfigValidationResult result, boolean useAdoDiscovery) {
+        validateUserList(model, prefix + ".approvals.sme-users", project.getApprovals().getSmeUsers(), result,
+                useAdoDiscovery);
+        validateUserList(model, prefix + ".approvals.sqa-users", project.getApprovals().getSqaUsers(), result,
+                useAdoDiscovery);
         validateCrossRoleUsers(prefix, project.getApprovals().getSmeUsers(), project.getApprovals().getSqaUsers(), result);
     }
 
-    private void validateUserList(ConfigUiModel model, String field, List<String> users, ConfigValidationResult result) {
+    private void validateUserList(ConfigUiModel model, String field, List<String> users, ConfigValidationResult result,
+            boolean useAdoDiscovery) {
         if (users.isEmpty()) {
             result.add(field, ConfigValidationStatus.ERROR, "At least one user is required.");
             return;
@@ -231,6 +274,11 @@ public class AdoConfigDraftValidationService {
         var displayNameOnly = users.stream().filter(this::isLikelyDisplayNameOnly).toList();
         if (!displayNameOnly.isEmpty()) {
             result.add(field, ConfigValidationStatus.ERROR, "User values must be email/login based; displayName-only values are not valid authorization identities.");
+            return;
+        }
+
+        if (!useAdoDiscovery) {
+            result.add(field, ConfigValidationStatus.VALID, "User identity values are locally valid.");
             return;
         }
 

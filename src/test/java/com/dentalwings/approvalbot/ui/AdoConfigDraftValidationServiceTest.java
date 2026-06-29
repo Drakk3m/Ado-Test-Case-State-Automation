@@ -1,11 +1,27 @@
 package com.dentalwings.approvalbot.ui;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AdoConfigDraftValidationServiceTest {
+
+    @Test
+    void localDraftValidationDoesNotInvokeAdoDiscovery() {
+        var discovery = mock(AdoConfigDiscoveryService.class);
+        var service = new AdoConfigDraftValidationService(discovery, java.util.Map.of(
+                "ADO_PERSONAL_ACCESS_TOKEN", "present",
+                "ADO_WEBHOOK_SHARED_SECRET", "present"
+        ));
+
+        var result = service.validateLocalDraft(ApplicationLocalConfigServiceTest.validModel());
+
+        assertThat(result.canGenerateDraftYaml()).isTrue();
+        verifyNoInteractions(discovery);
+    }
 
     @Test
     void validationResultModelDistinguishesStatuses() {
