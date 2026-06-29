@@ -575,10 +575,70 @@ class ConfigUiStaticAssetsTest {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
         assertThat(javascript)
-                .contains("schedulePreview()")
-                .contains("previewDraft(false)")
-                .contains("loadFieldAndStateOptions(projectConfigId)")
+                .contains("scheduleLocalPreview(")
+                .contains("updateYamlPreviewLocalOnly(false, trigger)")
+                .contains("runExplicitFieldAndStateDiscovery(projectConfigId)")
                 .contains("/api/config-ui/preview");
+    }
+
+    @Test
+    void normalEditingUsesLocalValidationWithoutStrictAdoCalls() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+        var workItemTypeHandler = section(
+                javascript,
+                "if (field === \"supportedWorkItemTypes.0\")",
+                "if (field === \"fields.reversibleBusinessFields\")"
+        );
+        var renderProjects = section(javascript, "function renderProjects()", "function handleProjectInput(");
+        var diagnostics = section(javascript, "function renderDiagnosticsPanel()", "function diagnosticGroups()");
+
+        assertThat(javascript)
+                .contains("function scheduleLocalPreview(trigger = \"edit\", countStrictSkip = true)")
+                .contains("function updateYamlPreviewLocalOnly(showStatus = true, trigger = \"manual-preview\")")
+                .contains("strictValidationSkippedDuringEditCount")
+                .doesNotContain("card.addEventListener(\"input\"");
+        assertThat(workItemTypeHandler)
+                .contains("scheduleLocalPreview(\"work-item-type-change\")")
+                .doesNotContain("runExplicitFieldAndStateDiscovery")
+                .doesNotContain("/api/config-ui/validate");
+        assertThat(renderProjects).doesNotContain("/api/config-ui/validate", "postConfig(");
+        assertThat(diagnostics).doesNotContain("/api/config-ui/validate", "postConfig(", "discover(");
+    }
+
+    @Test
+    void strictValidationAndStructuralDiscoveryRequireExplicitButtons() throws Exception {
+        var html = read("src/main/resources/templates/index.html");
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(html).contains("id=\"validateConfigBtn\"");
+        assertThat(javascript)
+                .contains("data-action=\"load-project\"")
+                .contains("data-action=\"load-fields-states\"")
+                .contains("loadFieldsStatesButton.addEventListener(\"click\"")
+                .contains("function runExplicitProjectVerification(projectConfigId)")
+                .contains("function runExplicitFieldAndStateDiscovery(projectConfigId)")
+                .contains("function runStrictAdoValidation(trigger)")
+                .contains("function saveWithStrictAdoValidation()")
+                .contains("document.getElementById(\"validateConfigBtn\").addEventListener(\"click\"")
+                .contains("runStrictAdoValidation(\"validate-generated-config\")")
+                .contains("recordStrictValidation(\"save\")")
+                .containsOnlyOnce("/api/config-ui/validate");
+    }
+
+    @Test
+    void validationBoundaryDiagnosticsExposeSafeTriggerCounters() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("localValidationRunCount")
+                .contains("strictValidationRunCount")
+                .contains("strictValidationSkippedDuringEditCount")
+                .contains("yamlPreviewLocalOnlyCount")
+                .contains("backendStrictValidationCallCount")
+                .contains("lastStrictValidationTrigger")
+                .contains("lastStrictValidationAt")
+                .contains("function recordLocalValidation(trigger)")
+                .contains("function recordStrictValidation(trigger)");
     }
 
     @Test
@@ -630,5 +690,13 @@ class ConfigUiStaticAssetsTest {
 
     private String read(String path) throws Exception {
         return Files.readString(Path.of(path), StandardCharsets.UTF_8);
+    }
+
+    private String section(String text, String startMarker, String endMarker) {
+        var start = text.indexOf(startMarker);
+        var end = text.indexOf(endMarker, start);
+        assertThat(start).isGreaterThanOrEqualTo(0);
+        assertThat(end).isGreaterThan(start);
+        return text.substring(start, end);
     }
 }

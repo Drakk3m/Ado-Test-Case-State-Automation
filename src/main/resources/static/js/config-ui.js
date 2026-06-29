@@ -60,8 +60,10 @@ const I18N = {
         "button.loadProjects": "Load Projects",
         "button.addProject": "+ Add project",
         "button.previewYaml": "Preview YAML",
+        "button.validateConfig": "Validate generated config",
         "button.saveYaml": "Save application-local.yml",
         "button.verifyProject": "Verify Project",
+        "button.loadFieldsStates": "Load fields and states",
         "button.edit": "Edit",
         "button.collapse": "Collapse",
         "button.remove": "Remove",
@@ -179,8 +181,10 @@ const I18N = {
         "button.loadProjects": "Charger les projets",
         "button.addProject": "+ Ajouter un projet",
         "button.previewYaml": "Prévisualiser YAML",
+        "button.validateConfig": "Valider la configuration générée",
         "button.saveYaml": "Enregistrer application-local.yml",
         "button.verifyProject": "Vérifier le projet",
+        "button.loadFieldsStates": "Charger les champs et les états",
         "button.edit": "Modifier",
         "button.collapse": "Réduire",
         "button.remove": "Supprimer",
@@ -298,8 +302,10 @@ const I18N = {
         "button.loadProjects": "Cargar proyectos",
         "button.addProject": "+ Agregar proyecto",
         "button.previewYaml": "Previsualizar YAML",
+        "button.validateConfig": "Validar configuración generada",
         "button.saveYaml": "Guardar application-local.yml",
         "button.verifyProject": "Verificar proyecto",
+        "button.loadFieldsStates": "Cargar campos y estados",
         "button.edit": "Editar",
         "button.collapse": "Colapsar",
         "button.remove": "Eliminar",
@@ -551,6 +557,13 @@ function ensureSelectorDiagnostic(selectorName, projectConfigId = "") {
             structuralDiscoverySuppressedCount: 0,
             lastStructuralDiscoveryReason: "",
             lastStructuralDiscoveryDependencyKey: "",
+            localValidationRunCount: 0,
+            strictValidationRunCount: 0,
+            strictValidationSkippedDuringEditCount: 0,
+            yamlPreviewLocalOnlyCount: 0,
+            backendStrictValidationCallCount: 0,
+            lastStrictValidationTrigger: "",
+            lastStrictValidationAt: "",
             candidatePoolSource: "",
             candidatePoolSize: 0,
             candidatePoolCacheHit: false,
@@ -694,6 +707,13 @@ function diagnosticItemMarkup(item) {
         ["structural discovery suppressed", item.structuralDiscoverySuppressedCount],
         ["last structural reason", item.lastStructuralDiscoveryReason],
         ["last structural dependency", item.lastStructuralDiscoveryDependencyKey],
+        ["local validation runs", item.localValidationRunCount],
+        ["strict validation runs", item.strictValidationRunCount],
+        ["strict validation skipped during edit", item.strictValidationSkippedDuringEditCount],
+        ["local-only YAML previews", item.yamlPreviewLocalOnlyCount],
+        ["backend strict validation calls", item.backendStrictValidationCallCount],
+        ["last strict validation trigger", item.lastStrictValidationTrigger],
+        ["last strict validation at", item.lastStrictValidationAt],
         ["candidate source", item.candidatePoolSource],
         ["candidate pool size", item.candidatePoolSize],
         ["candidate pool cache hit", item.candidatePoolCacheHit],
@@ -1611,11 +1631,44 @@ function invalidatePreview() {
     saveBtn.disabled = true;
 }
 
-function schedulePreview() {
+function validationBoundaryDiagnostic() {
+    return ensureSelectorDiagnostic("validationBoundary");
+}
+
+function recordLocalValidation(trigger) {
+    const diagnostic = validationBoundaryDiagnostic();
+    updateSelectorDiagnostics("validationBoundary", {
+        status: "VALID",
+        localValidationRunCount: diagnostic.localValidationRunCount + 1,
+        yamlPreviewLocalOnlyCount: diagnostic.yamlPreviewLocalOnlyCount + 1,
+        message: `Local-only validation: ${trigger}`
+    });
+}
+
+function recordStrictValidation(trigger) {
+    const diagnostic = validationBoundaryDiagnostic();
+    updateSelectorDiagnostics("validationBoundary", {
+        status: "VALID",
+        strictValidationRunCount: diagnostic.strictValidationRunCount + 1,
+        backendStrictValidationCallCount: diagnostic.backendStrictValidationCallCount + 1,
+        lastStrictValidationTrigger: trigger,
+        lastStrictValidationAt: nowTimestamp(),
+        message: `Explicit strict validation: ${trigger}`
+    });
+}
+
+function scheduleLocalPreview(trigger = "edit", countStrictSkip = true) {
     invalidatePreview();
+    if (countStrictSkip) {
+        const diagnostic = validationBoundaryDiagnostic();
+        updateSelectorDiagnostics("validationBoundary", {
+            strictValidationSkippedDuringEditCount: diagnostic.strictValidationSkippedDuringEditCount + 1,
+            message: `Strict validation skipped during ${trigger}`
+        });
+    }
     clearTimeout(previewTimer);
     previewTimer = setTimeout(() => {
-        previewDraft(false).catch(() => undefined);
+        updateYamlPreviewLocalOnly(false, trigger).catch(() => undefined);
     }, 250);
 }
 
@@ -2012,6 +2065,7 @@ function renderProjects() {
         const projectVerified = isProjectVerified(discovery, project);
         const dependentOptionsReady = areFieldsAndStatesReady(discovery, project);
         const workItemTypeDisabled = projectVerified && lookupHasOptions(discovery.workItemTypes) ? "" : "disabled";
+        const loadFieldsStatesDisabled = projectVerified && selectedType ? "" : "disabled";
         const fieldAndStateDisabled = dependentOptionsReady ? "" : "disabled";
         const workItemTypeEnabled = !workItemTypeDisabled;
         const fieldAndStateEnabled = !fieldAndStateDisabled;
@@ -2106,6 +2160,7 @@ function renderProjects() {
                         </select>
                     </label>
                     ${lookupBadge(discovery.workItemTypes)}
+                    <button type="button" data-action="load-fields-states" ${loadFieldsStatesDisabled}>${escapeHtml(t("button.loadFieldsStates"))}</button>
                     <div class="grid-2">
                         <label>${escapeHtml(t("project.stateDesign"))}
                             <select id="${projectControlId(projectConfigId, "state-design")}" data-field="states.design" ${fieldAndStateDisabled}>
@@ -2160,9 +2215,6 @@ function renderProjects() {
             `}
         `;
 
-        card.addEventListener("input", (event) => {
-            handleProjectInput(projectConfigId, event);
-        });
         card.addEventListener("change", (event) => {
             handleProjectInput(projectConfigId, event);
         });
@@ -2171,7 +2223,7 @@ function renderProjects() {
             removeProjectState(projectConfigId);
             invalidatePreview();
             renderProjects();
-            schedulePreview();
+            scheduleLocalPreview("remove-project");
         });
 
         card.querySelector("[data-action='toggle-project']").addEventListener("click", () => {
@@ -2201,7 +2253,13 @@ function renderProjects() {
         const loadProjectButton = card.querySelector("[data-action='load-project']");
         if (loadProjectButton) {
             loadProjectButton.addEventListener("click", async () => {
-                await loadProject(projectConfigId);
+                await runExplicitProjectVerification(projectConfigId);
+            });
+        }
+        const loadFieldsStatesButton = card.querySelector("[data-action='load-fields-states']");
+        if (loadFieldsStatesButton) {
+            loadFieldsStatesButton.addEventListener("click", async () => {
+                await runExplicitFieldAndStateDiscovery(projectConfigId);
             });
         }
         for (const input of card.querySelectorAll("[data-action='identity-search']")) {
@@ -2232,7 +2290,7 @@ function renderProjects() {
             }
             removeUserFromRole(project, role, button.getAttribute("data-user-value"));
             updateIdentityPickers(projectConfigId);
-            schedulePreview();
+            scheduleLocalPreview("identity-remove");
         });
 
         projectsEl.appendChild(card);
@@ -2255,7 +2313,7 @@ function handleProjectInput(projectConfigId, event) {
 
     if (field === "enabled") {
         project.enabled = event.target.checked;
-        schedulePreview();
+        scheduleLocalPreview("project-enabled-change");
         return;
     }
 
@@ -2267,7 +2325,7 @@ function handleProjectInput(projectConfigId, event) {
         if (event.type === "change") {
             renderProjects();
         }
-        schedulePreview();
+        scheduleLocalPreview("project-selection-change");
         return;
     }
 
@@ -2277,8 +2335,7 @@ function handleProjectInput(projectConfigId, event) {
         clearTypeSelections(project);
         clearDiscovery(projectConfigId, "type");
         renderProjects();
-        loadFieldAndStateOptions(projectConfigId).catch((error) => setStatus(error.message, true));
-        schedulePreview();
+        scheduleLocalPreview("work-item-type-change");
         return;
     }
 
@@ -2286,7 +2343,7 @@ function handleProjectInput(projectConfigId, event) {
         project.fields.reversibleBusinessFields = uniqueValues(Array.from(event.target.selectedOptions).map((option) => option.value));
         cleanFieldConflicts(project, field);
         renderProjects();
-        schedulePreview();
+        scheduleLocalPreview("reversible-field-change");
         return;
     }
     const parts = field.split(".");
@@ -2299,7 +2356,7 @@ function handleProjectInput(projectConfigId, event) {
         cleanFieldConflicts(project, field);
         renderProjects();
     }
-    schedulePreview();
+    scheduleLocalPreview("project-field-change");
 }
 
 function handleIdentitySearchInput(projectConfigId, role, query) {
@@ -2365,7 +2422,7 @@ function addPendingIdentity(projectConfigId, role) {
     if (addUserToRole(project, role, value)) {
         clearIdentitySearch(projectConfigId, role);
         updateIdentityPickers(projectConfigId);
-        schedulePreview();
+        scheduleLocalPreview(`${role}-identity-add`);
     }
 }
 
@@ -2477,7 +2534,7 @@ async function discover(operation, url, body) {
     }
 }
 
-async function loadProjects() {
+async function runExplicitProjectListDiscovery() {
     readFormToState();
     projectOptionLookup = normalizeOptionsLookup(await discover("list-projects", "/api/config-ui/discovery/projects", {
         organization: state.ado.organization
@@ -2485,7 +2542,7 @@ async function loadProjects() {
     clearStaleProjectSelections();
     renderProjectSelectors();
     renderProjects();
-    schedulePreview();
+    scheduleLocalPreview("load-projects", false);
 }
 
 function structuralProjectKey(project) {
@@ -2576,7 +2633,7 @@ function runStructuralDiscovery(projectConfigId, discovery, operation, dependenc
     return request;
 }
 
-async function loadProject(projectConfigId) {
+async function runExplicitProjectVerification(projectConfigId) {
     readFormToState();
     ensureDiscovery();
     const project = projectByConfigId(projectConfigId);
@@ -2664,10 +2721,10 @@ async function loadProject(projectConfigId) {
         discovery.workItemTypes = { status: "NOT_CHECKED", message: t("message.verifyBeforeType"), values: [], optionCount: 0 };
     }
     renderProjects();
-    schedulePreview();
+    scheduleLocalPreview("verify-project", false);
 }
 
-async function loadFieldAndStateOptions(projectConfigId) {
+async function runExplicitFieldAndStateDiscovery(projectConfigId) {
     readFormToState();
     ensureDiscovery();
     const project = projectByConfigId(projectConfigId);
@@ -2683,7 +2740,7 @@ async function loadFieldAndStateOptions(projectConfigId) {
         discovery.fields = { status: "NOT_CHECKED", message: t("message.verifyProjectFirst"), values: [], optionCount: 0 };
         discovery.states = { status: "NOT_CHECKED", message: t("message.verifyProjectFirst"), values: [], optionCount: 0 };
         renderProjects();
-        schedulePreview();
+        scheduleLocalPreview("load-fields-states-not-ready", false);
         return;
     }
     const projectName = (project.name || "").trim();
@@ -2752,7 +2809,7 @@ async function loadFieldAndStateOptions(projectConfigId) {
         renderedOptionCount: renderedOptionCount(discovery.states)
     });
     renderProjects();
-    schedulePreview();
+    scheduleLocalPreview("load-fields-states", false);
 }
 
 async function loadIdentityOptions(projectConfigId, role, query, requestVersion) {
@@ -2830,12 +2887,13 @@ async function loadIdentityOptions(projectConfigId, role, query, requestVersion)
     updateIdentityPicker(projectConfigId, role);
 }
 
-async function previewDraft(showStatus = true) {
+async function updateYamlPreviewLocalOnly(showStatus = true, trigger = "manual-preview") {
     for (const project of state.ado.projects) {
         const projectConfigId = ensureProjectConfigId(project);
         suppressStructuralDiscovery(projectConfigId, "yaml-preview", structuralProjectKey(project));
     }
     const payload = await postConfig("/api/config-ui/preview");
+    recordLocalValidation(trigger);
     yamlOutputEl.textContent = payload.yaml || "";
     renderValidation(payload);
     if (showStatus) {
@@ -2846,6 +2904,16 @@ async function previewDraft(showStatus = true) {
         }
     }
     return payload;
+}
+
+async function runStrictAdoValidation(trigger) {
+    recordStrictValidation(trigger);
+    return postConfig("/api/config-ui/validate");
+}
+
+async function saveWithStrictAdoValidation() {
+    recordStrictValidation("save");
+    return postConfig("/api/config-ui/save");
 }
 
 function renderProjectSelectors() {
@@ -2891,11 +2959,24 @@ function renderDiscoveredProjectsDebug(options) {
         <p class="note compact">${escapeHtml(t("diagnostics.discoveredProjectsNote"))}</p>
         <ul>${rows || `<li>${escapeHtml(t("diagnostics.noProjectsRendered"))}</li>`}</ul>
     `;
+    for (const button of discoveredProjectsDebugEl.querySelectorAll("[data-project-value]")) {
+        button.addEventListener("click", () => {
+            if (state.ado.projects.length === 0) {
+                state.ado.projects.push(createProjectModel());
+                ensureDiscovery();
+            }
+            state.ado.projects[0].name = button.getAttribute("data-project-value") || "";
+            clearChildSelections(state.ado.projects[0]);
+            clearDiscovery(ensureProjectConfigId(state.ado.projects[0]), "project");
+            renderProjects();
+            scheduleLocalPreview("debug-project-selection");
+        });
+    }
 }
 
 function handleGlobalInput() {
     readFormToState();
-    schedulePreview();
+    scheduleLocalPreview("global-field-change");
 }
 
 function handleOrganizationChanged() {
@@ -2907,7 +2988,7 @@ function handleOrganizationChanged() {
     resetProjectScopedState();
     renderProjectSelectors();
     renderProjects();
-    schedulePreview();
+    scheduleLocalPreview("organization-change");
 }
 
 async function initialize() {
@@ -2924,11 +3005,11 @@ async function initialize() {
     fillFormFromState();
     saveBtn.disabled = true;
     setStatus(t("status.loaded"));
-    await previewDraft(false);
+    await updateYamlPreviewLocalOnly(false, "initial-load");
 }
 
 document.getElementById("loadProjects").addEventListener("click", () => {
-    loadProjects().catch((error) => setStatus(error.message, true));
+    runExplicitProjectListDiscovery().catch((error) => setStatus(error.message, true));
 });
 
 languageSelectorEl?.addEventListener("change", (event) => {
@@ -2953,12 +3034,28 @@ document.getElementById("addProject").addEventListener("click", () => {
     state.ado.projects.push(createProjectModel());
     ensureDiscovery();
     renderProjects();
-    schedulePreview();
+    scheduleLocalPreview("add-project");
 });
 
 document.getElementById("previewBtn").addEventListener("click", async () => {
     try {
-        await previewDraft(true);
+        await updateYamlPreviewLocalOnly(true, "manual-preview");
+    } catch (error) {
+        setStatus(error.message, true);
+    }
+});
+
+document.getElementById("validateConfigBtn").addEventListener("click", async () => {
+    try {
+        const validation = await runStrictAdoValidation("validate-generated-config");
+        const preview = lastPreview || await updateYamlPreviewLocalOnly(false, "strict-validation-context");
+        renderValidation({
+            ...preview,
+            validation,
+            finalYamlAllowed: !!validation.canGenerateFinalYaml
+        });
+        setStatus(validation.canGenerateFinalYaml ? t("status.draftAllowed") : t("status.draftBlocked"),
+                !!validation.hasBlockingErrors);
     } catch (error) {
         setStatus(error.message, true);
     }
@@ -2971,7 +3068,7 @@ document.getElementById("saveBtn").addEventListener("click", async () => {
             saveBtn.disabled = true;
             return;
         }
-        const payload = await postConfig("/api/config-ui/save");
+        const payload = await saveWithStrictAdoValidation();
         yamlOutputEl.textContent = payload.preview?.yaml || "";
         renderValidation(payload.preview);
         setStatus(`${payload.message} (${payload.path})`);
