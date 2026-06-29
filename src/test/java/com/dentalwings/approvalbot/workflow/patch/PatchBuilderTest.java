@@ -26,40 +26,32 @@ class PatchBuilderTest {
     void stateReplacementIsGeneratedCorrectly() {
         var patch = patchBuilder.build(27, decision(PatchOperation.replaceField("System.State", "In Review")));
 
-        assertThat(patch).containsExactly(
-                PatchOperation.testRevision(27),
-                new PatchOperation("replace", "/fields/System.State", "In Review")
-        );
+        assertThat(patch).containsExactly(PatchOperation.testRevision(27),
+                new PatchOperation("replace", "/fields/System.State", "In Review"));
     }
 
     @Test
     void smeApprovalFieldReplacementIsGeneratedCorrectly() {
         var patch = patchBuilder.build(27, decision(PatchOperation.replaceField(SME_FIELD, "ana@example.com")));
 
-        assertThat(patch).containsExactly(
-                PatchOperation.testRevision(27),
-                new PatchOperation("replace", "/fields/" + SME_FIELD, "ana@example.com")
-        );
+        assertThat(patch).containsExactly(PatchOperation.testRevision(27),
+                new PatchOperation("replace", "/fields/" + SME_FIELD, "ana@example.com"));
     }
 
     @Test
     void sqaApprovalFieldReplacementIsGeneratedCorrectly() {
         var patch = patchBuilder.build(27, decision(PatchOperation.replaceField(SQA_FIELD, "sam@example.com")));
 
-        assertThat(patch).containsExactly(
-                PatchOperation.testRevision(27),
-                new PatchOperation("replace", "/fields/" + SQA_FIELD, "sam@example.com")
-        );
+        assertThat(patch).containsExactly(PatchOperation.testRevision(27),
+                new PatchOperation("replace", "/fields/" + SQA_FIELD, "sam@example.com"));
     }
 
     @Test
     void approvalFieldClearUsesReplaceWithNull() {
         var patch = patchBuilder.build(27, decision(PatchOperation.replaceField(SME_FIELD, null)));
 
-        assertThat(patch).containsExactly(
-                PatchOperation.testRevision(27),
-                new PatchOperation("replace", "/fields/" + SME_FIELD, null)
-        );
+        assertThat(patch).containsExactly(PatchOperation.testRevision(27),
+                new PatchOperation("replace", "/fields/" + SME_FIELD, null));
     }
 
     @Test
@@ -80,10 +72,8 @@ class PatchBuilderTest {
     void missingPreviousFieldValueGeneratesReplaceWithNull() {
         var patch = patchBuilder.build(27, decision(PatchOperation.replaceField(TITLE_FIELD, null)));
 
-        assertThat(patch).containsExactly(
-                PatchOperation.testRevision(27),
-                new PatchOperation("replace", "/fields/" + TITLE_FIELD, null)
-        );
+        assertThat(patch).containsExactly(PatchOperation.testRevision(27),
+                new PatchOperation("replace", "/fields/" + TITLE_FIELD, null));
     }
 
     @Test
@@ -102,20 +92,15 @@ class PatchBuilderTest {
 
     @Test
     void operationOrderIsDeterministic() {
-        var patch = patchBuilder.build(27, decision(
-                PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, null),
-                PatchOperation.replaceField(SQA_FIELD, "sam@example.com"),
-                PatchOperation.replaceField(TITLE_FIELD, "Previous title")
-        ));
+        var patch = patchBuilder.build(27, decision(PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SME_FIELD, null), PatchOperation.replaceField(SQA_FIELD, "sam@example.com"),
+                PatchOperation.replaceField(TITLE_FIELD, "Previous title")));
 
-        assertThat(patch).containsExactly(
-                PatchOperation.testRevision(27),
+        assertThat(patch).containsExactly(PatchOperation.testRevision(27),
                 new PatchOperation("replace", "/fields/System.State", "In Review"),
                 new PatchOperation("replace", "/fields/" + SME_FIELD, null),
                 new PatchOperation("replace", "/fields/" + SQA_FIELD, "sam@example.com"),
-                new PatchOperation("replace", "/fields/" + TITLE_FIELD, "Previous title")
-        );
+                new PatchOperation("replace", "/fields/" + TITLE_FIELD, "Previous title"));
     }
 
     private WorkflowDecision decision(PatchOperation... operations) {

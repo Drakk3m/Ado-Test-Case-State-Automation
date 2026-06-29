@@ -1,6 +1,5 @@
 package com.dentalwings.approvalbot.queue;
 
-import com.dentalwings.approvalbot.processing.WorkItemProcessingResult;
 import java.util.Comparator;
 import java.util.Optional;
 import java.util.PriorityQueue;
@@ -8,32 +7,39 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
-public class InMemoryWorkItemQueue implements WorkItemQueue {
+import com.dentalwings.approvalbot.processing.WorkItemProcessingResult;
+
+public class InMemoryWorkItemQueue implements WorkItemQueue
+{
 
     private final ConcurrentHashMap<WorkItemQueueKey, QueueState> queues = new ConcurrentHashMap<>();
     private final AtomicLong sequence = new AtomicLong();
 
     @Override
-    public void enqueue(QueuedWorkItemEvent event) {
+    public void enqueue(QueuedWorkItemEvent event)
+    {
         var state = stateFor(event.key());
-        synchronized (state) {
+        synchronized (state)
+        {
             state.events.add(new QueueEntry(event, sequence.incrementAndGet()));
         }
     }
 
     @Override
-    public Optional<WorkItemProcessingResult> drainNext(
-            WorkItemQueueKey key,
-            Function<QueuedWorkItemEvent, WorkItemProcessingResult> processor
-    ) {
+    public Optional<WorkItemProcessingResult> drainNext(WorkItemQueueKey key,
+            Function<QueuedWorkItemEvent, WorkItemProcessingResult> processor)
+    {
         var state = queues.get(key);
-        if (state == null) {
+        if (state == null)
+        {
             return Optional.empty();
         }
 
-        synchronized (state) {
+        synchronized (state)
+        {
             var entry = state.events.poll();
-            if (entry == null) {
+            if (entry == null)
+            {
                 return Optional.empty();
             }
 
@@ -42,39 +48,43 @@ public class InMemoryWorkItemQueue implements WorkItemQueue {
     }
 
     @Override
-    public WorkItemProcessingResult process(
-            QueuedWorkItemEvent event,
-            Function<QueuedWorkItemEvent, WorkItemProcessingResult> processor
-    ) {
+    public WorkItemProcessingResult process(QueuedWorkItemEvent event,
+            Function<QueuedWorkItemEvent, WorkItemProcessingResult> processor)
+    {
         var state = stateFor(event.key());
-        synchronized (state) {
+        synchronized (state)
+        {
             return processor.apply(event);
         }
     }
 
     @Override
-    public int pendingCount(WorkItemQueueKey key) {
+    public int pendingCount(WorkItemQueueKey key)
+    {
         var state = queues.get(key);
-        if (state == null) {
+        if (state == null)
+        {
             return 0;
         }
-        synchronized (state) {
+        synchronized (state)
+        {
             return state.events.size();
         }
     }
 
-    private QueueState stateFor(WorkItemQueueKey key) {
+    private QueueState stateFor(WorkItemQueueKey key)
+    {
         return queues.computeIfAbsent(key, ignored -> new QueueState());
     }
 
-    private static class QueueState {
+    private static class QueueState
+    {
 
-        private final PriorityQueue<QueueEntry> events = new PriorityQueue<>(
-                Comparator.comparingInt((QueueEntry entry) -> entry.event().revision())
-                        .thenComparing(QueueEntry::sequence)
-        );
+        private final PriorityQueue<QueueEntry> events = new PriorityQueue<>(Comparator
+                .comparingInt((QueueEntry entry) -> entry.event().revision()).thenComparing(QueueEntry::sequence));
     }
 
-    private record QueueEntry(QueuedWorkItemEvent event, long sequence) {
+    private record QueueEntry(QueuedWorkItemEvent event, long sequence)
+    {
     }
 }

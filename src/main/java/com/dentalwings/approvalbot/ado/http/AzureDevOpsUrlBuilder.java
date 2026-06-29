@@ -13,27 +13,14 @@ public class AzureDevOpsUrlBuilder {
 
     public String workItemUrl(AdoWorkItemKey key) {
         validateKey(key);
-        return "https://dev.azure.com/"
-                + encode(key.organization())
-                + "/"
-                + encode(key.project())
-                + "/_apis/wit/workitems/"
-                + key.workItemId()
-                + "?api-version="
-                + WORK_ITEM_API_VERSION;
+        return "https://dev.azure.com/" + encode(key.organization()) + "/" + encode(key.project())
+                + "/_apis/wit/workitems/" + key.workItemId() + "?api-version=" + WORK_ITEM_API_VERSION;
     }
 
     public String workItemRevisionUrl(AdoWorkItemKey key, int revision) {
         validateKey(key);
-        return "https://dev.azure.com/"
-                + encode(key.organization())
-                + "/"
-                + encode(key.project())
-                + "/_apis/wit/workItems/"
-                + key.workItemId()
-                + "/revisions/"
-                + revision
-                + "?api-version="
+        return "https://dev.azure.com/" + encode(key.organization()) + "/" + encode(key.project())
+                + "/_apis/wit/workItems/" + key.workItemId() + "/revisions/" + revision + "?api-version="
                 + WORK_ITEM_API_VERSION;
     }
 
@@ -43,42 +30,26 @@ public class AzureDevOpsUrlBuilder {
 
     public String workItemCommentsUrl(AdoWorkItemKey key) {
         validateKey(key);
-        return "https://dev.azure.com/"
-                + encode(key.organization())
-                + "/"
-                + encode(key.project())
-                + "/_apis/wit/workItems/"
-                + key.workItemId()
-                + "/comments?api-version="
-                + COMMENTS_API_VERSION;
+        return "https://dev.azure.com/" + encode(key.organization()) + "/" + encode(key.project())
+                + "/_apis/wit/workItems/" + key.workItemId() + "/comments?api-version=" + COMMENTS_API_VERSION;
     }
 
     public String projectUrl(String organization, String project) {
         requireComponent("organization", organization);
         requireComponent("project", project);
-        return "https://dev.azure.com/"
-                + encode(organization)
-                + "/_apis/projects/"
-                + encode(project)
-                + "?api-version="
+        return "https://dev.azure.com/" + encode(organization) + "/_apis/projects/" + encode(project) + "?api-version="
                 + WORK_ITEM_API_VERSION;
     }
 
     public String projectsUrl(String organization) {
         requireComponent("organization", organization);
-        return "https://dev.azure.com/"
-                + encode(organization)
-                + "/_apis/projects?api-version="
-                + WORK_ITEM_API_VERSION;
+        return "https://dev.azure.com/" + encode(organization) + "/_apis/projects?api-version=" + WORK_ITEM_API_VERSION;
     }
 
     public String projectPropertiesUrl(String organization, String projectId) {
         requireComponent("organization", organization);
         requireComponent("project id", projectId);
-        return "https://dev.azure.com/"
-                + encode(organization)
-                + "/_apis/projects/"
-                + encode(projectId)
+        return "https://dev.azure.com/" + encode(organization) + "/_apis/projects/" + encode(projectId)
                 + "/properties?keys=System.ProcessTemplateType,System.CurrentProcessTemplateId,System.Process%20Template&api-version="
                 + PROJECT_PROPERTIES_API_VERSION;
     }
@@ -86,92 +57,59 @@ public class AzureDevOpsUrlBuilder {
     public String processWorkItemTypesUrl(String organization, String processId) {
         requireComponent("organization", organization);
         requireComponent("process id", processId);
-        return "https://dev.azure.com/"
-                + encode(organization)
-                + "/_apis/work/processes/"
-                + encode(processId)
-                + "/workitemtypes?api-version="
-                + WORK_ITEM_API_VERSION;
+        return "https://dev.azure.com/" + encode(organization) + "/_apis/work/processes/" + encode(processId)
+                + "/workitemtypes?api-version=" + WORK_ITEM_API_VERSION;
     }
 
     public String workItemTypeFieldsUrl(String organization, String project, String workItemType) {
         requireComponent("organization", organization);
         requireComponent("project", project);
         requireComponent("work item type", workItemType);
-        return "https://dev.azure.com/"
-                + encode(organization)
-                + "/"
-                + encode(project)
-                + "/_apis/wit/workitemtypes/"
-                + encode(workItemType)
-                + "/fields?api-version="
-                + WORK_ITEM_API_VERSION;
+        return "https://dev.azure.com/" + encode(organization) + "/" + encode(project) + "/_apis/wit/workitemtypes/"
+                + encode(workItemType) + "/fields?api-version=" + WORK_ITEM_API_VERSION;
     }
 
     public String workItemTypeStatesUrl(String organization, String project, String workItemType) {
         requireComponent("organization", organization);
         requireComponent("project", project);
         requireComponent("work item type", workItemType);
-        return "https://dev.azure.com/"
-                + encode(organization)
-                + "/"
-                + encode(project)
-                + "/_apis/wit/workitemtypes/"
-                + encode(workItemType)
-                + "/states?api-version="
-                + WORK_ITEM_API_VERSION;
+        return "https://dev.azure.com/" + encode(organization) + "/" + encode(project) + "/_apis/wit/workitemtypes/"
+                + encode(workItemType) + "/states?api-version=" + WORK_ITEM_API_VERSION;
     }
 
     public String identitySearchUrl(String organization, String query) {
         requireComponent("organization", organization);
         requireComponent("identity search query", query);
-        return "https://vssps.dev.azure.com/"
-                + encode(organization)
-                + "/_apis/identities?searchFilter=General&filterValue="
-                + encode(query)
-                + "&queryMembership=None&api-version="
-                + WORK_ITEM_API_VERSION;
+        return "https://vssps.dev.azure.com/" + encode(organization)
+                + "/_apis/identities?searchFilter=General&filterValue=" + encode(query)
+                + "&queryMembership=None&api-version=" + WORK_ITEM_API_VERSION;
     }
 
     public String graphDescriptorUrl(String organization, String projectId) {
         requireComponent("organization", organization);
         requireComponent("project id", projectId);
-        return "https://vssps.dev.azure.com/"
-                + encode(organization)
-                + "/_apis/graph/descriptors/"
-                + encode(projectId)
-                + "?api-version="
-                + GRAPH_PREVIEW_API_VERSION;
+        return "https://vssps.dev.azure.com/" + encode(organization) + "/_apis/graph/descriptors/" + encode(projectId)
+                + "?api-version=" + GRAPH_PREVIEW_API_VERSION;
     }
 
     public String scopedGraphUsersUrl(String organization, String scopeDescriptor) {
         requireComponent("organization", organization);
         requireComponent("scope descriptor", scopeDescriptor);
-        return "https://vssps.dev.azure.com/"
-                + encode(organization)
-                + "/_apis/graph/users?scopeDescriptor="
-                + encode(scopeDescriptor)
-                + "&api-version="
-                + GRAPH_PREVIEW_API_VERSION;
+        return "https://vssps.dev.azure.com/" + encode(organization) + "/_apis/graph/users?scopeDescriptor="
+                + encode(scopeDescriptor) + "&api-version=" + GRAPH_PREVIEW_API_VERSION;
     }
 
     public String graphSubjectQueryUrl(String organization) {
         requireComponent("organization", organization);
-        return "https://vssps.dev.azure.com/"
-                + encode(organization)
-                + "/_apis/graph/subjectquery?api-version="
+        return "https://vssps.dev.azure.com/" + encode(organization) + "/_apis/graph/subjectquery?api-version="
                 + GRAPH_PREVIEW_API_VERSION;
     }
 
     public String graphAvatarUrl(String organization, String descriptor) {
         requireComponent("organization", organization);
         requireComponent("identity descriptor", descriptor);
-        return "https://vssps.dev.azure.com/"
-                + encode(organization)
-                + "/_apis/graph/Subjects/"
-                + encode(descriptor)
-                + "/avatars?size=small&format=png&api-version="
-                + WORK_ITEM_API_VERSION;
+        return "https://vssps.dev.azure.com/" + encode(organization) + "/_apis/graph/Subjects/" + encode(descriptor)
+                + "/avatars?size=small&format=png&api-version=" + WORK_ITEM_API_VERSION;
     }
 
     private void validateKey(AdoWorkItemKey key) {

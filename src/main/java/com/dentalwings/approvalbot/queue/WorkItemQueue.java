@@ -8,15 +8,11 @@ public interface WorkItemQueue {
 
     void enqueue(QueuedWorkItemEvent event);
 
-    Optional<WorkItemProcessingResult> drainNext(
-            WorkItemQueueKey key,
-            Function<QueuedWorkItemEvent, WorkItemProcessingResult> processor
-    );
+    Optional<WorkItemProcessingResult> drainNext(WorkItemQueueKey key,
+            Function<QueuedWorkItemEvent, WorkItemProcessingResult> processor);
 
-    WorkItemProcessingResult process(
-            QueuedWorkItemEvent event,
-            Function<QueuedWorkItemEvent, WorkItemProcessingResult> processor
-    );
+    WorkItemProcessingResult process(QueuedWorkItemEvent event,
+            Function<QueuedWorkItemEvent, WorkItemProcessingResult> processor);
 
     int pendingCount(WorkItemQueueKey key);
 }

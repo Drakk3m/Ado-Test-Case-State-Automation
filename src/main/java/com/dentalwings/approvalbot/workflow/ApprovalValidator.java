@@ -22,17 +22,12 @@ public class ApprovalValidator {
         var smeUsers = normalized(config.smeUsers());
         var sqaUsers = normalized(config.sqaUsers());
 
-        return new ApprovalValidation(
-                smeEmail,
-                sqaEmail,
-                smeEmail.filter(smeUsers::contains).isPresent(),
-                sqaEmail.filter(sqaUsers::contains).isPresent()
-        );
+        return new ApprovalValidation(smeEmail, sqaEmail, smeEmail.filter(smeUsers::contains).isPresent(),
+                sqaEmail.filter(sqaUsers::contains).isPresent());
     }
 
     private Set<String> normalized(Set<String> emails) {
-        return emails.stream()
-                .flatMap(email -> emailNormalizer.normalize(email).stream())
+        return emails.stream().flatMap(email -> emailNormalizer.normalize(email).stream())
                 .collect(Collectors.toUnmodifiableSet());
     }
 }

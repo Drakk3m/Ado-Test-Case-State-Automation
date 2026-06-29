@@ -4,9 +4,8 @@ import com.dentalwings.approvalbot.domain.PatchOperation;
 import java.util.List;
 
 /**
- * Boundary for Azure DevOps source-of-truth operations.
- * Implementations fetch ADO data, execute already-built JSON Patch operations,
- * and send already-built comment text; they do not own workflow decisions.
+ * Boundary for Azure DevOps source-of-truth operations. Implementations fetch ADO data, execute already-built JSON
+ * Patch operations, and send already-built comment text; they do not own workflow decisions.
  */
 public interface AdoClient {
 

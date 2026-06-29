@@ -34,9 +34,9 @@ class WorkItemProcessingServiceTest {
     @Test
     void noOpWorkflowDecisionDoesNotCallPatchOrComment() {
         var client = fakeClient(
-                workItem(10, 30, "Approved", fields(SME_FIELD, "Ana <ana@example.com>", SQA_FIELD, "Sam <sam@example.com>")),
-                revision(29, nonApprover(), fields("System.State", "Approved"))
-        );
+                workItem(10, 30, "Approved",
+                        fields(SME_FIELD, "Ana <ana@example.com>", SQA_FIELD, "Sam <sam@example.com>")),
+                revision(29, nonApprover(), fields("System.State", "Approved")));
 
         var result = service(client).process(command(30));
 
@@ -47,16 +47,10 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void patchBuilderReturningOnlyRevisionTestDoesNotCallPatch() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
-        var service = new WorkItemProcessingService(
-                client,
-                new WorkflowEngine(),
-                new RevisionOnlyPatchBuilder(),
-                new CommentBuilder()
-        );
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
+        var service = new WorkItemProcessingService(client, new WorkflowEngine(), new RevisionOnlyPatchBuilder(),
+                new CommentBuilder());
 
         var result = service.process(command(30));
 
@@ -67,28 +61,21 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void visibleWorkflowCorrectionCallsPatchWithPatchBuilderOperations() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
 
         var result = service(client).process(command(30));
 
         assertThat(result.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(client.patchCalls).isOne();
-        assertThat(client.patchOperations).contains(
-                PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, ""),
-                PatchOperation.replaceField(SQA_FIELD, "")
-        );
+        assertThat(client.patchOperations).contains(PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SME_FIELD, ""), PatchOperation.replaceField(SQA_FIELD, ""));
     }
 
     @Test
     void patchOperationsIncludeRevisionTestFirst() {
-        var client = fakeClient(
-                workItem(10, 99, "Approved", fields()),
-                revision(98, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 99, "Approved", fields()),
+                revision(98, nonApprover(), fields("System.State", "In Review")));
 
         service(client).process(command(27));
 
@@ -97,10 +84,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void successfulPatchFollowedByRequiredCommentCallsCreateWorkItemComment() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
 
         var result = service(client).process(command(30));
 
@@ -111,10 +96,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void patchFailureDoesNotCreateComment() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
         client.patchResult = AdoPatchResult.retryableFailure("conflict");
 
         var result = service(client).process(command(30));
@@ -125,10 +108,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void patchSuccessAndCommentFailureReturnsCompletedWithWarning() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
         client.commentResult = AdoCommentResult.failure("comment failed");
 
         var result = service(client).process(command(30));
@@ -140,10 +121,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void patchSuccessWithNoCommentReturnsCompleted() {
-        var client = fakeClient(
-                workItem(10, 30, "Design", fields(SME_FIELD, "Ana <ana@example.com>")),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 30, "Design", fields(SME_FIELD, "Ana <ana@example.com>")),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
 
         var result = service(client).process(command(30));
 
@@ -154,10 +133,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void patchFailureRetryableReturnsFailedRetryable() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
         client.patchResult = AdoPatchResult.retryableFailure("timeout");
 
         var result = service(client).process(command(30));
@@ -167,10 +144,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void patchFailureNonRetryableReturnsFailedNonRetryable() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
         client.patchResult = AdoPatchResult.nonRetryableFailure("forbidden");
 
         var result = service(client).process(command(30));
@@ -180,11 +155,10 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void fetchWorkItemRetryableFailureReturnsFailedRetryableWithoutPatchOrComment() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
-        client.fetchWorkItemException = new AdoClientRetryableException("Azure DevOps read request failed with retryable status 503.");
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
+        client.fetchWorkItemException = new AdoClientRetryableException(
+                "Azure DevOps read request failed with retryable status 503.");
 
         var result = service(client).process(command(30));
 
@@ -196,10 +170,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void fetchWorkItemNonRetryableFailureReturnsFailedNonRetryableWithoutPatchOrComment() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
         client.fetchWorkItemException = new AdoClientNonRetryableException("Azure DevOps resource was not found.");
 
         var result = service(client).process(command(30));
@@ -212,11 +184,10 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void fetchWorkItemRevisionRetryableFailureReturnsFailedRetryableWithoutPatchOrComment() {
-        var client = fakeClient(
-                workItem(10, 30, "Approved", fields()),
-                revision(29, nonApprover(), fields("System.State", "In Review"))
-        );
-        client.fetchRevisionException = new AdoClientRetryableException("Azure DevOps read request failed with retryable status 429.");
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
+        client.fetchRevisionException = new AdoClientRetryableException(
+                "Azure DevOps read request failed with retryable status 429.");
 
         var result = service(client).process(command(30));
 
@@ -228,10 +199,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void processingUsesFetchedAdoDataNotWebhookChangedFields() {
-        var client = fakeClient(
-                workItem(10, 30, "In Review", fields(TITLE_FIELD, "New title")),
-                revision(29, nonApprover(), fields("System.State", "In Review", TITLE_FIELD, "Old title"))
-        );
+        var client = fakeClient(workItem(10, 30, "In Review", fields(TITLE_FIELD, "New title")),
+                revision(29, nonApprover(), fields("System.State", "In Review", TITLE_FIELD, "Old title")));
 
         var result = service(client).process(command(30));
 
@@ -241,10 +210,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void currentWorkItemRevisionIsUsedForRevTest() {
-        var client = fakeClient(
-                workItem(10, 44, "In Review", fields(TITLE_FIELD, "New title")),
-                revision(29, nonApprover(), fields("System.State", "In Review", TITLE_FIELD, "Old title"))
-        );
+        var client = fakeClient(workItem(10, 44, "In Review", fields(TITLE_FIELD, "New title")),
+                revision(29, nonApprover(), fields("System.State", "In Review", TITLE_FIELD, "Old title")));
 
         service(client).process(command(30));
 
@@ -253,10 +220,8 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void previousRawFieldValuesFromAdoRevisionArePreservedThroughRevertPatch() {
-        var client = fakeClient(
-                workItem(10, 30, "In Review", fields(TITLE_FIELD, "New title")),
-                revision(29, nonApprover(), fields("System.State", "In Review", TITLE_FIELD, "  Old title  "))
-        );
+        var client = fakeClient(workItem(10, 30, "In Review", fields(TITLE_FIELD, "New title")),
+                revision(29, nonApprover(), fields("System.State", "In Review", TITLE_FIELD, "  Old title  ")));
 
         service(client).process(command(30));
 
@@ -265,15 +230,20 @@ class WorkItemProcessingServiceTest {
 
     @Test
     void orchestratorDoesNotDependOnSpringMvcOrControllerClasses() {
-        assertNoForbiddenTypeReferences("org.springframework.web", WorkItemProcessingService.class, ProcessWorkItemCommand.class, WorkItemProcessingResult.class);
-        assertNoForbiddenTypeReferences("Controller", WorkItemProcessingService.class, ProcessWorkItemCommand.class, WorkItemProcessingResult.class);
+        assertNoForbiddenTypeReferences("org.springframework.web", WorkItemProcessingService.class,
+                ProcessWorkItemCommand.class, WorkItemProcessingResult.class);
+        assertNoForbiddenTypeReferences("Controller", WorkItemProcessingService.class, ProcessWorkItemCommand.class,
+                WorkItemProcessingResult.class);
     }
 
     @Test
     void orchestratorDoesNotDependOnHttpClientClasses() {
-        assertNoForbiddenTypeReferences("WebClient", WorkItemProcessingService.class, ProcessWorkItemCommand.class, WorkItemProcessingResult.class);
-        assertNoForbiddenTypeReferences("RestTemplate", WorkItemProcessingService.class, ProcessWorkItemCommand.class, WorkItemProcessingResult.class);
-        assertNoForbiddenTypeReferences("ResponseEntity", WorkItemProcessingService.class, ProcessWorkItemCommand.class, WorkItemProcessingResult.class);
+        assertNoForbiddenTypeReferences("WebClient", WorkItemProcessingService.class, ProcessWorkItemCommand.class,
+                WorkItemProcessingResult.class);
+        assertNoForbiddenTypeReferences("RestTemplate", WorkItemProcessingService.class, ProcessWorkItemCommand.class,
+                WorkItemProcessingResult.class);
+        assertNoForbiddenTypeReferences("ResponseEntity", WorkItemProcessingService.class, ProcessWorkItemCommand.class,
+                WorkItemProcessingResult.class);
     }
 
     private WorkItemProcessingService service(FakeAdoClient client) {
@@ -285,17 +255,8 @@ class WorkItemProcessingServiceTest {
     }
 
     private ProjectApprovalConfig config() {
-        return new ProjectApprovalConfig(
-                "ProjectA",
-                true,
-                Set.of("Test Case"),
-                SME_FIELD,
-                SQA_FIELD,
-                Set.of(TITLE_FIELD),
-                Set.of("ana@example.com"),
-                Set.of("sam@example.com"),
-                "bot@example.com"
-        );
+        return new ProjectApprovalConfig("ProjectA", true, Set.of("Test Case"), SME_FIELD, SQA_FIELD,
+                Set.of(TITLE_FIELD), Set.of("ana@example.com"), Set.of("sam@example.com"), "bot@example.com");
     }
 
     private FakeAdoClient fakeClient(AdoWorkItem currentWorkItem, AdoWorkItemRevision previousRevision) {

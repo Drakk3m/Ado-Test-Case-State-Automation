@@ -16,17 +16,12 @@ class AdoClientContractsTest {
     void adoClientContractCanReferenceExistingPatchOperation() throws NoSuchMethodException {
         Method patchMethod = AdoClient.class.getMethod("patchWorkItem", AdoWorkItemKey.class, List.class);
 
-        assertThat(patchMethod.getGenericParameterTypes()[1].getTypeName())
-                .contains(PatchOperation.class.getName());
+        assertThat(patchMethod.getGenericParameterTypes()[1].getTypeName()).contains(PatchOperation.class.getName());
     }
 
     @Test
     void adoWorkItemStoresRawFieldValuesWithoutNormalization() {
-        var fields = Map.<String, Object>of(
-                "System.Title", "  Raw title  ",
-                "Custom.Flag", true,
-                "Custom.Count", 7
-        );
+        var fields = Map.<String, Object> of("System.Title", "  Raw title  ", "Custom.Flag", true, "Custom.Count", 7);
 
         var workItem = new AdoWorkItem(10, "ProjectA", "Test Case", 27, "In Review", fields);
 
@@ -37,13 +32,8 @@ class AdoClientContractsTest {
 
     @Test
     void adoWorkItemRevisionStoresRawFieldValuesWithoutNormalization() {
-        var revision = new AdoWorkItemRevision(
-                10,
-                26,
-                new AdoIdentity("Ana Perez", " ANA@example.com "),
-                Map.of("System.Description", "  Raw description  "),
-                Set.of("System.Description")
-        );
+        var revision = new AdoWorkItemRevision(10, 26, new AdoIdentity("Ana Perez", " ANA@example.com "),
+                Map.of("System.Description", "  Raw description  "), Set.of("System.Description"));
 
         assertThat(revision.fields().get("System.Description")).isEqualTo("  Raw description  ");
         assertThat(revision.changedBy().emailOrLogin()).isEqualTo(" ANA@example.com ");
@@ -59,30 +49,15 @@ class AdoClientContractsTest {
 
     @Test
     void contractClassesDoNotDependOnSpringHttpTypes() {
-        assertNoForbiddenTypeReferences(
-                "org.springframework.http",
-                AdoClient.class,
-                AdoWorkItemKey.class,
-                AdoWorkItem.class,
-                AdoWorkItemRevision.class,
-                AdoIdentity.class,
-                AdoPatchResult.class,
-                AdoCommentResult.class
-        );
+        assertNoForbiddenTypeReferences("org.springframework.http", AdoClient.class, AdoWorkItemKey.class,
+                AdoWorkItem.class, AdoWorkItemRevision.class, AdoIdentity.class, AdoPatchResult.class,
+                AdoCommentResult.class);
     }
 
     @Test
     void contractClassesDoNotDependOnWebClientRestTemplateOrResponseEntity() {
-        assertNoForbiddenTypeReferences(
-                "WebClient",
-                AdoClient.class,
-                AdoWorkItemKey.class,
-                AdoWorkItem.class,
-                AdoWorkItemRevision.class,
-                AdoIdentity.class,
-                AdoPatchResult.class,
-                AdoCommentResult.class
-        );
+        assertNoForbiddenTypeReferences("WebClient", AdoClient.class, AdoWorkItemKey.class, AdoWorkItem.class,
+                AdoWorkItemRevision.class, AdoIdentity.class, AdoPatchResult.class, AdoCommentResult.class);
         assertNoForbiddenTypeReferences("RestTemplate", AdoClient.class);
         assertNoForbiddenTypeReferences("ResponseEntity", AdoClient.class);
     }
@@ -100,7 +75,8 @@ class AdoClientContractsTest {
 
         client.patchWorkItem(new AdoWorkItemKey("org", "ProjectA", 10), List.of(clearOperation));
 
-        assertThat(client.patchOperations).containsExactly(new PatchOperation("replace", "/fields/Custom.ApprovedBySME", null));
+        assertThat(client.patchOperations)
+                .containsExactly(new PatchOperation("replace", "/fields/Custom.ApprovedBySME", null));
     }
 
     private void assertNoForbiddenTypeReferences(String forbiddenText, Class<?>... contractClasses) {

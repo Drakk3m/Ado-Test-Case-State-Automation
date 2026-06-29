@@ -13,14 +13,10 @@ public record ConfigValidationResult(List<ConfigValidationIssue> issues) {
     }
 
     public List<ConfigValidationIssue> fatalErrors() {
-        return issues.stream()
-                .filter(issue -> issue.severity() == ConfigValidationSeverity.FATAL)
-                .toList();
+        return issues.stream().filter(issue -> issue.severity() == ConfigValidationSeverity.FATAL).toList();
     }
 
     public List<ConfigValidationIssue> warnings() {
-        return issues.stream()
-                .filter(issue -> issue.severity() == ConfigValidationSeverity.WARNING)
-                .toList();
+        return issues.stream().filter(issue -> issue.severity() == ConfigValidationSeverity.WARNING).toList();
     }
 }

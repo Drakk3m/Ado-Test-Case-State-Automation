@@ -24,8 +24,7 @@ public class ProjectApprovalProperties {
     }
 
     public void setSupportedWorkItemTypes(Set<String> supportedWorkItemTypes) {
-        this.supportedWorkItemTypes = supportedWorkItemTypes == null
-                ? new LinkedHashSet<>()
+        this.supportedWorkItemTypes = supportedWorkItemTypes == null ? new LinkedHashSet<>()
                 : new LinkedHashSet<>(supportedWorkItemTypes);
     }
 

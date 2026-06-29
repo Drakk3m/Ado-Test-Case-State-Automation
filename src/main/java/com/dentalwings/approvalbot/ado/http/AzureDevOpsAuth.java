@@ -9,7 +9,7 @@ public class AzureDevOpsAuth {
         if (personalAccessToken == null || personalAccessToken.isBlank()) {
             throw new IllegalArgumentException("personalAccessToken must not be blank");
         }
-        return "Basic " + Base64.getEncoder()
-                .encodeToString((":" + personalAccessToken).getBytes(StandardCharsets.UTF_8));
+        return "Basic "
+                + Base64.getEncoder().encodeToString((":" + personalAccessToken).getBytes(StandardCharsets.UTF_8));
     }
 }

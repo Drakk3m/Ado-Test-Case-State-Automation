@@ -29,11 +29,8 @@ final class GraphIdentityNegativeCache {
     synchronized boolean matches(String organization, String projectId, String query) {
         var normalizedQuery = normalized(query);
         entries.entrySet().removeIf(entry -> !entry.getValue().plus(ttl).isAfter(clock.instant()));
-        return entries.keySet().stream().anyMatch(key ->
-                key.organization().equals(normalized(organization))
-                        && key.projectId().equals(normalized(projectId))
-                        && normalizedQuery.startsWith(key.query())
-        );
+        return entries.keySet().stream().anyMatch(key -> key.organization().equals(normalized(organization))
+                && key.projectId().equals(normalized(projectId)) && normalizedQuery.startsWith(key.query()));
     }
 
     synchronized void put(String organization, String projectId, String query) {

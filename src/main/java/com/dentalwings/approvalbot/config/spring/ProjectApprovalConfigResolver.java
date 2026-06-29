@@ -20,8 +20,7 @@ public class ProjectApprovalConfigResolver {
             return Optional.empty();
         }
         return projectConfigs.entrySet().stream()
-                .filter(entry -> normalize(entry.getKey()).equals(normalize(projectName)))
-                .map(Map.Entry::getValue)
+                .filter(entry -> normalize(entry.getKey()).equals(normalize(projectName))).map(Map.Entry::getValue)
                 .findFirst();
     }
 

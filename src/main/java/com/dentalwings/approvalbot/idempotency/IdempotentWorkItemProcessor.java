@@ -22,10 +22,8 @@ public class IdempotentWorkItemProcessor {
     public WorkItemProcessingResult process(ProcessWorkItemCommand command) {
         var key = ProcessedEventKey.from(command);
         if (processedEventStore.alreadyProcessed(key)) {
-            LOGGER.info("Duplicate work item event skipped project={} workItemId={} revision={}",
-                    key.project(),
-                    key.workItemId(),
-                    key.revision());
+            LOGGER.info("Duplicate work item event skipped project={} workItemId={} revision={}", key.project(),
+                    key.workItemId(), key.revision());
             return WorkItemProcessingResult.skipped("Event was already processed.", null);
         }
 
@@ -33,10 +31,7 @@ public class IdempotentWorkItemProcessor {
         if (shouldMarkProcessed(result)) {
             processedEventStore.markProcessed(key, result);
             LOGGER.info("Work item event marked processed project={} workItemId={} revision={} result={}",
-                    key.project(),
-                    key.workItemId(),
-                    key.revision(),
-                    result.result());
+                    key.project(), key.workItemId(), key.revision(), result.result());
         }
         return result;
     }
