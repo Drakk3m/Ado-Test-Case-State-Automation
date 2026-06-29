@@ -25,11 +25,7 @@ public class ApprovalValueParser {
             return emailNormalizer.normalize(identity.emailOrLogin());
         }
         if (approvalValue instanceof Map<?, ?> values) {
-            return firstExtractableEmail(
-                    values.get("uniqueName"),
-                    values.get("email"),
-                    values.get("mailAddress")
-            );
+            return firstExtractableEmail(values.get("uniqueName"), values.get("email"), values.get("mailAddress"));
         }
         var text = approvalValue.toString();
         var matcher = BRACKETED_EMAIL.matcher(text);
@@ -44,7 +40,7 @@ public class ApprovalValueParser {
 
     private Optional<String> firstExtractableEmail(Object... values) {
         for (Object value : values) {
-            var email = value == null ? Optional.<String>empty() : emailNormalizer.normalize(value.toString());
+            var email = value == null ? Optional.<String> empty() : emailNormalizer.normalize(value.toString());
             if (email.isPresent()) {
                 return email;
             }

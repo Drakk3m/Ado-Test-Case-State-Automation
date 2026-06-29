@@ -40,11 +40,8 @@ class ApprovalBotSpringConfigurationTest {
 
     @Test
     void springContextRegistersApprovalBotProperties() {
-        new ApplicationContextRunner()
-                .withUserConfiguration(ApprovalBotApplication.class)
-                .withPropertyValues(
-                        "ado.organization=my-org",
-                        "ado.personal-access-token=test-token",
+        new ApplicationContextRunner().withUserConfiguration(ApprovalBotApplication.class)
+                .withPropertyValues("ado.organization=my-org", "ado.personal-access-token=test-token",
                         "ado.projects.ProjectA.enabled=true",
                         "ado.projects.ProjectA.supported-work-item-types[0]=Test Case",
                         "ado.projects.ProjectA.fields.approved-by-sme=Custom.ApprovedBySME",
@@ -53,9 +50,7 @@ class ApprovalBotSpringConfigurationTest {
                         "ado.projects.ProjectA.approvals.sme-users[0]=ana.perez@company.com",
                         "ado.projects.ProjectA.approvals.sqa-users[0]=carlos.gomez@company.com",
                         "bot.identity-email=ado-approval-bot@company.com",
-                        "webhook.shared-secret.value=test-webhook-secret",
-                        "idempotency.type=in-memory"
-                )
+                        "webhook.shared-secret.value=test-webhook-secret", "idempotency.type=in-memory")
                 .run(context -> {
                     assertThat(context).hasSingleBean(ApprovalBotProperties.class);
                     assertThat(context.getBean(ApprovalBotProperties.class).getAdo().getProjects())
@@ -105,26 +100,24 @@ class ApprovalBotSpringConfigurationTest {
     void missingBotIdentityEmailFailsStartupValidation() {
         var validator = startupValidator(bind(validYaml().replace("ado-approval-bot@company.com", "")));
 
-        assertThatThrownBy(validator::validate)
-                .isInstanceOf(ApprovalBotConfigurationException.class)
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("Project 'ProjectA': Missing bot identity email.");
     }
 
     @Test
     void missingAdoTokenFailsStartupValidationWhenHttpClientIsEnabled() {
-        var validator = startupValidator(bind(validYaml()
-                .replace("personal-access-token: test-token", "personal-access-token: \"\"")
-                .replace("http-client-enabled: false", "http-client-enabled: true")));
+        var validator = startupValidator(
+                bind(validYaml().replace("personal-access-token: test-token", "personal-access-token: \"\"")
+                        .replace("http-client-enabled: false", "http-client-enabled: true")));
 
-        assertThatThrownBy(validator::validate)
-                .isInstanceOf(ApprovalBotConfigurationException.class)
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("ado.personal-access-token is missing.");
     }
 
     @Test
     void missingAdoTokenPassesStartupValidationWhenHttpClientIsDisabled() {
-        var validator = startupValidator(bind(validYaml()
-                .replace("personal-access-token: test-token", "personal-access-token: \"\"")));
+        var validator = startupValidator(
+                bind(validYaml().replace("personal-access-token: test-token", "personal-access-token: \"\"")));
 
         var report = validator.validate();
 
@@ -133,19 +126,16 @@ class ApprovalBotSpringConfigurationTest {
 
     @Test
     void missingAdoOrganizationFailsStartupValidationWhenHttpClientIsEnabled() {
-        var validator = startupValidator(bind(validYaml()
-                .replace("organization: my-org", "organization: \"\"")
+        var validator = startupValidator(bind(validYaml().replace("organization: my-org", "organization: \"\"")
                 .replace("http-client-enabled: false", "http-client-enabled: true")));
 
-        assertThatThrownBy(validator::validate)
-                .isInstanceOf(ApprovalBotConfigurationException.class)
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("ado.organization is missing while ado.http-client-enabled=true.");
     }
 
     @Test
     void missingAdoOrganizationPassesStartupValidationWhenHttpClientIsDisabled() {
-        var validator = startupValidator(bind(validYaml()
-                .replace("organization: my-org", "organization: \"\"")));
+        var validator = startupValidator(bind(validYaml().replace("organization: my-org", "organization: \"\"")));
 
         var report = validator.validate();
 
@@ -156,9 +146,9 @@ class ApprovalBotSpringConfigurationTest {
     void missingWebhookSharedSecretFailsStartupValidationWhenEnabled() {
         var validator = startupValidator(bind(validYaml().replace("value: test-webhook-secret", "value: \"\"")));
 
-        assertThatThrownBy(validator::validate)
-                .isInstanceOf(ApprovalBotConfigurationException.class)
-                .hasMessageContaining("webhook.shared-secret.value is missing while webhook.shared-secret.enabled=true.")
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
+                .hasMessageContaining(
+                        "webhook.shared-secret.value is missing while webhook.shared-secret.enabled=true.")
                 .hasMessageNotContaining("test-webhook-secret");
     }
 
@@ -173,9 +163,9 @@ class ApprovalBotSpringConfigurationTest {
 
     @Test
     void webhookSharedSecretPassesStartupValidationWhenDisabledAndValueMissing() {
-        var validator = startupValidator(bind(validYaml()
-                .replace("enabled: true\n    header-name: X-ADO-Webhook-Secret\n    value: test-webhook-secret",
-                        "enabled: false\n    header-name: X-ADO-Webhook-Secret\n    value: \"\"")));
+        var validator = startupValidator(bind(validYaml().replace(
+                "enabled: true\n    header-name: X-ADO-Webhook-Secret\n    value: test-webhook-secret",
+                "enabled: false\n    header-name: X-ADO-Webhook-Secret\n    value: \"\"")));
 
         var report = validator.validate();
 
@@ -184,12 +174,11 @@ class ApprovalBotSpringConfigurationTest {
 
     @Test
     void invalidEnabledProjectFailsStartupValidationWithFatalIssueDetails() {
-        var validator = startupValidator(bind(validYaml()
-                .replace("approved-by-sme: Custom.ApprovedBySME", "approved-by-sme: \"\"")
-                .replace("sme-users:\n          - ana.perez@company.com", "sme-users: []")));
+        var validator = startupValidator(
+                bind(validYaml().replace("approved-by-sme: Custom.ApprovedBySME", "approved-by-sme: \"\"")
+                        .replace("sme-users:\n          - ana.perez@company.com", "sme-users: []")));
 
-        assertThatThrownBy(validator::validate)
-                .isInstanceOf(ApprovalBotConfigurationException.class)
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("Project 'ProjectA': Missing SME approval field config.")
                 .hasMessageContaining("Project 'ProjectA': Missing SME users.");
     }
@@ -198,15 +187,13 @@ class ApprovalBotSpringConfigurationTest {
     void blankWorkflowStateNameFailsStartupValidation() {
         var validator = startupValidator(bind(validYamlWithStates("Design", "\"\"", "Approved")));
 
-        assertThatThrownBy(validator::validate)
-                .isInstanceOf(ApprovalBotConfigurationException.class)
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("Project 'ProjectA': Missing workflow in-review state name.");
     }
 
     @Test
     void disabledInvalidProjectDoesNotFailStartupValidation() {
-        var validator = startupValidator(bind(validYaml()
-                .replace("enabled: true", "enabled: false")
+        var validator = startupValidator(bind(validYaml().replace("enabled: true", "enabled: false")
                 .replace("approved-by-sme: Custom.ApprovedBySME", "approved-by-sme: \"\"")
                 .replace("sme-users:\n          - ana.perez@company.com", "sme-users: []")));
 
@@ -217,21 +204,18 @@ class ApprovalBotSpringConfigurationTest {
 
     @Test
     void duplicateSmeEmailReportsWarningButDoesNotFail() {
-        var validator = startupValidator(bind(validYaml().replace(
-                "sme-users:\n          - ana.perez@company.com",
+        var validator = startupValidator(bind(validYaml().replace("sme-users:\n          - ana.perez@company.com",
                 "sme-users:\n          - Ana.Perez@company.com\n          -  ana.perez@company.com ")));
 
         var report = validator.validate();
 
         assertThat(report.fatalMessages()).isEmpty();
-        assertThat(report.warningMessages())
-                .contains("Project 'ProjectA': Duplicate email within SME list.");
+        assertThat(report.warningMessages()).contains("Project 'ProjectA': Duplicate email within SME list.");
     }
 
     @Test
     void dualRoleUserReportsWarningButDoesNotFail() {
-        var validator = startupValidator(bind(validYaml().replace(
-                "sqa-users:\n          - carlos.gomez@company.com",
+        var validator = startupValidator(bind(validYaml().replace("sqa-users:\n          - carlos.gomez@company.com",
                 "sqa-users:\n          - ANA.PEREZ@company.com")));
 
         var report = validator.validate();
@@ -243,23 +227,19 @@ class ApprovalBotSpringConfigurationTest {
 
     @Test
     void approvalFieldInsideReversibleBusinessFieldsFailsStartupValidation() {
-        var validator = startupValidator(bind(validYaml().replace(
-                "- System.Title",
-                "- System.Title\n          - Custom.ApprovedBySME")));
+        var validator = startupValidator(
+                bind(validYaml().replace("- System.Title", "- System.Title\n          - Custom.ApprovedBySME")));
 
-        assertThatThrownBy(validator::validate)
-                .isInstanceOf(ApprovalBotConfigurationException.class)
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("Project 'ProjectA': SME approval field appears in reversible business fields.");
     }
 
     @Test
     void systemStateInsideReversibleBusinessFieldsFailsStartupValidation() {
-        var validator = startupValidator(bind(validYaml().replace(
-                "- System.Title",
-                "- System.Title\n          - System.State")));
+        var validator = startupValidator(
+                bind(validYaml().replace("- System.Title", "- System.Title\n          - System.State")));
 
-        assertThatThrownBy(validator::validate)
-                .isInstanceOf(ApprovalBotConfigurationException.class)
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
                 .hasMessageContaining("Project 'ProjectA': System.State appears in reversible business fields.");
     }
 
@@ -279,17 +259,13 @@ class ApprovalBotSpringConfigurationTest {
     void sampleSandboxYamlBindsBracketedProjectNameWithSpacesAndDots() throws IOException {
         var properties = bind(Files.readString(Path.of("docs/sample-application-sandbox.yml")));
 
-        assertThat(properties.getAdo().getProjects())
-                .containsKey("Example Sandbox Project 2.0")
+        assertThat(properties.getAdo().getProjects()).containsKey("Example Sandbox Project 2.0")
                 .doesNotContainKey("[Example Sandbox Project 2.0]");
     }
 
     private ProjectApprovalConfigStartupValidator startupValidator(ApprovalBotProperties properties) {
-        return new ProjectApprovalConfigStartupValidator(
-                properties,
-                new ProjectApprovalConfigMapper(),
-                new com.dentalwings.approvalbot.config.validation.ProjectApprovalConfigValidator()
-        );
+        return new ProjectApprovalConfigStartupValidator(properties, new ProjectApprovalConfigMapper(),
+                new com.dentalwings.approvalbot.config.validation.ProjectApprovalConfigValidator());
     }
 
     private ApprovalBotProperties bind(String yaml) {
@@ -352,13 +328,7 @@ class ApprovalBotSpringConfigurationTest {
     }
 
     private String validYamlWithStates(String design, String inReview, String approved) {
-        return validYaml().replaceFirst(
-                "(?m)^(\\s*)fields:",
-                "$1states:\n"
-                        + "$1  design: " + design + "\n"
-                        + "$1  in-review: " + inReview + "\n"
-                        + "$1  approved: " + approved + "\n"
-                        + "$1fields:"
-        );
+        return validYaml().replaceFirst("(?m)^(\\s*)fields:", "$1states:\n" + "$1  design: " + design + "\n"
+                + "$1  in-review: " + inReview + "\n" + "$1  approved: " + approved + "\n" + "$1fields:");
     }
 }

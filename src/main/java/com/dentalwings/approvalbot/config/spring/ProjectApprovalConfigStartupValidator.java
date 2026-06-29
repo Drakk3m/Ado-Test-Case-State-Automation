@@ -1,18 +1,20 @@
 package com.dentalwings.approvalbot.config.spring;
 
-import com.dentalwings.approvalbot.config.validation.ConfigValidationIssue;
-import com.dentalwings.approvalbot.config.validation.ProjectApprovalConfigValidator;
 import java.util.ArrayList;
 import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import com.dentalwings.approvalbot.config.validation.ConfigValidationIssue;
+import com.dentalwings.approvalbot.config.validation.ProjectApprovalConfigValidator;
 
 @Component
-public class ProjectApprovalConfigStartupValidator implements ApplicationRunner {
+public class ProjectApprovalConfigStartupValidator implements ApplicationRunner
+{
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProjectApprovalConfigStartupValidator.class);
 
@@ -21,26 +23,27 @@ public class ProjectApprovalConfigStartupValidator implements ApplicationRunner 
     private final ProjectApprovalConfigValidator validator;
 
     @Autowired
-    public ProjectApprovalConfigStartupValidator(ApprovalBotProperties properties) {
+    public ProjectApprovalConfigStartupValidator(ApprovalBotProperties properties)
+    {
         this(properties, new ProjectApprovalConfigMapper(), new ProjectApprovalConfigValidator());
     }
 
-    ProjectApprovalConfigStartupValidator(
-            ApprovalBotProperties properties,
-            ProjectApprovalConfigMapper mapper,
-            ProjectApprovalConfigValidator validator
-    ) {
+    ProjectApprovalConfigStartupValidator(ApprovalBotProperties properties, ProjectApprovalConfigMapper mapper,
+            ProjectApprovalConfigValidator validator)
+    {
         this.properties = properties;
         this.mapper = mapper;
         this.validator = validator;
     }
 
     @Override
-    public void run(ApplicationArguments args) {
+    public void run(ApplicationArguments args)
+    {
         validate();
     }
 
-    public StartupValidationReport validate() {
+    public StartupValidationReport validate()
+    {
         var fatalMessages = new ArrayList<String>();
         var warningMessages = new ArrayList<String>();
 
@@ -49,59 +52,68 @@ public class ProjectApprovalConfigStartupValidator implements ApplicationRunner 
         validateProjects(fatalMessages, warningMessages);
 
         warningMessages.forEach(message -> LOGGER.warn("Approval bot configuration warning: {}", message));
-        if (!fatalMessages.isEmpty()) {
-            throw new ApprovalBotConfigurationException("Invalid approval bot configuration: "
-                    + String.join("; ", fatalMessages));
+        if (!fatalMessages.isEmpty())
+        {
+            throw new ApprovalBotConfigurationException(
+                    "Invalid approval bot configuration: " + String.join("; ", fatalMessages));
         }
 
         return new StartupValidationReport(fatalMessages, warningMessages);
     }
 
-    private void validateAdoBoundary(ArrayList<String> fatalMessages) {
-        if (properties.getAdo().isHttpClientEnabled()) {
-            if (isBlank(properties.getAdo().getOrganization())) {
+    private void validateAdoBoundary(ArrayList<String> fatalMessages)
+    {
+        if (properties.getAdo().isHttpClientEnabled())
+        {
+            if (isBlank(properties.getAdo().getOrganization()))
+            {
                 fatalMessages.add("ado.organization is missing while ado.http-client-enabled=true.");
             }
-            if (isBlank(properties.getAdo().getPersonalAccessToken())) {
+            if (isBlank(properties.getAdo().getPersonalAccessToken()))
+            {
                 fatalMessages.add("ado.personal-access-token is missing.");
             }
         }
-        if (properties.getAdo().getProjects().isEmpty()) {
+        if (properties.getAdo().getProjects().isEmpty())
+        {
             fatalMessages.add("ado.projects must contain at least one project configuration.");
         }
     }
 
-    private void validateWebhookBoundary(ArrayList<String> fatalMessages) {
+    private void validateWebhookBoundary(ArrayList<String> fatalMessages)
+    {
         var sharedSecret = properties.getWebhook().getSharedSecret();
-        if (sharedSecret.isEnabled() && isBlank(sharedSecret.getValue())) {
+        if (sharedSecret.isEnabled() && isBlank(sharedSecret.getValue()))
+        {
             LOGGER.warn("Webhook shared-secret validation configuration failed reason=missing configured secret");
             fatalMessages.add("webhook.shared-secret.value is missing while webhook.shared-secret.enabled=true.");
         }
     }
 
-    private void validateProjects(ArrayList<String> fatalMessages, ArrayList<String> warningMessages) {
+    private void validateProjects(ArrayList<String> fatalMessages, ArrayList<String> warningMessages)
+    {
         mapper.toProjectConfigs(properties).forEach((projectName, config) -> {
             var result = validator.validate(config);
-            result.fatalErrors().stream()
-                    .map(issue -> format(projectName, issue))
-                    .forEach(fatalMessages::add);
-            result.warnings().stream()
-                    .map(issue -> format(projectName, issue))
-                    .forEach(warningMessages::add);
+            result.fatalErrors().stream().map(issue -> format(projectName, issue)).forEach(fatalMessages::add);
+            result.warnings().stream().map(issue -> format(projectName, issue)).forEach(warningMessages::add);
         });
     }
 
-    private String format(String projectName, ConfigValidationIssue issue) {
+    private String format(String projectName, ConfigValidationIssue issue)
+    {
         return "Project '" + projectName + "': " + issue.message();
     }
 
-    private boolean isBlank(String value) {
+    private boolean isBlank(String value)
+    {
         return value == null || value.isBlank();
     }
 
-    public record StartupValidationReport(List<String> fatalMessages, List<String> warningMessages) {
+    public record StartupValidationReport(List<String> fatalMessages, List<String> warningMessages)
+    {
 
-        public StartupValidationReport {
+        public StartupValidationReport
+        {
             fatalMessages = List.copyOf(fatalMessages);
             warningMessages = List.copyOf(warningMessages);
         }

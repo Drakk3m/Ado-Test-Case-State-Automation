@@ -1,6 +1,7 @@
 package com.dentalwings.approvalbot.processing.pipeline;
 
-public enum WebhookProcessingStatus {
+public enum WebhookProcessingStatus
+{
     SKIPPED,
     COMPLETED,
     COMPLETED_WITH_WARNING,

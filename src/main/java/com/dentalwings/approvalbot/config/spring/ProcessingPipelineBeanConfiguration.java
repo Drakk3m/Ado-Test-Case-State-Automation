@@ -1,5 +1,11 @@
 package com.dentalwings.approvalbot.config.spring;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import com.dentalwings.approvalbot.ado.AdoClient;
 import com.dentalwings.approvalbot.ado.DryRunAdoClient;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
@@ -14,25 +20,23 @@ import com.dentalwings.approvalbot.webhook.EventClassifier;
 import com.dentalwings.approvalbot.workflow.WorkflowEngine;
 import com.dentalwings.approvalbot.workflow.comment.CommentBuilder;
 import com.dentalwings.approvalbot.workflow.patch.PatchBuilder;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Configuration
-public class ProcessingPipelineBeanConfiguration {
+public class ProcessingPipelineBeanConfiguration
+{
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProcessingPipelineBeanConfiguration.class);
 
     @Bean
     @ConditionalOnProperty(name = "ado.http-client-enabled", havingValue = "true")
     @ConditionalOnMissingBean
-    public AdoClient azureDevOpsHttpClient(ApprovalBotProperties properties) {
+    public AdoClient azureDevOpsHttpClient(ApprovalBotProperties properties)
+    {
         var httpClient = AzureDevOpsHttpClient.fromProperties(properties.getAdo());
-        if (!properties.getAdo().isDryRun()) {
-            LOGGER.info("Azure DevOps HTTP client enabled with dry-run disabled; write operations will be sent to ADO.");
+        if (!properties.getAdo().isDryRun())
+        {
+            LOGGER.info(
+                    "Azure DevOps HTTP client enabled with dry-run disabled; write operations will be sent to ADO.");
             return httpClient;
         }
 
@@ -42,51 +46,47 @@ public class ProcessingPipelineBeanConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public AdoClient unsupportedAdoClient() {
+    public AdoClient unsupportedAdoClient()
+    {
         return new UnsupportedAdoClient();
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public WorkItemProcessingService workItemProcessingService(
-            AdoClient adoClient,
-            WorkflowEngine workflowEngine,
-            PatchBuilder patchBuilder,
-            CommentBuilder commentBuilder
-    ) {
+    public WorkItemProcessingService workItemProcessingService(AdoClient adoClient, WorkflowEngine workflowEngine,
+            PatchBuilder patchBuilder, CommentBuilder commentBuilder)
+    {
         return new WorkItemProcessingService(adoClient, workflowEngine, patchBuilder, commentBuilder);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public IdempotentWorkItemProcessor idempotentWorkItemProcessor(
-            ProcessedEventStore processedEventStore,
-            WorkItemProcessingService workItemProcessingService
-    ) {
+    public IdempotentWorkItemProcessor idempotentWorkItemProcessor(ProcessedEventStore processedEventStore,
+            WorkItemProcessingService workItemProcessingService)
+    {
         return new IdempotentWorkItemProcessor(processedEventStore, workItemProcessingService);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public WorkItemQueue workItemQueue() {
+    public WorkItemQueue workItemQueue()
+    {
         return new InMemoryWorkItemQueue();
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public QueuedWorkItemProcessor queuedWorkItemProcessor(
-            WorkItemQueue workItemQueue,
-            IdempotentWorkItemProcessor idempotentWorkItemProcessor
-    ) {
+    public QueuedWorkItemProcessor queuedWorkItemProcessor(WorkItemQueue workItemQueue,
+            IdempotentWorkItemProcessor idempotentWorkItemProcessor)
+    {
         return new QueuedWorkItemProcessor(workItemQueue, idempotentWorkItemProcessor);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public WebhookEventProcessingPipeline webhookEventProcessingPipeline(
-            EventClassifier eventClassifier,
-            QueuedWorkItemProcessor queuedWorkItemProcessor
-    ) {
+    public WebhookEventProcessingPipeline webhookEventProcessingPipeline(EventClassifier eventClassifier,
+            QueuedWorkItemProcessor queuedWorkItemProcessor)
+    {
         return new WebhookEventProcessingPipeline(eventClassifier, queuedWorkItemProcessor);
     }
 }

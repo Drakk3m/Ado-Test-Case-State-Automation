@@ -1,6 +1,7 @@
 package com.dentalwings.approvalbot.ui;
 
-public enum ConfigValidationStatus {
+public enum ConfigValidationStatus
+{
     VALID,
     WARNING,
     ERROR,

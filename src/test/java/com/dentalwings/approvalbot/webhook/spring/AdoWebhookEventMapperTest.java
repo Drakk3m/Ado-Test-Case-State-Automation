@@ -55,7 +55,8 @@ class AdoWebhookEventMapperTest {
 
     @Test
     void dtoMapperToleratesMissingChangedByEmailOrLogin() throws Exception {
-        var event = mapper.toWebhookEvent(request(payload().replace("\"uniqueName\": \"human.user@example.com\"", "\"displayName\": \"Human User\"")));
+        var event = mapper.toWebhookEvent(request(
+                payload().replace("\"uniqueName\": \"human.user@example.com\"", "\"displayName\": \"Human User\"")));
 
         assertThat(event.resource().changedByDisplayName()).isEqualTo("Human User");
         assertThat(event.resource().changedByEmailOrLogin()).isNull();

@@ -1,5 +1,15 @@
 package com.dentalwings.approvalbot.processing.pipeline;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Set;
+import java.lang.reflect.Method;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+
+import org.junit.jupiter.api.Test;
 import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
 import com.dentalwings.approvalbot.domain.ProcessingResult;
@@ -13,24 +23,16 @@ import com.dentalwings.approvalbot.queue.QueuedWorkItemEvent;
 import com.dentalwings.approvalbot.queue.QueuedWorkItemProcessor;
 import com.dentalwings.approvalbot.webhook.AdoWebhookEvent;
 import com.dentalwings.approvalbot.webhook.EventClassifier;
-import java.lang.reflect.Method;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-class WebhookEventProcessingPipelineTest {
+class WebhookEventProcessingPipelineTest
+{
 
     private static final Instant NOW = Instant.parse("2026-06-23T00:00:00Z");
     private static final String CONFIGURED_ORGANIZATION = "configured-org";
 
     @Test
-    void processableEventIsSentThroughQueueProcessor() {
+    void processableEventIsSentThroughQueueProcessor()
+    {
         var queueProcessor = new RecordingQueueProcessor(completed());
         var pipeline = pipeline(queueProcessor);
 
@@ -42,24 +44,20 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void processableEventUsesConfiguredOrganizationWhenWebhookOrganizationIsMissing() {
+    void processableEventUsesConfiguredOrganizationWhenWebhookOrganizationIsMissing()
+    {
         var queueProcessor = new RecordingQueueProcessor(completed());
-        var event = new AdoWebhookEvent(
-                "workitem.updated",
-                null,
-                validEvent().resource(),
-                null
-        );
+        var event = new AdoWebhookEvent("workitem.updated", null, validEvent().resource(), null);
 
         pipeline(queueProcessor).process(event, config(true, "Test Case"));
 
-        assertThat(queueProcessor.lastEvent.command().workItemKey()).isEqualTo(
-                new AdoWorkItemKey(CONFIGURED_ORGANIZATION, "ProjectA", 123L)
-        );
+        assertThat(queueProcessor.lastEvent.command().workItemKey())
+                .isEqualTo(new AdoWorkItemKey(CONFIGURED_ORGANIZATION, "ProjectA", 123L));
     }
 
     @Test
-    void processableEventReachesIdempotentProcessingPath() {
+    void processableEventReachesIdempotentProcessingPath()
+    {
         var store = new InMemoryProcessedEventStore(Duration.ofHours(1), 10);
         var delegate = new StubProcessingService(completed());
         var idempotentProcessor = new IdempotentWorkItemProcessor(store, delegate);
@@ -69,12 +67,14 @@ class WebhookEventProcessingPipelineTest {
         pipeline.process(validEvent(), config(true, "Test Case"));
 
         assertThat(delegate.calls).isOne();
-        assertThat(store.alreadyProcessed(new com.dentalwings.approvalbot.idempotency.ProcessedEventKey("ProjectA", 123, 27)))
+        assertThat(store
+                .alreadyProcessed(new com.dentalwings.approvalbot.idempotency.ProcessedEventKey("ProjectA", 123, 27)))
                 .isTrue();
     }
 
     @Test
-    void disabledProjectEventIsSkippedAndNotQueued() {
+    void disabledProjectEventIsSkippedAndNotQueued()
+    {
         var queueProcessor = new RecordingQueueProcessor(completed());
         var result = pipeline(queueProcessor).process(validEvent(), config(false, "Test Case"));
 
@@ -83,7 +83,8 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void unsupportedWorkItemTypeEventIsSkippedAndNotQueued() {
+    void unsupportedWorkItemTypeEventIsSkippedAndNotQueued()
+    {
         var queueProcessor = new RecordingQueueProcessor(completed());
         var event = event("ProjectA", 123L, "Bug", 27, "Human User", "user@example.com");
 
@@ -94,7 +95,8 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void botGeneratedEventIsSkippedAndNotQueued() {
+    void botGeneratedEventIsSkippedAndNotQueued()
+    {
         var queueProcessor = new RecordingQueueProcessor(completed());
         var event = event("ProjectA", 123L, "Test Case", 27, "Any Name", "bot@example.com");
 
@@ -105,7 +107,8 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void malformedEventIsFailedAndNotQueued() {
+    void malformedEventIsFailedAndNotQueued()
+    {
         var queueProcessor = new RecordingQueueProcessor(completed());
         var event = event(" ", 123L, "Test Case", 27, "Human User", "user@example.com");
 
@@ -116,7 +119,8 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void missingChangedByEmailDoesNotPreventProcessableEvent() {
+    void missingChangedByEmailDoesNotPreventProcessableEvent()
+    {
         var queueProcessor = new RecordingQueueProcessor(completed());
         var event = event("ProjectA", 123L, "Test Case", 27, "Human User", null);
 
@@ -127,7 +131,8 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void displayNameMatchingBotWithoutEmailDoesNotSkipAsBot() {
+    void displayNameMatchingBotWithoutEmailDoesNotSkipAsBot()
+    {
         var queueProcessor = new RecordingQueueProcessor(completed());
         var event = event("ProjectA", 123L, "Test Case", 27, "Approval Bot", null);
 
@@ -138,24 +143,29 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void pipelineResultPreservesCompletedStatusFromProcessing() {
-        var result = pipeline(new RecordingQueueProcessor(completed())).process(validEvent(), config(true, "Test Case"));
+    void pipelineResultPreservesCompletedStatusFromProcessing()
+    {
+        var result = pipeline(new RecordingQueueProcessor(completed())).process(validEvent(),
+                config(true, "Test Case"));
 
         assertThat(result.status()).isEqualTo(WebhookProcessingStatus.COMPLETED);
-        assertThat(result.maybeWorkItemProcessingResult()).hasValueSatisfying(workItemResult ->
-                assertThat(workItemResult.result()).isEqualTo(ProcessingResult.COMPLETED));
+        assertThat(result.maybeWorkItemProcessingResult()).hasValueSatisfying(
+                workItemResult -> assertThat(workItemResult.result()).isEqualTo(ProcessingResult.COMPLETED));
     }
 
     @Test
-    void pipelineResultPreservesCompletedWithWarningStatusFromProcessing() {
-        var result = pipeline(new RecordingQueueProcessor(WorkItemProcessingResult.completedWithWarning("comment failed", null)))
+    void pipelineResultPreservesCompletedWithWarningStatusFromProcessing()
+    {
+        var result = pipeline(
+                new RecordingQueueProcessor(WorkItemProcessingResult.completedWithWarning("comment failed", null)))
                 .process(validEvent(), config(true, "Test Case"));
 
         assertThat(result.status()).isEqualTo(WebhookProcessingStatus.COMPLETED_WITH_WARNING);
     }
 
     @Test
-    void pipelineResultPreservesRetryableFailureFromProcessing() {
+    void pipelineResultPreservesRetryableFailureFromProcessing()
+    {
         var result = pipeline(new RecordingQueueProcessor(WorkItemProcessingResult.failedRetryable("timeout", null)))
                 .process(validEvent(), config(true, "Test Case"));
 
@@ -163,15 +173,18 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void pipelineResultPreservesNonRetryableFailureFromProcessing() {
-        var result = pipeline(new RecordingQueueProcessor(WorkItemProcessingResult.failedNonRetryable("bad payload", null)))
+    void pipelineResultPreservesNonRetryableFailureFromProcessing()
+    {
+        var result = pipeline(
+                new RecordingQueueProcessor(WorkItemProcessingResult.failedNonRetryable("bad payload", null)))
                 .process(validEvent(), config(true, "Test Case"));
 
         assertThat(result.status()).isEqualTo(WebhookProcessingStatus.FAILED_NON_RETRYABLE);
     }
 
     @Test
-    void duplicateEventBehaviorIsDelegatedToIdempotentProcessor() {
+    void duplicateEventBehaviorIsDelegatedToIdempotentProcessor()
+    {
         var store = new InMemoryProcessedEventStore(Duration.ofHours(1), 10);
         var delegate = new StubProcessingService(completed());
         var idempotentProcessor = new IdempotentWorkItemProcessor(store, delegate);
@@ -187,137 +200,150 @@ class WebhookEventProcessingPipelineTest {
     }
 
     @Test
-    void pipelineDoesNotCallAdoClientDirectly() {
+    void pipelineDoesNotCallAdoClientDirectly()
+    {
         assertNoForbiddenTypeReferences("AdoClient", WebhookEventProcessingPipeline.class);
     }
 
     @Test
-    void pipelineDoesNotDependOnSpringMvcOrControllerClasses() {
+    void pipelineDoesNotDependOnSpringMvcOrControllerClasses()
+    {
         assertNoForbiddenTypeReferences("org.springframework.web", WebhookEventProcessingPipeline.class);
         assertNoForbiddenTypeReferences("Controller", WebhookEventProcessingPipeline.class);
     }
 
     @Test
-    void pipelineDoesNotDependOnWebClientRestTemplateOrResponseEntity() {
+    void pipelineDoesNotDependOnWebClientRestTemplateOrResponseEntity()
+    {
         assertNoForbiddenTypeReferences("WebClient", WebhookEventProcessingPipeline.class);
         assertNoForbiddenTypeReferences("RestTemplate", WebhookEventProcessingPipeline.class);
         assertNoForbiddenTypeReferences("ResponseEntity", WebhookEventProcessingPipeline.class);
     }
 
     @Test
-    void pipelineDoesNotParseJson() {
+    void pipelineDoesNotParseJson()
+    {
         assertNoForbiddenTypeReferences("ObjectMapper", WebhookEventProcessingPipeline.class);
         assertNoForbiddenTypeReferences("Json", WebhookEventProcessingPipeline.class);
     }
 
-    private WebhookEventProcessingPipeline pipeline(QueuedWorkItemProcessor queueProcessor) {
-        return new WebhookEventProcessingPipeline(new EventClassifier(CONFIGURED_ORGANIZATION), queueProcessor, new FixedClock(NOW));
+    private WebhookEventProcessingPipeline pipeline(QueuedWorkItemProcessor queueProcessor)
+    {
+        return new WebhookEventProcessingPipeline(new EventClassifier(CONFIGURED_ORGANIZATION), queueProcessor,
+                new FixedClock(NOW));
     }
 
-    private AdoWebhookEvent validEvent() {
+    private AdoWebhookEvent validEvent()
+    {
         return event("ProjectA", 123L, "Test Case", 27, "Human User", "user@example.com");
     }
 
-    private AdoWebhookEvent event(
-            String project,
-            Long workItemId,
-            String workItemType,
-            Integer revision,
-            String displayName,
-            String email
-    ) {
-        return AdoWebhookEvent.workItemUpdated("org", project, workItemId, workItemType, revision, displayName, email, Set.of());
+    private AdoWebhookEvent event(String project, Long workItemId, String workItemType, Integer revision,
+            String displayName, String email)
+    {
+        return AdoWebhookEvent.workItemUpdated("org", project, workItemId, workItemType, revision, displayName, email,
+                Set.of());
     }
 
-    private ProjectApprovalConfig config(boolean enabled, String... supportedWorkItemTypes) {
-        return new ProjectApprovalConfig(
-                "ProjectA",
-                enabled,
-                Set.of(supportedWorkItemTypes),
-                "Custom.ApprovedBySME",
-                "Custom.ApprovedBySQA",
-                Set.of("System.Title"),
-                Set.of("sme@example.com"),
-                Set.of("sqa@example.com"),
-                "bot@example.com"
-        );
+    private ProjectApprovalConfig config(boolean enabled, String... supportedWorkItemTypes)
+    {
+        return new ProjectApprovalConfig("ProjectA", enabled, Set.of(supportedWorkItemTypes), "Custom.ApprovedBySME",
+                "Custom.ApprovedBySQA", Set.of("System.Title"), Set.of("sme@example.com"), Set.of("sqa@example.com"),
+                "bot@example.com");
     }
 
-    private WorkItemProcessingResult completed() {
+    private WorkItemProcessingResult completed()
+    {
         return WorkItemProcessingResult.completed("done", null);
     }
 
-    private void assertNoForbiddenTypeReferences(String forbiddenText, Class<?>... classes) {
-        for (Class<?> type : classes) {
+    private void assertNoForbiddenTypeReferences(String forbiddenText, Class<?>... classes)
+    {
+        for (Class<?> type : classes)
+        {
             assertThat(type.getName()).doesNotContain(forbiddenText);
-            for (Method method : type.getDeclaredMethods()) {
+            for (Method method : type.getDeclaredMethods())
+            {
                 assertThat(method.toGenericString()).doesNotContain(forbiddenText);
             }
-            for (var constructor : type.getDeclaredConstructors()) {
+            for (var constructor : type.getDeclaredConstructors())
+            {
                 assertThat(constructor.toGenericString()).doesNotContain(forbiddenText);
             }
-            for (var field : type.getDeclaredFields()) {
+            for (var field : type.getDeclaredFields())
+            {
                 assertThat(field.toGenericString()).doesNotContain(forbiddenText);
             }
         }
     }
 
-    private static class RecordingQueueProcessor extends QueuedWorkItemProcessor {
+    private static class RecordingQueueProcessor extends QueuedWorkItemProcessor
+    {
 
         private final WorkItemProcessingResult result;
         private int calls;
         private QueuedWorkItemEvent lastEvent;
 
-        private RecordingQueueProcessor(WorkItemProcessingResult result) {
+        private RecordingQueueProcessor(WorkItemProcessingResult result)
+        {
             super(new InMemoryWorkItemQueue(), command -> result);
             this.result = result;
         }
 
         @Override
-        public WorkItemProcessingResult process(QueuedWorkItemEvent event) {
+        public WorkItemProcessingResult process(QueuedWorkItemEvent event)
+        {
             calls++;
             lastEvent = event;
             return result;
         }
     }
 
-    private static class StubProcessingService extends WorkItemProcessingService {
+    private static class StubProcessingService extends WorkItemProcessingService
+    {
 
         private final WorkItemProcessingResult result;
         private int calls;
 
-        private StubProcessingService(WorkItemProcessingResult result) {
+        private StubProcessingService(WorkItemProcessingResult result)
+        {
             super(null, null, null, null);
             this.result = result;
         }
 
         @Override
-        public WorkItemProcessingResult process(ProcessWorkItemCommand command) {
+        public WorkItemProcessingResult process(ProcessWorkItemCommand command)
+        {
             calls++;
             return result;
         }
     }
 
-    private static class FixedClock extends Clock {
+    private static class FixedClock extends Clock
+    {
 
         private final Instant instant;
 
-        private FixedClock(Instant instant) {
+        private FixedClock(Instant instant)
+        {
             this.instant = instant;
         }
 
         @Override
-        public ZoneId getZone() {
+        public ZoneId getZone()
+        {
             return ZoneId.of("UTC");
         }
 
         @Override
-        public Clock withZone(ZoneId zone) {
+        public Clock withZone(ZoneId zone)
+        {
             return this;
         }
 
         @Override
-        public Instant instant() {
+        public Instant instant()
+        {
             return instant;
         }
     }

@@ -203,7 +203,8 @@ public class ConfigUiModel {
         }
 
         public void setReversibleBusinessFields(List<String> reversibleBusinessFields) {
-            this.reversibleBusinessFields = reversibleBusinessFields == null ? new ArrayList<>() : reversibleBusinessFields;
+            this.reversibleBusinessFields = reversibleBusinessFields == null ? new ArrayList<>()
+                    : reversibleBusinessFields;
         }
     }
 
@@ -342,4 +343,3 @@ public class ConfigUiModel {
         }
     }
 }
-

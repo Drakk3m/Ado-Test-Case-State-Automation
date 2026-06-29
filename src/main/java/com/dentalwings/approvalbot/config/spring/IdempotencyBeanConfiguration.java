@@ -23,7 +23,8 @@ public class IdempotencyBeanConfiguration {
             return new InMemoryProcessedEventStore(ttl, idempotency.getMaxRecords());
         }
         if ("sqlite".equals(type)) {
-            return new SqliteProcessedEventStore(Path.of(idempotency.getSqlitePath()), ttl, idempotency.getMaxRecords());
+            return new SqliteProcessedEventStore(Path.of(idempotency.getSqlitePath()), ttl,
+                    idempotency.getMaxRecords());
         }
         throw new IllegalArgumentException("Unsupported idempotency.type: " + idempotency.getType());
     }

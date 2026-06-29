@@ -1,33 +1,31 @@
 package com.dentalwings.approvalbot.idempotency;
 
-import com.dentalwings.approvalbot.domain.ProcessingResult;
-import java.time.Instant;
 import java.util.Optional;
+import java.time.Instant;
 
-public record ProcessedEventRecord(
-        ProcessedEventKey key,
-        ProcessingResult result,
-        int retryCount,
-        Instant nextRetryAt,
-        Instant receivedAt,
-        Instant completedAt,
-        String errorCategory,
-        String errorMessage
-) {
+import com.dentalwings.approvalbot.domain.ProcessingResult;
 
-    public Optional<Instant> maybeNextRetryAt() {
+public record ProcessedEventRecord(ProcessedEventKey key, ProcessingResult result, int retryCount, Instant nextRetryAt,
+                                   Instant receivedAt, Instant completedAt, String errorCategory, String errorMessage)
+{
+
+    public Optional<Instant> maybeNextRetryAt()
+    {
         return Optional.ofNullable(nextRetryAt);
     }
 
-    public Optional<Instant> maybeCompletedAt() {
+    public Optional<Instant> maybeCompletedAt()
+    {
         return Optional.ofNullable(completedAt);
     }
 
-    public Optional<String> maybeErrorCategory() {
+    public Optional<String> maybeErrorCategory()
+    {
         return Optional.ofNullable(errorCategory);
     }
 
-    public Optional<String> maybeErrorMessage() {
+    public Optional<String> maybeErrorMessage()
+    {
         return Optional.ofNullable(errorMessage);
     }
 }

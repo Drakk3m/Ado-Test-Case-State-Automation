@@ -70,17 +70,10 @@ class DryRunAdoClientTest {
 
         var logs = captureLogs(() -> client.patchWorkItem(KEY, patchOperations()));
 
-        assertThat(logs)
-                .contains("Dry-run would PATCH Work Item")
-                .contains("suppressed ADO write")
-                .contains("project=ProjectA")
-                .contains("workItemId=123")
-                .contains("revision=27")
-                .contains("operationCount=3")
-                .contains("/rev")
-                .contains("/fields/System.State")
-                .contains("/fields/Custom.ApprovedBySME")
-                .doesNotContain("SECRET_FIELD_VALUE");
+        assertThat(logs).contains("Dry-run would PATCH Work Item").contains("suppressed ADO write")
+                .contains("project=ProjectA").contains("workItemId=123").contains("revision=27")
+                .contains("operationCount=3").contains("/rev").contains("/fields/System.State")
+                .contains("/fields/Custom.ApprovedBySME").doesNotContain("SECRET_FIELD_VALUE");
     }
 
     @Test
@@ -90,20 +83,14 @@ class DryRunAdoClientTest {
 
         var logs = captureLogs(() -> client.createWorkItemComment(KEY, "SECRET_COMMENT_TEXT"));
 
-        assertThat(logs)
-                .contains("Dry-run would create comment")
-                .contains("suppressed ADO write")
-                .contains("project=ProjectA")
-                .contains("workItemId=123")
-                .doesNotContain("SECRET_COMMENT_TEXT");
+        assertThat(logs).contains("Dry-run would create comment").contains("suppressed ADO write")
+                .contains("project=ProjectA").contains("workItemId=123").doesNotContain("SECRET_COMMENT_TEXT");
     }
 
     private List<PatchOperation> patchOperations() {
-        return List.of(
-                PatchOperation.testRevision(27),
+        return List.of(PatchOperation.testRevision(27),
                 PatchOperation.replaceField("System.State", "SECRET_FIELD_VALUE"),
-                PatchOperation.replaceField("Custom.ApprovedBySME", "SECRET_FIELD_VALUE")
-        );
+                PatchOperation.replaceField("Custom.ApprovedBySME", "SECRET_FIELD_VALUE"));
     }
 
     private String captureLogs(Runnable action) {
@@ -115,9 +102,8 @@ class DryRunAdoClientTest {
         logger.setLevel(Level.INFO);
         try {
             action.run();
-            return appender.list.stream()
-                    .map(ILoggingEvent::getFormattedMessage)
-                    .reduce("", (left, right) -> left + "\n" + right);
+            return appender.list.stream().map(ILoggingEvent::getFormattedMessage).reduce("",
+                    (left, right) -> left + "\n" + right);
         } finally {
             logger.detachAppender(appender);
             logger.setLevel(originalLevel);
@@ -126,21 +112,9 @@ class DryRunAdoClientTest {
 
     private static class RecordingAdoClient implements AdoClient {
 
-        private final AdoWorkItem workItem = new AdoWorkItem(
-                123,
-                "ProjectA",
-                "Test Case",
-                27,
-                "In Review",
-                Map.of()
-        );
-        private final AdoWorkItemRevision revision = new AdoWorkItemRevision(
-                123,
-                26,
-                null,
-                Map.of(),
-                java.util.Set.of()
-        );
+        private final AdoWorkItem workItem = new AdoWorkItem(123, "ProjectA", "Test Case", 27, "In Review", Map.of());
+        private final AdoWorkItemRevision revision = new AdoWorkItemRevision(123, 26, null, Map.of(),
+                java.util.Set.of());
 
         private int fetchWorkItemCalls;
         private int fetchRevisionCalls;

@@ -1,5 +1,12 @@
 package com.dentalwings.approvalbot.workflow;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+import org.junit.jupiter.api.Test;
 import com.dentalwings.approvalbot.ado.AdoIdentity;
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
 import com.dentalwings.approvalbot.config.WorkflowStateNames;
@@ -7,14 +14,9 @@ import com.dentalwings.approvalbot.domain.Identity;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import com.dentalwings.approvalbot.domain.ProcessingResult;
 import com.dentalwings.approvalbot.domain.WorkflowInput;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-class WorkflowEngineTest {
+class WorkflowEngineTest
+{
 
     private static final String SME_FIELD = "Custom.ApprovedBySME";
     private static final String SQA_FIELD = "Custom.ApprovedBySQA";
@@ -24,7 +26,8 @@ class WorkflowEngineTest {
     private final WorkflowEngine workflowEngine = new WorkflowEngine();
 
     @Test
-    void disabledProjectIsSkipped() {
+    void disabledProjectIsSkipped()
+    {
         var decision = workflowEngine.decide(input("In Review", config(false), sme(), Map.of(), Map.of()));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
@@ -32,8 +35,10 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void unsupportedWorkItemTypeIsSkipped() {
-        var input = new WorkflowInput("ProjectA", 1, 1, "Bug", "Design", "In Review", sme(), Map.of(), Map.of(), config(true));
+    void unsupportedWorkItemTypeIsSkipped()
+    {
+        var input = new WorkflowInput("ProjectA", 1, 1, "Bug", "Design", "In Review", sme(), Map.of(), Map.of(),
+                config(true));
 
         var decision = workflowEngine.decide(input);
 
@@ -42,7 +47,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void unknownStateIsSkipped() {
+    void unknownStateIsSkipped()
+    {
         var decision = workflowEngine.decide(input("Closed", config(true), sme(), Map.of(), Map.of()));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
@@ -50,21 +56,21 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void designClearsStaleApprovals() {
+    void designClearsStaleApprovals()
+    {
         var current = fields(SME_FIELD, "Ana <ana@example.com>", SQA_FIELD, "Sam <sam@example.com>");
 
         var decision = workflowEngine.decide(input("Design", config(true), sme(), Map.of(), current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SME_FIELD, ""),
-                PatchOperation.replaceField(SQA_FIELD, "")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, ""));
         assertThat(decision.comment()).isNull();
     }
 
     @Test
-    void designWithEmptyApprovalsIsSkipped() {
+    void designWithEmptyApprovalsIsSkipped()
+    {
         var current = fields(SME_FIELD, "", SQA_FIELD, null);
 
         var decision = workflowEngine.decide(input("Design", config(true), sme(), Map.of(), current));
@@ -74,22 +80,22 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void designToApprovedForcesInReviewAndClearsApprovals() {
-        var input = new WorkflowInput("ProjectA", 1, 2, "Test Case", "Design", "Approved", sme(), Map.of(), Map.of(), config(true));
+    void designToApprovedForcesInReviewAndClearsApprovals()
+    {
+        var input = new WorkflowInput("ProjectA", 1, 2, "Test Case", "Design", "Approved", sme(), Map.of(), Map.of(),
+                config(true));
 
         var decision = workflowEngine.decide(input);
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, ""),
-                PatchOperation.replaceField(SQA_FIELD, "")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SME_FIELD, ""), PatchOperation.replaceField(SQA_FIELD, ""));
         assertThat(decision.comment()).contains("cannot move directly from Design to Approved");
     }
 
     @Test
-    void nonApproverChangingReversibleFieldInReviewIsReverted() {
+    void nonApproverChangingReversibleFieldInReviewIsReverted()
+    {
         var previous = fields(TITLE_FIELD, "Old title");
         var current = fields(TITLE_FIELD, "New title");
 
@@ -101,7 +107,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void nonApproverChangingOnlyUnconfiguredFieldIsSkipped() {
+    void nonApproverChangingOnlyUnconfiguredFieldIsSkipped()
+    {
         var previous = fields("Custom.Unconfigured", "Old");
         var current = fields("Custom.Unconfigured", "New");
 
@@ -112,51 +119,50 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void smeChangingReversibleFieldInReviewClearsApprovalsAndSetsSme() {
-        var previous = fields(TITLE_FIELD, "Old", SME_FIELD, "Other <other@example.com>", SQA_FIELD, "Sam <sam@example.com>");
-        var current = fields(TITLE_FIELD, "New", SME_FIELD, "Other <other@example.com>", SQA_FIELD, "Sam <sam@example.com>");
+    void smeChangingReversibleFieldInReviewClearsApprovalsAndSetsSme()
+    {
+        var previous = fields(TITLE_FIELD, "Old", SME_FIELD, "Other <other@example.com>", SQA_FIELD,
+                "Sam <sam@example.com>");
+        var current = fields(TITLE_FIELD, "New", SME_FIELD, "Other <other@example.com>", SQA_FIELD,
+                "Sam <sam@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), previous, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SME_FIELD, ""),
-                PatchOperation.replaceField(SQA_FIELD, ""),
-                PatchOperation.replaceField(SME_FIELD, "Ana Perez")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, ""), PatchOperation.replaceField(SME_FIELD, "Ana Perez"));
         assertThat(decision.comment()).isNull();
     }
 
     @Test
-    void sqaApprovingAfterSmeMovesStateToApproved() {
+    void sqaApprovingAfterSmeMovesStateToApproved()
+    {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
-                PatchOperation.replaceField("System.State", "Approved")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
+                PatchOperation.replaceField("System.State", "Approved"));
         assertThat(decision.comment()).contains("Test Case approved automatically");
     }
 
     @Test
-    void sqaApprovingAfterSmeMovesStateToConfiguredApprovedState() {
+    void sqaApprovingAfterSmeMovesStateToConfiguredApprovedState()
+    {
         var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
         var decision = workflowEngine.decide(input("Peer Review", config, sqa(), Map.of(), current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
-                PatchOperation.replaceField("System.State", "Approval")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
+                PatchOperation.replaceField("System.State", "Approval"));
     }
 
     @Test
-    void configuredApprovedStateIsRecognizedAsFinalized() {
+    void configuredApprovedStateIsRecognizedAsFinalized()
+    {
         var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
@@ -167,7 +173,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void configuredDesignStateIsRecognized() {
+    void configuredDesignStateIsRecognized()
+    {
         var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
@@ -178,20 +185,20 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void configuredInReviewStateIsRecognized() {
+    void configuredInReviewStateIsRecognized()
+    {
         var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
         var decision = workflowEngine.decide(input("Peer Review", config, sqa(), Map.of(), current));
 
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
-                PatchOperation.replaceField("System.State", "Approval")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
+                PatchOperation.replaceField("System.State", "Approval"));
     }
 
     @Test
-    void inReviewWithCurrentSmeAlreadyPresentAndValidSqaMovesStateToApproved() {
+    void inReviewWithCurrentSmeAlreadyPresentAndValidSqaMovesStateToApproved()
+    {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
@@ -202,7 +209,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void inReviewWithCurrentSqaAlreadyPresentAndValidSmeMovesStateToApproved() {
+    void inReviewWithCurrentSqaAlreadyPresentAndValidSmeMovesStateToApproved()
+    {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
@@ -213,7 +221,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void inReviewWithValidSmeAndInvalidSqaClearsInvalidSqaAndRemainsInReview() {
+    void inReviewWithValidSmeAndInvalidSqaClearsInvalidSqaAndRemainsInReview()
+    {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Other User <other@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
@@ -225,7 +234,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void inReviewWithInvalidSmeAndValidSqaClearsInvalidSmeAndRemainsInReview() {
+    void inReviewWithInvalidSmeAndValidSqaClearsInvalidSmeAndRemainsInReview()
+    {
         var current = fields(SME_FIELD, "Other User <other@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
@@ -236,7 +246,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void inReviewWithOnlyValidSmeRemainsInReviewWithoutPatch() {
+    void inReviewWithOnlyValidSmeRemainsInReviewWithoutPatch()
+    {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
@@ -247,7 +258,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void inReviewWithOnlyValidSqaRemainsInReviewWithoutPatch() {
+    void inReviewWithOnlyValidSqaRemainsInReviewWithoutPatch()
+    {
         var current = fields(SQA_FIELD, "Sam Quality <sam@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
@@ -258,7 +270,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void inReviewWithSameUserInBothApprovalFieldsDoesNotApproveAndClearsSqa() {
+    void inReviewWithSameUserInBothApprovalFieldsDoesNotApproveAndClearsSqa()
+    {
         var config = config(true, Set.of("dual@example.com"), Set.of("dual@example.com"));
         var current = fields(SME_FIELD, "Dual Role <dual@example.com>", SQA_FIELD, "Dual Role <dual@example.com>");
 
@@ -270,45 +283,45 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void approvedWithMissingApprovalsIsForcedBackToInReview() {
+    void approvedWithMissingApprovalsIsForcedBackToInReview()
+    {
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), Map.of()));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, ""),
-                PatchOperation.replaceField(SQA_FIELD, "")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SME_FIELD, ""), PatchOperation.replaceField(SQA_FIELD, ""));
         assertThat(decision.comment()).contains("does not have valid SME and SQA approvals");
     }
 
     @Test
-    void sameUserInSmeAndSqaApprovalFieldsIsInvalid() {
+    void sameUserInSmeAndSqaApprovalFieldsIsInvalid()
+    {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Ana Perez <ana@example.com>");
         var config = config(true, Set.of("ana@example.com"), Set.of("ana@example.com"));
 
         var decision = workflowEngine.decide(input("Approved", config, nonApprover(), Map.of(), current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SQA_FIELD, "")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SQA_FIELD, ""));
     }
 
     @Test
-    void manualApprovalFieldEditByNonApproverIsRestoredAndNotTreatedAsContent() {
+    void manualApprovalFieldEditByNonApproverIsRestoredAndNotTreatedAsContent()
+    {
         var previous = fields(SME_FIELD, "Ana Perez <ana@example.com>");
         var current = fields(SME_FIELD, "Nora User <nora@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
+        assertThat(decision.patchOperations())
+                .containsExactly(PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
     }
 
     @Test
-    void manualApprovalFieldEditByApproverWithoutContentChangeCountsAsReview() {
+    void manualApprovalFieldEditByApproverWithoutContentChangeCountsAsReview()
+    {
         var current = fields(SME_FIELD, "Manual Value <other@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
@@ -317,34 +330,34 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void approverChangingContentAndApprovalFieldsClearsPreviousApprovalsAndSetsCurrentUser() {
-        var previous = fields(TITLE_FIELD, "Old", SME_FIELD, "Old SME <old-sme@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
-        var current = fields(TITLE_FIELD, "New", SME_FIELD, "Manual SME <manual@example.com>", SQA_FIELD, "Manual SQA <manual@example.com>");
+    void approverChangingContentAndApprovalFieldsClearsPreviousApprovalsAndSetsCurrentUser()
+    {
+        var previous = fields(TITLE_FIELD, "Old", SME_FIELD, "Old SME <old-sme@example.com>", SQA_FIELD,
+                "Sam Quality <sam@example.com>");
+        var current = fields(TITLE_FIELD, "New", SME_FIELD, "Manual SME <manual@example.com>", SQA_FIELD,
+                "Manual SQA <manual@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), previous, current));
 
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(SME_FIELD, ""),
-                PatchOperation.replaceField(SQA_FIELD, ""),
-                PatchOperation.replaceField(SME_FIELD, "Ana Perez")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, ""), PatchOperation.replaceField(SME_FIELD, "Ana Perez"));
     }
 
     @Test
-    void nonApproverChangingContentAndApprovalFieldsRevertsContentAndRestoresApprovals() {
+    void nonApproverChangingContentAndApprovalFieldsRevertsContentAndRestoresApprovals()
+    {
         var previous = fields(TITLE_FIELD, "Old", SME_FIELD, "Ana Perez <ana@example.com>");
         var current = fields(TITLE_FIELD, "New", SME_FIELD, "Nora User <nora@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
 
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField(TITLE_FIELD, "Old"),
-                PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "Old"),
+                PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
     }
 
     @Test
-    void dualRoleUserWithNoApprovalsIsRecordedAsSmeFirst() {
+    void dualRoleUserWithNoApprovalsIsRecordedAsSmeFirst()
+    {
         var config = config(true, Set.of("dual@example.com"), Set.of("dual@example.com"));
 
         var decision = workflowEngine.decide(input("In Review", config, dualRole(), Map.of(), Map.of()));
@@ -353,39 +366,34 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void smeApprovalClassificationUsesEmailLoginAndPatchValueUsesDisplayNameScalar() {
+    void smeApprovalClassificationUsesEmailLoginAndPatchValueUsesDisplayNameScalar()
+    {
         var changedBy = new Identity("Yunier Perez", "U129670@EXAMPLE.COM");
         var config = config(true, Set.of("u129670@example.com"), Set.of("sam@example.com"));
 
         var decision = workflowEngine.decide(input("In Review", config, changedBy, Map.of(), Map.of()));
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "Yunier Perez"));
-        assertThat(decision.patchOperations().getFirst().value())
-                .isInstanceOf(String.class)
-                .isNotEqualTo(changedBy)
-                .asString()
-                .doesNotContain("displayName")
-                .doesNotContain("u129670@example.com");
+        assertThat(decision.patchOperations().getFirst().value()).isInstanceOf(String.class).isNotEqualTo(changedBy)
+                .asString().doesNotContain("displayName").doesNotContain("u129670@example.com");
     }
 
     @Test
-    void sqaApprovalClassificationUsesEmailLoginAndPatchValueUsesDisplayNameScalar() {
+    void sqaApprovalClassificationUsesEmailLoginAndPatchValueUsesDisplayNameScalar()
+    {
         var changedBy = new Identity("SQA Display", "SQA@EXAMPLE.COM");
         var config = config(true, Set.of("ana@example.com"), Set.of("sqa@example.com"));
 
         var decision = workflowEngine.decide(input("In Review", config, changedBy, Map.of(), Map.of()));
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, "SQA Display"));
-        assertThat(decision.patchOperations().getFirst().value())
-                .isInstanceOf(String.class)
-                .isNotEqualTo(changedBy)
-                .asString()
-                .doesNotContain("displayName")
-                .doesNotContain("sqa@example.com");
+        assertThat(decision.patchOperations().getFirst().value()).isInstanceOf(String.class).isNotEqualTo(changedBy)
+                .asString().doesNotContain("displayName").doesNotContain("sqa@example.com");
     }
 
     @Test
-    void displayNameDoesNotAuthorizeWhenEmailLoginDoesNotMatchConfiguredApprover() {
+    void displayNameDoesNotAuthorizeWhenEmailLoginDoesNotMatchConfiguredApprover()
+    {
         var changedBy = new Identity("Ana Perez", "nora@example.com");
 
         var decision = workflowEngine.decide(input("In Review", config(true), changedBy, Map.of(), Map.of()));
@@ -395,18 +403,21 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void blankDisplayNameFallsBackToNormalizedEmailLoginForApprovalPatchValue() {
+    void blankDisplayNameFallsBackToNormalizedEmailLoginForApprovalPatchValue()
+    {
         var changedBy = new Identity("  ", " U129670@EXAMPLE.COM ");
         var config = config(true, Set.of("u129670@example.com"), Set.of("sam@example.com"));
 
         var decision = workflowEngine.decide(input("In Review", config, changedBy, Map.of(), Map.of()));
 
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "u129670@example.com"));
+        assertThat(decision.patchOperations())
+                .containsExactly(PatchOperation.replaceField(SME_FIELD, "u129670@example.com"));
         assertThat(decision.patchOperations().getFirst().value()).isInstanceOf(String.class);
     }
 
     @Test
-    void dualRoleUserAlreadyInSmeMustNotFillSqaForSameVersion() {
+    void dualRoleUserAlreadyInSmeMustNotFillSqaForSameVersion()
+    {
         var config = config(true, Set.of("dual@example.com"), Set.of("dual@example.com"));
         var current = fields(SME_FIELD, "Dual Role <dual@example.com>");
 
@@ -417,7 +428,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void existingValidApprovalsFromDifferentUsersMakeApprovedValid() {
+    void existingValidApprovalsFromDifferentUsersMakeApprovedValid()
+    {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
@@ -427,7 +439,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void existingValidBareEmailApprovalsFromDifferentUsersMakeApprovedValid() {
+    void existingValidBareEmailApprovalsFromDifferentUsersMakeApprovedValid()
+    {
         var current = fields(SME_FIELD, "ana@example.com", SQA_FIELD, "sam@example.com");
 
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
@@ -437,11 +450,10 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void existingAdoIdentityObjectApprovalsFromDifferentUsersMakeApprovedValid() {
-        var current = fields(
-                SME_FIELD, new AdoIdentity("Ana Perez", "ana@example.com"),
-                SQA_FIELD, new AdoIdentity("Sam Quality", "sam@example.com")
-        );
+    void existingAdoIdentityObjectApprovalsFromDifferentUsersMakeApprovedValid()
+    {
+        var current = fields(SME_FIELD, new AdoIdentity("Ana Perez", "ana@example.com"), SQA_FIELD,
+                new AdoIdentity("Sam Quality", "sam@example.com"));
 
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
 
@@ -450,11 +462,10 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void existingMapIdentityApprovalValuesUseEmailForValidation() {
-        var current = fields(
-                SME_FIELD, Map.of("displayName", "Ana Perez", "uniqueName", "ana@example.com"),
-                SQA_FIELD, Map.of("displayName", "Sam Quality", "mailAddress", "sam@example.com")
-        );
+    void existingMapIdentityApprovalValuesUseEmailForValidation()
+    {
+        var current = fields(SME_FIELD, Map.of("displayName", "Ana Perez", "uniqueName", "ana@example.com"), SQA_FIELD,
+                Map.of("displayName", "Sam Quality", "mailAddress", "sam@example.com"));
 
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
 
@@ -463,62 +474,67 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void approvalValueWithoutExtractableEmailIsRejected() {
+    void approvalValueWithoutExtractableEmailIsRejected()
+    {
         var current = fields(SME_FIELD, "Ana Perez", SQA_FIELD, "Sam Quality <sam@example.com>");
 
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
 
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, "")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SME_FIELD, ""));
     }
 
     @Test
-    void approvalEmailOutsideRoleListIsRejected() {
+    void approvalEmailOutsideRoleListIsRejected()
+    {
         var current = fields(SME_FIELD, "Other <other@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
         var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
 
-        assertThat(decision.patchOperations()).containsExactly(
-                PatchOperation.replaceField("System.State", "In Review"),
-                PatchOperation.replaceField(SME_FIELD, "")
-        );
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SME_FIELD, ""));
     }
 
     @Test
-    void botGeneratedEventIsSkippedWhenChangedByEmailMatchesConfiguredBotEmail() {
+    void botGeneratedEventIsSkippedWhenChangedByEmailMatchesConfiguredBotEmail()
+    {
         var previous = fields(TITLE_FIELD, "Old");
         var current = fields(TITLE_FIELD, "New");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), new Identity("Approval Bot", "bot@example.com"), previous, current));
+        var decision = workflowEngine.decide(
+                input("In Review", config(true), new Identity("Approval Bot", "bot@example.com"), previous, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
     }
 
     @Test
-    void botIdentityDoesNotMatchByDisplayNameWhenEmailIsMissing() {
+    void botIdentityDoesNotMatchByDisplayNameWhenEmailIsMissing()
+    {
         var previous = fields(TITLE_FIELD, "Old");
         var current = fields(TITLE_FIELD, "New");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), new Identity("Approval Bot", null), previous, current));
+        var decision = workflowEngine
+                .decide(input("In Review", config(true), new Identity("Approval Bot", null), previous, current));
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "Old"));
     }
 
     @Test
-    void previousRawValueWithLeadingAndTrailingSpacesIsPreservedWhenReverting() {
+    void previousRawValueWithLeadingAndTrailingSpacesIsPreservedWhenReverting()
+    {
         var previous = fields(TITLE_FIELD, "  Old title  ");
         var current = fields(TITLE_FIELD, "New title");
 
         var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
 
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "  Old title  "));
+        assertThat(decision.patchOperations())
+                .containsExactly(PatchOperation.replaceField(TITLE_FIELD, "  Old title  "));
     }
 
     @Test
-    void missingPreviousFieldAndCurrentNonEmptyFieldRevertsToNull() {
+    void missingPreviousFieldAndCurrentNonEmptyFieldRevertsToNull()
+    {
         var current = fields(TITLE_FIELD, "New title");
 
         var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), Map.of(), current));
@@ -527,7 +543,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void previousNonEmptyFieldAndCurrentEmptyFieldIsDetectedAsRealChange() {
+    void previousNonEmptyFieldAndCurrentEmptyFieldIsDetectedAsRealChange()
+    {
         var previous = fields(TITLE_FIELD, "Old title");
         var current = fields(TITLE_FIELD, "");
 
@@ -537,7 +554,8 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void systemStateChangeAloneIsNotTreatedAsContentChange() {
+    void systemStateChangeAloneIsNotTreatedAsContentChange()
+    {
         var previous = fields("System.State", "In Review");
         var current = fields("System.State", "Approved");
 
@@ -547,35 +565,42 @@ class WorkflowEngineTest {
     }
 
     @Test
-    void approvalFieldChangeAloneIsNotTreatedAsContentChange() {
+    void approvalFieldChangeAloneIsNotTreatedAsContentChange()
+    {
         var previous = fields(SME_FIELD, "Ana Perez <ana@example.com>");
         var current = fields(SME_FIELD, "Nora User <nora@example.com>");
 
-        assertThat(new ChangeAnalyzer(new ValueComparator()).changedReversibleFields(previous, current, config(true))).isEmpty();
+        assertThat(new ChangeAnalyzer(new ValueComparator()).changedReversibleFields(previous, current, config(true)))
+                .isEmpty();
     }
 
     @Test
-    void missingChangedByEmailCannotMatchSmeOrSqa() {
+    void missingChangedByEmailCannotMatchSmeOrSqa()
+    {
         var previous = fields(TITLE_FIELD, "Old");
         var current = fields(TITLE_FIELD, "New");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), new Identity("Ana Perez", null), previous, current));
+        var decision = workflowEngine
+                .decide(input("In Review", config(true), new Identity("Ana Perez", null), previous, current));
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "Old"));
     }
 
     @Test
-    void valueComparatorTreatsNullAndEmptyAsEqual() {
+    void valueComparatorTreatsNullAndEmptyAsEqual()
+    {
         assertThat(new ValueComparator().equivalent(null, "")).isTrue();
     }
 
     @Test
-    void valueComparatorTrimsLeadingAndTrailingWhitespace() {
+    void valueComparatorTrimsLeadingAndTrailingWhitespace()
+    {
         assertThat(new ValueComparator().equivalent(" value ", "value")).isTrue();
     }
 
     @Test
-    void changeAnalyzerIgnoresUnconfiguredFields() {
+    void changeAnalyzerIgnoresUnconfiguredFields()
+    {
         var analyzer = new ChangeAnalyzer(new ValueComparator());
         var previous = fields("Custom.Other", "Old");
         var current = fields("Custom.Other", "New");
@@ -583,56 +608,60 @@ class WorkflowEngineTest {
         assertThat(analyzer.changedReversibleFields(previous, current, config(true))).isEmpty();
     }
 
-    private WorkflowInput input(String currentState, ProjectApprovalConfig config, Identity changedBy, Map<String, Object> previousFields, Map<String, Object> currentFields) {
-        return new WorkflowInput("ProjectA", 1, 1, "Test Case", "In Review", currentState, changedBy, previousFields, currentFields, config);
+    private WorkflowInput input(String currentState, ProjectApprovalConfig config, Identity changedBy,
+            Map<String, Object> previousFields, Map<String, Object> currentFields)
+    {
+        return new WorkflowInput("ProjectA", 1, 1, "Test Case", "In Review", currentState, changedBy, previousFields,
+                currentFields, config);
     }
 
-    private ProjectApprovalConfig config(boolean enabled) {
+    private ProjectApprovalConfig config(boolean enabled)
+    {
         return config(enabled, Set.of("ana@example.com"), Set.of("sam@example.com"));
     }
 
-    private ProjectApprovalConfig config(boolean enabled, WorkflowStateNames stateNames) {
+    private ProjectApprovalConfig config(boolean enabled, WorkflowStateNames stateNames)
+    {
         return config(enabled, Set.of("ana@example.com"), Set.of("sam@example.com"), stateNames);
     }
 
-    private ProjectApprovalConfig config(boolean enabled, Set<String> smeUsers, Set<String> sqaUsers) {
+    private ProjectApprovalConfig config(boolean enabled, Set<String> smeUsers, Set<String> sqaUsers)
+    {
         return config(enabled, smeUsers, sqaUsers, WorkflowStateNames.defaults());
     }
 
-    private ProjectApprovalConfig config(boolean enabled, Set<String> smeUsers, Set<String> sqaUsers, WorkflowStateNames stateNames) {
-        return new ProjectApprovalConfig(
-                "ProjectA",
-                enabled,
-                Set.of("Test Case"),
-                SME_FIELD,
-                SQA_FIELD,
-                Set.of(TITLE_FIELD, DESCRIPTION_FIELD),
-                smeUsers,
-                sqaUsers,
-                "bot@example.com",
-                stateNames
-        );
+    private ProjectApprovalConfig config(boolean enabled, Set<String> smeUsers, Set<String> sqaUsers,
+            WorkflowStateNames stateNames)
+    {
+        return new ProjectApprovalConfig("ProjectA", enabled, Set.of("Test Case"), SME_FIELD, SQA_FIELD,
+                Set.of(TITLE_FIELD, DESCRIPTION_FIELD), smeUsers, sqaUsers, "bot@example.com", stateNames);
     }
 
-    private Identity sme() {
+    private Identity sme()
+    {
         return new Identity("Ana Perez", "ana@example.com");
     }
 
-    private Identity sqa() {
+    private Identity sqa()
+    {
         return new Identity("Sam Quality", "sam@example.com");
     }
 
-    private Identity nonApprover() {
+    private Identity nonApprover()
+    {
         return new Identity("Nora User", "nora@example.com");
     }
 
-    private Identity dualRole() {
+    private Identity dualRole()
+    {
         return new Identity("Dual Role", "dual@example.com");
     }
 
-    private Map<String, Object> fields(Object... entries) {
+    private Map<String, Object> fields(Object... entries)
+    {
         var fields = new HashMap<String, Object>();
-        for (int i = 0; i < entries.length; i += 2) {
+        for (int i = 0; i < entries.length; i += 2)
+        {
             fields.put((String) entries[i], entries[i + 1]);
         }
         return fields;

@@ -58,8 +58,7 @@ class InMemoryProcessedEventStoreTest {
 
     @Test
     void keyEqualityUsesNormalizedProjectConsistently() {
-        assertThat(new ProcessedEventKey(" ProjectA ", 10, 3))
-                .isEqualTo(new ProcessedEventKey("projecta", 10, 3));
+        assertThat(new ProcessedEventKey(" ProjectA ", 10, 3)).isEqualTo(new ProcessedEventKey("projecta", 10, 3));
     }
 
     @Test
@@ -68,8 +67,8 @@ class InMemoryProcessedEventStoreTest {
 
         store.markProcessed(KEY, WorkItemProcessingResult.completedWithWarning("comment failed", null));
 
-        assertThat(store.find(KEY)).hasValueSatisfying(record ->
-                assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING));
+        assertThat(store.find(KEY)).hasValueSatisfying(
+                record -> assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING));
     }
 
     @Test
@@ -140,7 +139,8 @@ class InMemoryProcessedEventStoreTest {
 
     @Test
     void inMemoryStoreIsIndependentFromSpringData() {
-        assertNoForbiddenTypeReferences("org.springframework.data", InMemoryProcessedEventStore.class, ProcessedEventStore.class);
+        assertNoForbiddenTypeReferences("org.springframework.data", InMemoryProcessedEventStore.class,
+                ProcessedEventStore.class);
         assertNoForbiddenTypeReferences("Repository", InMemoryProcessedEventStore.class, ProcessedEventStore.class);
     }
 
@@ -194,21 +194,10 @@ class InMemoryProcessedEventStoreTest {
     }
 
     private ProcessWorkItemCommand command() {
-        return new ProcessWorkItemCommand(
-                new AdoWorkItemKey("org", "ProjectA", 10),
-                3,
-                new ProjectApprovalConfig(
-                        "ProjectA",
-                        true,
-                        Set.of("Test Case"),
-                        "Custom.ApprovedBySME",
-                        "Custom.ApprovedBySQA",
-                        Set.of("System.Title"),
-                        Set.of("sme@example.com"),
-                        Set.of("sqa@example.com"),
-                        "bot@example.com"
-                )
-        );
+        return new ProcessWorkItemCommand(new AdoWorkItemKey("org", "ProjectA", 10), 3,
+                new ProjectApprovalConfig("ProjectA", true, Set.of("Test Case"), "Custom.ApprovedBySME",
+                        "Custom.ApprovedBySQA", Set.of("System.Title"), Set.of("sme@example.com"),
+                        Set.of("sqa@example.com"), "bot@example.com"));
     }
 
     private void assertNoForbiddenTypeReferences(String forbiddenText, Class<?>... classes) {

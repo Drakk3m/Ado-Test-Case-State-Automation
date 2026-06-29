@@ -30,8 +30,7 @@ public class ApprovalFieldsProperties {
     }
 
     public void setReversibleBusinessFields(Set<String> reversibleBusinessFields) {
-        this.reversibleBusinessFields = reversibleBusinessFields == null
-                ? new LinkedHashSet<>()
+        this.reversibleBusinessFields = reversibleBusinessFields == null ? new LinkedHashSet<>()
                 : new LinkedHashSet<>(reversibleBusinessFields);
     }
 }

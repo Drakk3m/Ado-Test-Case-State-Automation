@@ -28,8 +28,7 @@ public class ApplicationLocalConfigService
     @Autowired
     public ApplicationLocalConfigService(
             @Value("${approvalbot.ui.config-file:src/main/resources/application-local.yml}") String configFile,
-            AdoConfigDraftValidationService validationService
-    )
+            AdoConfigDraftValidationService validationService)
     {
         this(Path.of(configFile), validationService);
     }
@@ -73,12 +72,8 @@ public class ApplicationLocalConfigService
     {
         var validation = validationService.validate(model);
         var yaml = validation.canGenerateDraftYaml() ? toYaml(model) : "";
-        return new AdoConfigPreview(
-                yaml,
-                validation,
-                validation.canGenerateDraftYaml(),
-                validation.canGenerateFinalYaml()
-        );
+        return new AdoConfigPreview(yaml, validation, validation.canGenerateDraftYaml(),
+                validation.canGenerateFinalYaml());
     }
 
     public ConfigValidationResult validate(ConfigUiModel model)
@@ -101,7 +96,8 @@ public class ApplicationLocalConfigService
         var preview = preview(model);
         if (!preview.finalYamlAllowed())
         {
-            throw new IllegalArgumentException("Final YAML cannot be saved until all blocking errors and unchecked ADO values are resolved.");
+            throw new IllegalArgumentException(
+                    "Final YAML cannot be saved until all blocking errors and unchecked ADO values are resolved.");
         }
         var yaml = preview.yaml();
         try
@@ -136,7 +132,8 @@ public class ApplicationLocalConfigService
         var webhookMap = map(root.get("webhook"));
         var sharedSecretMap = map(webhookMap.get("shared-secret"));
         model.getWebhook().getSharedSecret().setEnabled(bool(sharedSecretMap.get("enabled"), true));
-        model.getWebhook().getSharedSecret().setHeaderName(defaultIfBlank(text(sharedSecretMap.get("header-name")), "X-ADO-Webhook-Secret"));
+        model.getWebhook().getSharedSecret()
+                .setHeaderName(defaultIfBlank(text(sharedSecretMap.get("header-name")), "X-ADO-Webhook-Secret"));
 
         var retryMap = map(root.get("retry"));
         model.getRetry().setMaxAttempts(number(retryMap.get("max-attempts"), 3));
@@ -145,7 +142,8 @@ public class ApplicationLocalConfigService
 
         var idempotencyMap = map(root.get("idempotency"));
         model.getIdempotency().setType(defaultIfBlank(text(idempotencyMap.get("type")), "sqlite"));
-        model.getIdempotency().setSqlitePath(defaultIfBlank(text(idempotencyMap.get("sqlite-path")), "./data/approval-bot-sandbox.sqlite"));
+        model.getIdempotency().setSqlitePath(
+                defaultIfBlank(text(idempotencyMap.get("sqlite-path")), "./data/approval-bot-sandbox.sqlite"));
         model.getIdempotency().setTtlHours(numberLong(idempotencyMap.get("ttl-hours"), 24));
         model.getIdempotency().setMaxRecords(number(idempotencyMap.get("max-records"), 10000));
 
@@ -210,8 +208,10 @@ public class ApplicationLocalConfigService
                 out.append("      supported-work-item-types:\n");
                 appendList(out, project.getSupportedWorkItemTypes(), 8);
                 out.append("      fields:\n");
-                out.append("        approved-by-sme: ").append(quoted(project.getFields().getApprovedBySme())).append("\n");
-                out.append("        approved-by-sqa: ").append(quoted(project.getFields().getApprovedBySqa())).append("\n");
+                out.append("        approved-by-sme: ").append(quoted(project.getFields().getApprovedBySme()))
+                        .append("\n");
+                out.append("        approved-by-sqa: ").append(quoted(project.getFields().getApprovedBySqa()))
+                        .append("\n");
                 out.append("        reversible-business-fields:\n");
                 appendList(out, project.getFields().getReversibleBusinessFields(), 10);
                 out.append("      approvals:\n");
@@ -229,7 +229,8 @@ public class ApplicationLocalConfigService
         out.append("webhook:\n");
         out.append("  shared-secret:\n");
         out.append("    enabled: ").append(model.getWebhook().getSharedSecret().isEnabled()).append("\n");
-        out.append("    header-name: ").append(quoted(model.getWebhook().getSharedSecret().getHeaderName())).append("\n");
+        out.append("    header-name: ").append(quoted(model.getWebhook().getSharedSecret().getHeaderName()))
+                .append("\n");
         out.append("    value: ").append(WEBHOOK_SECRET_PLACEHOLDER).append("\n\n");
 
         out.append("retry:\n");
@@ -249,10 +250,7 @@ public class ApplicationLocalConfigService
     private void appendList(StringBuilder out, List<String> values, int indentation)
     {
         var indent = " ".repeat(indentation);
-        var normalized = values.stream()
-                .map(this::defaultString)
-                .filter(value -> !value.isBlank())
-                .toList();
+        var normalized = values.stream().map(this::defaultString).filter(value -> !value.isBlank()).toList();
 
         if (normalized.isEmpty())
         {
@@ -382,5 +380,3 @@ public class ApplicationLocalConfigService
         return value == null || value.isBlank();
     }
 }
-
-

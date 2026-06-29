@@ -18,13 +18,13 @@ public class IdentityClassifier {
             return new IdentityClassification(false, false);
         }
         return emailNormalizer.normalize(identity.email())
-                .map(email -> new IdentityClassification(normalized(config.smeUsers()).contains(email), normalized(config.sqaUsers()).contains(email)))
+                .map(email -> new IdentityClassification(normalized(config.smeUsers()).contains(email),
+                        normalized(config.sqaUsers()).contains(email)))
                 .orElse(new IdentityClassification(false, false));
     }
 
     private Set<String> normalized(Set<String> emails) {
-        return emails.stream()
-                .flatMap(email -> emailNormalizer.normalize(email).stream())
+        return emails.stream().flatMap(email -> emailNormalizer.normalize(email).stream())
                 .collect(Collectors.toUnmodifiableSet());
     }
 }

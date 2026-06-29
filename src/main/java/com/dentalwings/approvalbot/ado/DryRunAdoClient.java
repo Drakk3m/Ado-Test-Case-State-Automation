@@ -32,31 +32,21 @@ public class DryRunAdoClient implements AdoClient {
 
     @Override
     public AdoPatchResult patchWorkItem(AdoWorkItemKey key, List<PatchOperation> patchOperations) {
-        var operations = patchOperations == null ? List.<PatchOperation>of() : patchOperations;
-        var paths = operations.stream()
-                .map(PatchOperation::path)
-                .toList();
+        var operations = patchOperations == null ? List.<PatchOperation> of() : patchOperations;
+        var paths = operations.stream().map(PatchOperation::path).toList();
         var revision = revisionFrom(operations);
 
         LOGGER.info(
                 "Dry-run would PATCH Work Item; suppressed ADO write project={} workItemId={} revision={} operationCount={} operationPaths={}",
-                key.project(),
-                key.workItemId(),
-                revision,
-                operations.size(),
-                paths
-        );
+                key.project(), key.workItemId(), revision, operations.size(), paths);
 
         return AdoPatchResult.success(revision);
     }
 
     @Override
     public AdoCommentResult createWorkItemComment(AdoWorkItemKey key, String commentText) {
-        LOGGER.info(
-                "Dry-run would create comment; suppressed ADO write project={} workItemId={}",
-                key.project(),
-                key.workItemId()
-        );
+        LOGGER.info("Dry-run would create comment; suppressed ADO write project={} workItemId={}", key.project(),
+                key.workItemId());
 
         return AdoCommentResult.success(DRY_RUN_COMMENT_ID);
     }

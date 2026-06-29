@@ -74,8 +74,10 @@ class InMemoryWorkItemQueueTest {
         var executor = Executors.newFixedThreadPool(2);
 
         try {
-            var first = executor.submit(() -> queue.process(event("ProjectA", 10, 1), event -> waitTogether(entered, release)));
-            var second = executor.submit(() -> queue.process(event("ProjectA", 11, 1), event -> waitTogether(entered, release)));
+            var first = executor
+                    .submit(() -> queue.process(event("ProjectA", 10, 1), event -> waitTogether(entered, release)));
+            var second = executor
+                    .submit(() -> queue.process(event("ProjectA", 11, 1), event -> waitTogether(entered, release)));
 
             assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
             release.countDown();
@@ -94,8 +96,10 @@ class InMemoryWorkItemQueueTest {
         var executor = Executors.newFixedThreadPool(2);
 
         try {
-            var first = executor.submit(() -> queue.process(event("ProjectA", 10, 1), event -> waitTogether(entered, release)));
-            var second = executor.submit(() -> queue.process(event("ProjectB", 10, 1), event -> waitTogether(entered, release)));
+            var first = executor
+                    .submit(() -> queue.process(event("ProjectA", 10, 1), event -> waitTogether(entered, release)));
+            var second = executor
+                    .submit(() -> queue.process(event("ProjectB", 10, 1), event -> waitTogether(entered, release)));
 
             assertThat(entered.await(1, TimeUnit.SECONDS)).isTrue();
             release.countDown();
@@ -108,8 +112,7 @@ class InMemoryWorkItemQueueTest {
 
     @Test
     void queueKeyEqualityNormalizesProjectConsistently() {
-        assertThat(new WorkItemQueueKey(" ProjectA ", 10))
-                .isEqualTo(new WorkItemQueueKey("projecta", 10));
+        assertThat(new WorkItemQueueKey(" ProjectA ", 10)).isEqualTo(new WorkItemQueueKey("projecta", 10));
     }
 
     @Test
@@ -153,13 +156,8 @@ class InMemoryWorkItemQueueTest {
 
     @Test
     void queueDoesNotMarkIdempotencyItself() {
-        assertNoForbiddenTypeReferences(
-                "ProcessedEventStore",
-                WorkItemQueue.class,
-                WorkItemQueueKey.class,
-                QueuedWorkItemEvent.class,
-                InMemoryWorkItemQueue.class
-        );
+        assertNoForbiddenTypeReferences("ProcessedEventStore", WorkItemQueue.class, WorkItemQueueKey.class,
+                QueuedWorkItemEvent.class, InMemoryWorkItemQueue.class);
         assertNoForbiddenTypeReferences("markProcessed", InMemoryWorkItemQueue.class);
     }
 
@@ -226,7 +224,8 @@ class InMemoryWorkItemQueueTest {
     void queuedWorkItemProcessorAllowsIndependentWorkItemProcessing() throws Exception {
         var entered = new CountDownLatch(2);
         var release = new CountDownLatch(1);
-        var processor = new QueuedWorkItemProcessor(new InMemoryWorkItemQueue(), command -> waitTogether(entered, release));
+        var processor = new QueuedWorkItemProcessor(new InMemoryWorkItemQueue(),
+                command -> waitTogether(entered, release));
         var executor = Executors.newFixedThreadPool(2);
 
         try {
@@ -247,21 +246,10 @@ class InMemoryWorkItemQueueTest {
     }
 
     private ProcessWorkItemCommand command(String project, long workItemId, int revision) {
-        return new ProcessWorkItemCommand(
-                new AdoWorkItemKey("org", project, workItemId),
-                revision,
-                new ProjectApprovalConfig(
-                        project,
-                        true,
-                        Set.of("Test Case"),
-                        "Custom.ApprovedBySME",
-                        "Custom.ApprovedBySQA",
-                        Set.of("System.Title"),
-                        Set.of("sme@example.com"),
-                        Set.of("sqa@example.com"),
-                        "bot@example.com"
-                )
-        );
+        return new ProcessWorkItemCommand(new AdoWorkItemKey("org", project, workItemId), revision,
+                new ProjectApprovalConfig(project, true, Set.of("Test Case"), "Custom.ApprovedBySME",
+                        "Custom.ApprovedBySQA", Set.of("System.Title"), Set.of("sme@example.com"),
+                        Set.of("sqa@example.com"), "bot@example.com"));
     }
 
     private WorkItemProcessingResult recordRevision(QueuedWorkItemEvent event, ArrayList<Integer> processedRevisions) {

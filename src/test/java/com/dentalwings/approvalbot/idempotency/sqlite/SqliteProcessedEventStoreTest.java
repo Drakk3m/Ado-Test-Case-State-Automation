@@ -1,9 +1,7 @@
 package com.dentalwings.approvalbot.idempotency.sqlite;
 
-import com.dentalwings.approvalbot.domain.ProcessingResult;
-import com.dentalwings.approvalbot.idempotency.ProcessedEventKey;
-import com.dentalwings.approvalbot.idempotency.ProcessedEventStore;
-import com.dentalwings.approvalbot.processing.WorkItemProcessingResult;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.sql.DriverManager;
@@ -11,12 +9,16 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import com.dentalwings.approvalbot.domain.ProcessingResult;
+import com.dentalwings.approvalbot.idempotency.ProcessedEventKey;
+import com.dentalwings.approvalbot.idempotency.ProcessedEventStore;
+import com.dentalwings.approvalbot.processing.WorkItemProcessingResult;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-class SqliteProcessedEventStoreTest {
+class SqliteProcessedEventStoreTest
+{
 
     private static final ProcessedEventKey KEY = new ProcessedEventKey("ProjectA", 10, 3);
 
@@ -24,7 +26,8 @@ class SqliteProcessedEventStoreTest {
     private Path tempDir;
 
     @Test
-    void storeInitializesSchemaAutomatically() throws Exception {
+    void storeInitializesSchemaAutomatically() throws Exception
+    {
         var database = databasePath();
 
         store(database);
@@ -34,14 +37,15 @@ class SqliteProcessedEventStoreTest {
                      SELECT name
                      FROM sqlite_master
                      WHERE type = 'table' AND name = 'processed_events'
-                     """);
-             var resultSet = statement.executeQuery()) {
+                     """); var resultSet = statement.executeQuery())
+        {
             assertThat(resultSet.next()).isTrue();
         }
     }
 
     @Test
-    void markProcessedPersistsRecord() {
+    void markProcessedPersistsRecord()
+    {
         var store = store(databasePath());
 
         store.markProcessed(KEY, completed());
@@ -50,7 +54,8 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void alreadyProcessedReturnsTrueAfterInsert() {
+    void alreadyProcessedReturnsTrueAfterInsert()
+    {
         var store = store(databasePath());
 
         store.markProcessed(KEY, completed());
@@ -59,17 +64,19 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void findReturnsStoredResultStatus() {
+    void findReturnsStoredResultStatus()
+    {
         var store = store(databasePath());
 
         store.markProcessed(KEY, WorkItemProcessingResult.completedWithWarning("comment failed", null));
 
-        assertThat(store.find(KEY)).hasValueSatisfying(record ->
-                assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING));
+        assertThat(store.find(KEY)).hasValueSatisfying(
+                record -> assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING));
     }
 
     @Test
-    void sameKeyInsertReplacesExistingRecord() {
+    void sameKeyInsertReplacesExistingRecord()
+    {
         var store = store(databasePath());
 
         store.markProcessed(KEY, WorkItemProcessingResult.completed("done", null));
@@ -83,49 +90,53 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void differentRevisionIsStoredIndependently() {
+    void differentRevisionIsStoredIndependently()
+    {
         var store = store(databasePath());
         var otherRevision = new ProcessedEventKey("ProjectA", 10, 4);
 
         store.markProcessed(KEY, completed());
         store.markProcessed(otherRevision, WorkItemProcessingResult.completedWithWarning("warning", null));
 
-        assertThat(store.find(KEY)).hasValueSatisfying(record ->
-                assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED));
-        assertThat(store.find(otherRevision)).hasValueSatisfying(record ->
-                assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING));
+        assertThat(store.find(KEY))
+                .hasValueSatisfying(record -> assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED));
+        assertThat(store.find(otherRevision)).hasValueSatisfying(
+                record -> assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING));
     }
 
     @Test
-    void differentWorkItemIdIsStoredIndependently() {
+    void differentWorkItemIdIsStoredIndependently()
+    {
         var store = store(databasePath());
         var otherWorkItem = new ProcessedEventKey("ProjectA", 11, 3);
 
         store.markProcessed(KEY, completed());
         store.markProcessed(otherWorkItem, WorkItemProcessingResult.failedNonRetryable("invalid", null));
 
-        assertThat(store.find(KEY)).hasValueSatisfying(record ->
-                assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED));
-        assertThat(store.find(otherWorkItem)).hasValueSatisfying(record ->
-                assertThat(record.result()).isEqualTo(ProcessingResult.FAILED_NON_RETRYABLE));
+        assertThat(store.find(KEY))
+                .hasValueSatisfying(record -> assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED));
+        assertThat(store.find(otherWorkItem)).hasValueSatisfying(
+                record -> assertThat(record.result()).isEqualTo(ProcessingResult.FAILED_NON_RETRYABLE));
     }
 
     @Test
-    void differentProjectIsStoredIndependently() {
+    void differentProjectIsStoredIndependently()
+    {
         var store = store(databasePath());
         var otherProject = new ProcessedEventKey("ProjectB", 10, 3);
 
         store.markProcessed(KEY, completed());
         store.markProcessed(otherProject, WorkItemProcessingResult.completedWithWarning("warning", null));
 
-        assertThat(store.find(KEY)).hasValueSatisfying(record ->
-                assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED));
-        assertThat(store.find(otherProject)).hasValueSatisfying(record ->
-                assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING));
+        assertThat(store.find(KEY))
+                .hasValueSatisfying(record -> assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED));
+        assertThat(store.find(otherProject)).hasValueSatisfying(
+                record -> assertThat(record.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING));
     }
 
     @Test
-    void rawErrorCategoryAndMessageArePreserved() {
+    void rawErrorCategoryAndMessageArePreserved()
+    {
         var store = store(databasePath());
 
         store.markProcessed(KEY, WorkItemProcessingResult.failedRetryable(" timeout contacting ado ", null));
@@ -137,7 +148,8 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void retryCountIsPreservedForRetryableResult() {
+    void retryCountIsPreservedForRetryableResult()
+    {
         var clock = new MutableClock(Instant.parse("2026-06-23T00:00:00Z"));
         var store = new SqliteProcessedEventStore(databasePath(), Duration.ofHours(1), 10, clock);
 
@@ -151,7 +163,8 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void cleanupExpiredRemovesRecordsOlderThanTtl() {
+    void cleanupExpiredRemovesRecordsOlderThanTtl()
+    {
         var clock = new MutableClock(Instant.parse("2026-06-23T00:00:00Z"));
         var store = new SqliteProcessedEventStore(databasePath(), Duration.ofMinutes(10), 10, clock);
         store.markProcessed(KEY, completed());
@@ -163,7 +176,8 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void cleanupExpiredKeepsRecordsWithinTtl() {
+    void cleanupExpiredKeepsRecordsWithinTtl()
+    {
         var clock = new MutableClock(Instant.parse("2026-06-23T00:00:00Z"));
         var store = new SqliteProcessedEventStore(databasePath(), Duration.ofMinutes(10), 10, clock);
         store.markProcessed(KEY, completed());
@@ -175,7 +189,8 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void cleanupExpiredTrimsOldestRecordsWhenMaxRecordsIsExceeded() {
+    void cleanupExpiredTrimsOldestRecordsWhenMaxRecordsIsExceeded()
+    {
         var clock = new MutableClock(Instant.parse("2026-06-23T00:00:00Z"));
         var store = new SqliteProcessedEventStore(databasePath(), Duration.ofHours(1), 2, clock);
         var first = new ProcessedEventKey("ProjectA", 10, 1);
@@ -195,7 +210,8 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void dataPersistsAfterRecreatingStoreForSameFile() {
+    void dataPersistsAfterRecreatingStoreForSameFile()
+    {
         var database = databasePath();
         var firstStore = store(database);
         firstStore.markProcessed(KEY, WorkItemProcessingResult.failedNonRetryable("invalid", null));
@@ -209,7 +225,8 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void sqliteImplementationSatisfiesProcessedEventStoreContract() {
+    void sqliteImplementationSatisfiesProcessedEventStoreContract()
+    {
         ProcessedEventStore store = store(databasePath());
 
         store.markProcessed(KEY, completed());
@@ -219,67 +236,83 @@ class SqliteProcessedEventStoreTest {
     }
 
     @Test
-    void sqliteImplementationDoesNotDependOnSpringDataJpaOrHibernate() {
+    void sqliteImplementationDoesNotDependOnSpringDataJpaOrHibernate()
+    {
         assertNoForbiddenTypeReferences("org.springframework.data", SqliteProcessedEventStore.class);
         assertNoForbiddenTypeReferences("Jpa", SqliteProcessedEventStore.class);
         assertNoForbiddenTypeReferences("Hibernate", SqliteProcessedEventStore.class);
     }
 
-    private SqliteProcessedEventStore store(Path database) {
+    private SqliteProcessedEventStore store(Path database)
+    {
         return new SqliteProcessedEventStore(database, Duration.ofHours(1), 100);
     }
 
-    private Path databasePath() {
+    private Path databasePath()
+    {
         return tempDir.resolve("processed-events.sqlite");
     }
 
-    private String jdbcUrl(Path database) {
+    private String jdbcUrl(Path database)
+    {
         return "jdbc:sqlite:" + database;
     }
 
-    private WorkItemProcessingResult completed() {
+    private WorkItemProcessingResult completed()
+    {
         return WorkItemProcessingResult.completed("done", null);
     }
 
-    private void assertNoForbiddenTypeReferences(String forbiddenText, Class<?>... classes) {
-        for (Class<?> type : classes) {
+    private void assertNoForbiddenTypeReferences(String forbiddenText, Class<?>... classes)
+    {
+        for (Class<?> type : classes)
+        {
             assertThat(type.getName().toLowerCase()).doesNotContain(forbiddenText.toLowerCase());
-            for (Method method : type.getDeclaredMethods()) {
+            for (Method method : type.getDeclaredMethods())
+            {
                 assertThat(method.toGenericString().toLowerCase()).doesNotContain(forbiddenText.toLowerCase());
             }
-            for (var constructor : type.getDeclaredConstructors()) {
+            for (var constructor : type.getDeclaredConstructors())
+            {
                 assertThat(constructor.toGenericString().toLowerCase()).doesNotContain(forbiddenText.toLowerCase());
             }
-            for (var field : type.getDeclaredFields()) {
+            for (var field : type.getDeclaredFields())
+            {
                 assertThat(field.toGenericString().toLowerCase()).doesNotContain(forbiddenText.toLowerCase());
             }
         }
     }
 
-    private static class MutableClock extends Clock {
+    private static class MutableClock extends Clock
+    {
 
         private Instant instant;
 
-        private MutableClock(Instant instant) {
+        private MutableClock(Instant instant)
+        {
             this.instant = instant;
         }
 
-        private void advance(Duration duration) {
+        private void advance(Duration duration)
+        {
             instant = instant.plus(duration);
         }
 
         @Override
-        public ZoneId getZone() {
+        public ZoneId getZone()
+        {
             return ZoneId.of("UTC");
         }
 
         @Override
-        public Clock withZone(ZoneId zone) {
+        public Clock withZone(ZoneId zone)
+        {
             return this;
         }
 
         @Override
-        public Instant instant() {
+        public Instant instant()
+        {
             return instant;
         }
     }
