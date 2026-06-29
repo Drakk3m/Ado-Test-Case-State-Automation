@@ -53,6 +53,35 @@ class ConfigUiStaticAssetsTest
     }
 
     @Test
+    void javascriptUsesRuntimeWebhookSecretEndpointsWithoutBrowserStorage() throws Exception
+    {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("/api/config-ui/credentials/webhook-secret")
+                .contains("function loadWebhookSecretStatus()")
+                .contains("function submitRuntimeWebhookSecret()")
+                .contains("webhookSecretConfigured = payload?.configured === true")
+                .contains("webhookSecretInputEl.value = \"\"")
+                .doesNotContain("localStorage.setItem(\"webhookSecret")
+                .doesNotContain("sessionStorage.setItem(\"webhookSecret");
+    }
+
+    @Test
+    void pageDefinesRuntimeWebhookSecretControlsWithoutExposingValue() throws Exception
+    {
+        var html = read("src/main/resources/templates/index.html");
+
+        assertThat(html)
+                .contains("id=\"webhookSecretBanner\"")
+                .contains("id=\"webhookSecretInput\"")
+                .contains("type=\"password\"")
+                .contains("autocomplete=\"off\"")
+                .contains("id=\"submitWebhookSecret\"")
+                .contains("id=\"webhookSecretStatus\"");
+    }
+
+    @Test
     void javascriptMakesProjectVerificationTheFirstAdoDiscoveryGate() throws Exception
     {
         var javascript = read("src/main/resources/static/js/config-ui.js");

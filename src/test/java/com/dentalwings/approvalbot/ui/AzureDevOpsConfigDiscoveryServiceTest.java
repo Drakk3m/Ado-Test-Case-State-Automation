@@ -21,6 +21,8 @@ import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.ExchangeFunction;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsAuth;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsUrlBuilder;
+import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
 
 import reactor.core.publisher.Mono;
 
@@ -186,6 +188,29 @@ class AzureDevOpsConfigDiscoveryServiceTest
         assertThat(result.status()).isEqualTo(ConfigValidationStatus.NOT_CONFIGURED);
         assertThat(result.message()).contains("ADO_PERSONAL_ACCESS_TOKEN").doesNotContain("secret-pat");
         assertThat(exchange.requests).isEmpty();
+    }
+
+    @Test
+    void runtimeSubmittedPatEnablesDiscoveryWithoutRestart()
+    {
+        var properties = new ApprovalBotProperties();
+        var credentialService = new RuntimeAdoCredentialService(properties);
+        var exchange = new RecordingExchangeFunction("""
+                {"value":[{"id":"project-guid-1","name":"Sandbox"}]}
+                """, HttpStatus.OK);
+        var service = new AzureDevOpsConfigDiscoveryService(credentialService, exchange,
+                new AzureDevOpsUrlBuilder());
+
+        var missing = service.listProjectOptions("STMN-Group");
+        credentialService.submitPersonalAccessToken("runtime-pat");
+        var configured = service.listProjectOptions("STMN-Group");
+
+        assertThat(missing.status()).isEqualTo(ConfigValidationStatus.NOT_CONFIGURED);
+        assertThat(configured.status()).isEqualTo(ConfigValidationStatus.VALID);
+        assertThat(configured.values()).extracting(ConfigSelectorOption::value).containsExactly("Sandbox");
+        assertThat(exchange.requests).hasSize(1);
+        assertThat(exchange.requests.getFirst().headers().getFirst(HttpHeaders.AUTHORIZATION))
+                .isEqualTo(new AzureDevOpsAuth().basicAuthHeader("runtime-pat"));
     }
 
     @ParameterizedTest

@@ -28,6 +28,31 @@ class WebhookSharedSecretValidatorTest {
     }
 
     @Test
+    void enabledValidationReturnsNotConfiguredWhenSecretIsMissing()
+    {
+        var validator = new WebhookSharedSecretValidator(properties(true, "X-ADO-Webhook-Secret", ""));
+
+        var result = validator.validate("anything");
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.failureReason()).isEqualTo(WebhookSharedSecretValidator.FailureReason.NOT_CONFIGURED);
+    }
+
+    @Test
+    void runtimeSubmittedSecretEnablesValidation()
+    {
+        var properties = properties(true, "X-ADO-Webhook-Secret", "");
+        var secretService = new RuntimeWebhookSecretService(properties);
+        var validator = new WebhookSharedSecretValidator(properties, secretService);
+
+        secretService.submitSecret("runtime-secret");
+
+        assertThat(validator.validate("runtime-secret").valid()).isTrue();
+        assertThat(validator.validate("wrong").failureReason())
+                .isEqualTo(WebhookSharedSecretValidator.FailureReason.INVALID_HEADER);
+    }
+
+    @Test
     void enabledValidationRejectsWrongHeader() {
         var validator = new WebhookSharedSecretValidator(properties(true, "X-ADO-Webhook-Secret", "expected"));
 

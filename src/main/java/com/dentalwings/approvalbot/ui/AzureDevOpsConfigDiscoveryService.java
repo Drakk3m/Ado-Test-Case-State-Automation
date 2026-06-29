@@ -80,6 +80,15 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 new GraphIdentityNegativeCache(), new ConfigUiAdoDiscoveryCache());
     }
 
+    AzureDevOpsConfigDiscoveryService(RuntimeAdoCredentialService credentialService,
+            ExchangeFunction exchangeFunction, AzureDevOpsUrlBuilder urlBuilder)
+    {
+        this(credentialService::currentPersonalAccessToken,
+                WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
+                new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
+                new GraphIdentityNegativeCache(), new ConfigUiAdoDiscoveryCache());
+    }
+
     AzureDevOpsConfigDiscoveryService(String personalAccessToken, ExchangeFunction exchangeFunction,
             AzureDevOpsUrlBuilder urlBuilder, IdentitySearchResultCache identitySearchCache)
     {

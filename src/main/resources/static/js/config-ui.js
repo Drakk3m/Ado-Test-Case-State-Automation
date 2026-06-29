@@ -13,6 +13,10 @@ const adoPatBannerEl = document.getElementById("adoPatBanner");
 const adoPatInputEl = document.getElementById("adoPatInput");
 const submitAdoPatEl = document.getElementById("submitAdoPat");
 const adoPatStatusEl = document.getElementById("adoPatStatus");
+const webhookSecretBannerEl = document.getElementById("webhookSecretBanner");
+const webhookSecretInputEl = document.getElementById("webhookSecretInput");
+const submitWebhookSecretEl = document.getElementById("submitWebhookSecret");
+const webhookSecretStatusEl = document.getElementById("webhookSecretStatus");
 
 let state = { ado: { projects: [] } };
 let lastPreview = null;
@@ -36,6 +40,8 @@ let localProjectSequence = 0;
 const LANGUAGE_STORAGE_KEY = "configUiLanguage";
 let currentLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en";
 let adoPatConfigured = false;
+let webhookSecretConfigured = false;
+let webhookSecretRequired = true;
 
 const I18N = {
     en: {
@@ -162,7 +168,7 @@ const I18N = {
         "message.crossRoleIdentity": "Same identity appears in both SME and SQA lists.",
         "message.duplicateProjectSelection": "That project is already selected in another card.",
         "mode.localOnlyTitle": "Local-only mode",
-        "mode.localOnlyBody": "ADO discovery is not configured. You can still edit and save a local draft; submit PAT below to re-enable live ADO discovery.",
+        "mode.localOnlyBody": "A required runtime credential is not configured. Local draft editing remains available; protected integrations stay disabled.",
         "pat.requiredTitle": "Azure DevOps PAT required",
         "pat.requiredBody": "Submit a PAT for this running process only. It is kept in memory and never written to disk.",
         "pat.inputLabel": "PAT",
@@ -170,7 +176,15 @@ const I18N = {
         "pat.submitButton": "Submit PAT",
         "pat.statusConfigured": "PAT is configured for this process.",
         "pat.statusSaved": "PAT submitted for this running process.",
-        "pat.statusInvalid": "PAT value is required."
+        "pat.statusInvalid": "PAT value is required.",
+        "webhookSecret.requiredTitle": "Webhook shared secret required",
+        "webhookSecret.requiredBody": "Submit a shared secret for this running process only. Webhook requests remain disabled until it is configured.",
+        "webhookSecret.inputLabel": "Shared secret",
+        "webhookSecret.inputPlaceholder": "Enter shared secret",
+        "webhookSecret.submitButton": "Submit shared secret",
+        "webhookSecret.statusConfigured": "Webhook shared secret is configured for this process.",
+        "webhookSecret.statusSaved": "Webhook shared secret submitted for this running process.",
+        "webhookSecret.statusInvalid": "Webhook shared secret value is required."
     },
     fr: {
         "language.label": "Langue",
@@ -296,7 +310,7 @@ const I18N = {
         "message.crossRoleIdentity": "La même identité apparaît dans les listes SME et SQA.",
         "message.duplicateProjectSelection": "Ce projet est déjà sélectionné dans une autre carte.",
         "mode.localOnlyTitle": "Mode local uniquement",
-        "mode.localOnlyBody": "La découverte ADO n'est pas configurée. Vous pouvez toujours modifier et enregistrer un brouillon local ; envoyez le PAT ci-dessous pour réactiver la découverte ADO.",
+        "mode.localOnlyBody": "Un identifiant d'exécution requis n'est pas configuré. Le brouillon local reste disponible et les intégrations protégées restent désactivées.",
         "pat.requiredTitle": "PAT Azure DevOps requis",
         "pat.requiredBody": "Envoyez un PAT pour ce processus en cours uniquement. Il reste en mémoire et n'est jamais écrit sur disque.",
         "pat.inputLabel": "PAT",
@@ -304,7 +318,15 @@ const I18N = {
         "pat.submitButton": "Envoyer le PAT",
         "pat.statusConfigured": "Le PAT est configuré pour ce processus.",
         "pat.statusSaved": "PAT envoyé pour ce processus en cours.",
-        "pat.statusInvalid": "La valeur du PAT est requise."
+        "pat.statusInvalid": "La valeur du PAT est requise.",
+        "webhookSecret.requiredTitle": "Secret partagé du webhook requis",
+        "webhookSecret.requiredBody": "Envoyez un secret partagé uniquement pour ce processus. Les requêtes webhook restent désactivées jusqu'à sa configuration.",
+        "webhookSecret.inputLabel": "Secret partagé",
+        "webhookSecret.inputPlaceholder": "Saisissez le secret partagé",
+        "webhookSecret.submitButton": "Envoyer le secret partagé",
+        "webhookSecret.statusConfigured": "Le secret partagé du webhook est configuré pour ce processus.",
+        "webhookSecret.statusSaved": "Secret partagé du webhook envoyé pour ce processus.",
+        "webhookSecret.statusInvalid": "La valeur du secret partagé du webhook est requise."
     },
     es: {
         "language.label": "Idioma",
@@ -430,7 +452,7 @@ const I18N = {
         "message.crossRoleIdentity": "La misma identidad aparece en las listas SME y SQA.",
         "message.duplicateProjectSelection": "Ese proyecto ya está seleccionado en otra tarjeta.",
         "mode.localOnlyTitle": "Modo solo local",
-        "mode.localOnlyBody": "La deteccion ADO no esta configurada. Aun puedes editar y guardar un borrador local; envia el PAT abajo para reactivar la deteccion ADO.",
+        "mode.localOnlyBody": "Falta una credencial de ejecución requerida. La edición local permanece disponible y las integraciones protegidas siguen deshabilitadas.",
         "pat.requiredTitle": "Se requiere PAT de Azure DevOps",
         "pat.requiredBody": "Envia un PAT solo para este proceso en ejecucion. Se mantiene en memoria y nunca se escribe en disco.",
         "pat.inputLabel": "PAT",
@@ -438,7 +460,15 @@ const I18N = {
         "pat.submitButton": "Enviar PAT",
         "pat.statusConfigured": "El PAT esta configurado para este proceso.",
         "pat.statusSaved": "PAT enviado para este proceso en ejecucion.",
-        "pat.statusInvalid": "Se requiere el valor del PAT."
+        "pat.statusInvalid": "Se requiere el valor del PAT.",
+        "webhookSecret.requiredTitle": "Se requiere el secreto compartido del webhook",
+        "webhookSecret.requiredBody": "Envía un secreto compartido solo para este proceso. Las solicitudes webhook permanecen deshabilitadas hasta configurarlo.",
+        "webhookSecret.inputLabel": "Secreto compartido",
+        "webhookSecret.inputPlaceholder": "Introduce el secreto compartido",
+        "webhookSecret.submitButton": "Enviar secreto compartido",
+        "webhookSecret.statusConfigured": "El secreto compartido del webhook está configurado para este proceso.",
+        "webhookSecret.statusSaved": "Secreto compartido del webhook enviado para este proceso.",
+        "webhookSecret.statusInvalid": "Se requiere el valor del secreto compartido del webhook."
     }
 };
 if (!I18N[currentLanguage]) {
@@ -576,6 +606,52 @@ async function submitRuntimePat() {
     }
     updateAdoPatBanner(t("pat.statusSaved"));
     setStatus(t("pat.statusSaved"));
+}
+
+function updateWebhookSecretBanner(message = "") {
+    if (!webhookSecretBannerEl) {
+        return;
+    }
+    webhookSecretBannerEl.hidden = !webhookSecretRequired || webhookSecretConfigured;
+    if (webhookSecretStatusEl) {
+        webhookSecretStatusEl.textContent = message
+            || (webhookSecretConfigured ? t("webhookSecret.statusConfigured") : "");
+    }
+}
+
+async function loadWebhookSecretStatus() {
+    try {
+        const response = await fetch("/api/config-ui/credentials/webhook-secret", {
+            method: "GET",
+            headers: { "Accept": "application/json" }
+        });
+        if (!response.ok) {
+            return;
+        }
+        const payload = await response.json();
+        webhookSecretConfigured = payload?.configured === true;
+        webhookSecretRequired = payload?.required !== false;
+        updateWebhookSecretBanner();
+    } catch (_error) {
+        updateWebhookSecretBanner();
+    }
+}
+
+async function submitRuntimeWebhookSecret() {
+    const sharedSecret = webhookSecretInputEl?.value || "";
+    if (!sharedSecret.trim()) {
+        setStatus(t("webhookSecret.statusInvalid"), true);
+        updateWebhookSecretBanner(t("webhookSecret.statusInvalid"));
+        return;
+    }
+    const payload = await postJson("/api/config-ui/credentials/webhook-secret", { sharedSecret });
+    webhookSecretConfigured = payload?.configured === true;
+    if (webhookSecretInputEl) {
+        webhookSecretInputEl.value = "";
+    }
+    updateWebhookSecretBanner(t("webhookSecret.statusSaved"));
+    setStatus(t("webhookSecret.statusSaved"));
+    await updateYamlPreviewLocalOnly(false, "runtime-webhook-secret");
 }
 
 function isConfigUiDebugEnabled() {
@@ -3147,7 +3223,9 @@ function handleOrganizationChanged() {
 async function initialize() {
     applyStaticTranslations();
     updateAdoPatBanner();
+    updateWebhookSecretBanner();
     await loadAdoPatCredentialStatus();
+    await loadWebhookSecretStatus();
     setStatus(t("status.loading"));
     renderDiagnosticsPanel();
     const response = await fetch("/api/config-ui/model");
@@ -3170,6 +3248,10 @@ document.getElementById("loadProjects").addEventListener("click", () => {
 
 submitAdoPatEl?.addEventListener("click", () => {
     submitRuntimePat().catch((error) => setStatus(error.message, true));
+});
+
+submitWebhookSecretEl?.addEventListener("click", () => {
+    submitRuntimeWebhookSecret().catch((error) => setStatus(error.message, true));
 });
 
 languageSelectorEl?.addEventListener("change", (event) => {

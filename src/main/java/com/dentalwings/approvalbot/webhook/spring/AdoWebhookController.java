@@ -47,6 +47,12 @@ public class AdoWebhookController
         {
             LOGGER.warn("ADO webhook shared-secret validation failed reason={}",
                     sharedSecretResult.failureReason().logValue());
+            if (sharedSecretResult.failureReason() == WebhookSharedSecretValidator.FailureReason.NOT_CONFIGURED)
+            {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(new WebhookResponse("NOT_CONFIGURED",
+                                "Webhook shared secret is required but not configured."));
+            }
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new WebhookResponse("UNAUTHORIZED", "Webhook shared-secret validation failed."));
         }

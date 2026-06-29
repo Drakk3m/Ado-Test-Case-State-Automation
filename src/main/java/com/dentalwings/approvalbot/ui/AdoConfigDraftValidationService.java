@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+import com.dentalwings.approvalbot.webhook.spring.RuntimeWebhookSecretService;
 
 @Service
 public class AdoConfigDraftValidationService
@@ -21,25 +22,33 @@ public class AdoConfigDraftValidationService
     private final AdoConfigDiscoveryService discoveryService;
     private final Map<String, String> environment;
     private final RuntimeAdoCredentialService credentialService;
+    private final RuntimeWebhookSecretService webhookSecretService;
 
     @Autowired
     public AdoConfigDraftValidationService(AdoConfigDiscoveryService discoveryService,
-            RuntimeAdoCredentialService credentialService)
+            RuntimeAdoCredentialService credentialService, RuntimeWebhookSecretService webhookSecretService)
     {
-        this(discoveryService, System.getenv(), credentialService);
+        this(discoveryService, System.getenv(), credentialService, webhookSecretService);
     }
 
     AdoConfigDraftValidationService(AdoConfigDiscoveryService discoveryService, Map<String, String> environment)
     {
-        this(discoveryService, environment, null);
+        this(discoveryService, environment, null, null);
     }
 
     AdoConfigDraftValidationService(AdoConfigDiscoveryService discoveryService, Map<String, String> environment,
             RuntimeAdoCredentialService credentialService)
     {
+        this(discoveryService, environment, credentialService, null);
+    }
+
+    AdoConfigDraftValidationService(AdoConfigDiscoveryService discoveryService, Map<String, String> environment,
+            RuntimeAdoCredentialService credentialService, RuntimeWebhookSecretService webhookSecretService)
+    {
         this.discoveryService = discoveryService;
         this.environment = environment;
         this.credentialService = credentialService;
+        this.webhookSecretService = webhookSecretService;
     }
 
     public ConfigValidationResult validate(ConfigUiModel model) {
@@ -120,15 +129,15 @@ public class AdoConfigDraftValidationService
             result.add("webhook.shared-secret.header-name", ConfigValidationStatus.ERROR,
                     "Webhook shared-secret header name is required.");
         }
-        if (sharedSecret.isEnabled() && isBlank(environment.get(WEBHOOK_SECRET_ENV)))
+        if (sharedSecret.isEnabled() && !isWebhookSecretConfigured())
         {
-            result.add("webhook.shared-secret.value", ConfigValidationStatus.WARNING,
-                    "Webhook secret environment variable is not present. Keep the value as a placeholder in YAML.");
+            result.add("webhook.shared-secret.value", ConfigValidationStatus.NOT_CONFIGURED,
+                    "Webhook shared secret is not configured. Webhook requests remain disabled until a runtime secret is submitted.");
         }
         else if (sharedSecret.isEnabled())
         {
             result.add("webhook.shared-secret.value", ConfigValidationStatus.VALID,
-                    "Webhook secret environment variable is present; value is not displayed.");
+                    "Webhook shared secret is configured for this process; value is not displayed.");
         }
     }
 
@@ -451,5 +460,14 @@ public class AdoConfigDraftValidationService
             return true;
         }
         return !isBlank(environment.get(PAT_ENV));
+    }
+
+    private boolean isWebhookSecretConfigured()
+    {
+        if (webhookSecretService != null && webhookSecretService.isConfigured())
+        {
+            return true;
+        }
+        return !isBlank(environment.get(WEBHOOK_SECRET_ENV));
     }
 }

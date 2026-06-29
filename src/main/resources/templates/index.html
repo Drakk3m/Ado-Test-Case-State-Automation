@@ -28,7 +28,7 @@
 
     <section id="localModeBanner" class="card mode-banner" hidden>
         <strong data-i18n="mode.localOnlyTitle">Local-only mode</strong>
-        <p id="localModeBannerText" class="note compact" data-i18n="mode.localOnlyBody">ADO discovery is not configured. You can still edit and save a local draft; submit PAT below to re-enable live ADO discovery.</p>
+        <p id="localModeBannerText" class="note compact" data-i18n="mode.localOnlyBody">A required runtime credential is not configured. Local draft editing remains available; protected integrations stay disabled.</p>
     </section>
 
     <section id="adoPatBanner" class="card mode-banner" hidden>
@@ -41,6 +41,18 @@
             <button id="submitAdoPat" type="button" data-i18n="pat.submitButton">Submit PAT</button>
         </div>
         <p id="adoPatStatus" class="note compact"></p>
+    </section>
+
+    <section id="webhookSecretBanner" class="card mode-banner" hidden>
+        <strong data-i18n="webhookSecret.requiredTitle">Webhook shared secret required</strong>
+        <p class="note compact" data-i18n="webhookSecret.requiredBody">Submit a shared secret for this running process only. Webhook requests remain disabled until it is configured.</p>
+        <div class="row">
+            <label class="pat-label"><span data-i18n="webhookSecret.inputLabel">Shared secret</span>
+                <input id="webhookSecretInput" type="password" autocomplete="off" data-i18n-placeholder="webhookSecret.inputPlaceholder" placeholder="Enter shared secret">
+            </label>
+            <button id="submitWebhookSecret" type="button" data-i18n="webhookSecret.submitButton">Submit shared secret</button>
+        </div>
+        <p id="webhookSecretStatus" class="note compact"></p>
     </section>
 
     <section class="card grid-2">

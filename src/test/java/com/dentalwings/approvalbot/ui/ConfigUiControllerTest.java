@@ -24,6 +24,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+import com.dentalwings.approvalbot.webhook.spring.RuntimeWebhookSecretService;
 
 @WebMvcTest({ ConfigUiPageController.class, ConfigUiApiController.class })
 class ConfigUiControllerTest
@@ -40,6 +41,9 @@ class ConfigUiControllerTest
 
     @MockBean
     private RuntimeAdoCredentialService credentialService;
+
+    @MockBean
+    private RuntimeWebhookSecretService webhookSecretService;
 
     @Test
     void uiPageAndModelEndpointReturnOk() throws Exception
@@ -245,5 +249,32 @@ class ConfigUiControllerTest
                 .andExpect(content().string(not(containsString("secret-pat"))));
 
         verify(credentialService).submitPersonalAccessToken("secret-pat");
+    }
+
+    @Test
+    void runtimeWebhookSecretStatusEndpointReturnsConfiguredFlag() throws Exception
+    {
+        when(webhookSecretService.isConfigured()).thenReturn(false);
+        when(webhookSecretService.isRequired()).thenReturn(true);
+
+        mockMvc.perform(get("/api/config-ui/credentials/webhook-secret")).andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"configured\":false")))
+                .andExpect(content().string(containsString("\"required\":true")));
+    }
+
+    @Test
+    void runtimeWebhookSecretSubmitEndpointDoesNotEchoValue() throws Exception
+    {
+        mockMvc.perform(post("/api/config-ui/credentials/webhook-secret").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "sharedSecret": "runtime-webhook-secret"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"configured\":true")))
+                .andExpect(content().string(not(containsString("runtime-webhook-secret"))));
+
+        verify(webhookSecretService).submitSecret("runtime-webhook-secret");
     }
 }
