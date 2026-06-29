@@ -26,6 +26,33 @@ class ConfigUiStaticAssetsTest
     }
 
     @Test
+    void javascriptUsesRuntimePatCredentialEndpointsWithoutBrowserSecretStorage() throws Exception
+    {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("/api/config-ui/credentials/ado-pat")
+                .contains("function loadAdoPatCredentialStatus()")
+                .contains("function submitRuntimePat()")
+                .contains("personalAccessToken")
+                .doesNotContain("localStorage.setItem(\"adoPat")
+                .doesNotContain("sessionStorage.setItem(\"adoPat");
+    }
+
+    @Test
+    void pageDefinesRuntimePatBannerAndSubmissionControls() throws Exception
+    {
+        var html = read("src/main/resources/templates/index.html");
+
+        assertThat(html)
+                .contains("id=\"adoPatBanner\"")
+                .contains("id=\"adoPatInput\"")
+                .contains("type=\"password\"")
+                .contains("id=\"submitAdoPat\"")
+                .contains("id=\"adoPatStatus\"");
+    }
+
+    @Test
     void javascriptMakesProjectVerificationTheFirstAdoDiscoveryGate() throws Exception
     {
         var javascript = read("src/main/resources/static/js/config-ui.js");
