@@ -239,6 +239,27 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
+    void javascriptGuardsStructuralDiscoveryByFreshnessAndInFlightRequest() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("projectValidationCurrentFor")
+                .contains("workItemTypesCurrentForProjectId")
+                .contains("fieldsCurrentForProjectIdAndWorkItemType")
+                .contains("statesCurrentForProjectIdAndWorkItemType")
+                .contains("function runStructuralDiscovery(")
+                .contains("discovery.inFlight[inFlightKey]")
+                .contains("inFlightDedupedCount")
+                .contains("skippedBecauseCurrentCount")
+                .contains("frontendValidateProjectCallCount")
+                .contains("frontendLoadWitCallCount")
+                .contains("frontendLoadFieldsCallCount")
+                .contains("frontendLoadStatesCallCount")
+                .contains("function structuralLookupIsCurrent(")
+                .contains("function updateStructuralDiscoveryDiagnostics(");
+    }
+
+    @Test
     void pageProvidesLanguageSelectorAndSupportedLanguages() throws Exception {
         var html = read("src/main/resources/templates/index.html");
         var javascript = read("src/main/resources/static/js/config-ui.js");

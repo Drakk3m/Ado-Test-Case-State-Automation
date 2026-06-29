@@ -177,10 +177,13 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         }
         var cached = discoveryCache.project(organization, project);
         if (cached.isPresent()) {
+            logDiscoveryCache("validateProject", true, organization, project, "");
             return new ConfigLookupResult<>(ConfigValidationStatus.VALID, "", List.of(cached.get().projectName()))
                     .withDiagnostics(discoveryDiagnostics("validateProject", true,
-                            Map.of("projectMetadataCacheHit", true)));
+                            Map.of("projectMetadataCacheHit", true, "projectId",
+                                    Optional.ofNullable(cached.get().projectId()).orElse(""))));
         }
+        logDiscoveryCache("validateProject", false, organization, project, "");
         var fetched = fetchBody("validateProject", () -> urlBuilder.projectUrl(organization, project),
                 AdoRestProjectResponse.class);
         if (!fetched.successful()) {
@@ -189,7 +192,8 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         discoveryCache.putProject(organization, project, fetched.body().id(), fetched.body().name());
         return new ConfigLookupResult<>(ConfigValidationStatus.VALID, "", List.of(fetched.body().name()))
                 .withDiagnostics(discoveryDiagnostics("validateProject", false,
-                        Map.of("projectMetadataCacheHit", false)));
+                        Map.of("projectMetadataCacheHit", false, "projectId",
+                                Optional.ofNullable(fetched.body().id()).orElse(""))));
     }
 
     @Override
@@ -237,12 +241,15 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             var cachedOptions = discoveryCache.options("work-item-types", organization, projectId,
                     selection.processId());
             if (cachedOptions.isPresent()) {
+                logDiscoveryCache("listWorkItemTypeOptions", true, organization, project, "");
                 return cachedOptions.get().toResult().withDiagnostics(discoveryDiagnostics(
                         "listWorkItemTypeOptions", true,
                         Map.of("projectMetadataCacheHit", projectCacheHit, "processIdCacheHit", true,
                                 "workItemTypeOptionsCacheHit", true, "processPropertyUsed", selection.propertyName(),
-                                "failedProcessCandidateSkippedDueToCache", true)));
+                                "failedProcessCandidateSkippedDueToCache", true, "processFailureCacheHit", false,
+                                "processFallbackAttempted", false, "projectId", projectId)));
             }
+            logDiscoveryCache("listWorkItemTypeOptions", false, organization, project, "");
             var processFetch = fetchBody(
                     "listProcessWorkItemTypes",
                     () -> urlBuilder.processWorkItemTypesUrl(organization, selection.processId()),
@@ -254,9 +261,12 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 return result.withDiagnostics(discoveryDiagnostics("listWorkItemTypeOptions", false,
                         Map.of("projectMetadataCacheHit", projectCacheHit, "processIdCacheHit", true,
                                 "workItemTypeOptionsCacheHit", false, "processPropertyUsed", selection.propertyName(),
-                                "failedProcessCandidateSkippedDueToCache", true)));
+                                "failedProcessCandidateSkippedDueToCache", true, "processFailureCacheHit", false,
+                                "processFallbackAttempted", false, "projectId", projectId)));
             }
             discoveryCache.removeProcess(organization, projectId);
+        } else {
+            logDiscoveryCache("listWorkItemTypeOptions", false, organization, project, "");
         }
 
         var propertiesFetch = fetchBody(
@@ -299,7 +309,17 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         }
 
         ConfigLookupResult<ConfigSelectorOption> lastFailure = ConfigLookupResult.error("ADO project process id could not be resolved.");
+        var processFailureCacheHit = false;
+        var processFallbackAttempted = false;
         for (var candidate : candidates) {
+            if (discoveryCache.processFailure(organization, projectId, candidate.processId())) {
+                processFailureCacheHit = true;
+                processFallbackAttempted = true;
+                LOGGER.info("ADO config discovery skipped cached failed process candidate operation={} organization={} project={} projectId={} processId={} cacheHit=true skippedKnownFailedCandidate=true durationMs={}",
+                        "listWorkItemTypeOptions", organization, project, projectId, candidate.processId(),
+                        elapsedMillis(started));
+                continue;
+            }
             var processFetch = fetchBody(
                     "listProcessWorkItemTypes",
                     () -> urlBuilder.processWorkItemTypesUrl(organization, candidate.processId()),
@@ -328,8 +348,14 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
                 return result.withDiagnostics(discoveryDiagnostics("listWorkItemTypeOptions", false,
                         Map.of("projectMetadataCacheHit", projectCacheHit, "processIdCacheHit", false,
                                 "workItemTypeOptionsCacheHit", false, "processPropertyUsed", candidate.propertyName(),
-                                "failedProcessCandidateSkippedDueToCache", false)));
+                                "failedProcessCandidateSkippedDueToCache", processFailureCacheHit,
+                                "processFailureCacheHit", processFailureCacheHit,
+                                "processFallbackAttempted", processFallbackAttempted, "projectId", projectId)));
             }
+            if (processFetch.httpStatus() == 404) {
+                discoveryCache.putProcessFailure(organization, projectId, candidate.processId());
+            }
+            processFallbackAttempted = true;
             logProcessDiscoveryFailure("listWorkItemTypeOptions", organization, project, projectId, candidate.propertyName(), candidate.processId(), processFetch, started);
             lastFailure = failedLookup(processFetch);
         }
@@ -349,9 +375,11 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         var scope = discoveryScope(organization, project);
         var cached = discoveryCache.options("fields", organization, scope, workItemType);
         if (cached.isPresent()) {
+            logDiscoveryCache("listFieldOptions", true, organization, project, workItemType);
             return cached.get().toResult().withDiagnostics(discoveryDiagnostics("listFieldOptions", true,
                     Map.of("fieldOptionsCacheHit", true)));
         }
+        logDiscoveryCache("listFieldOptions", false, organization, project, workItemType);
         var result = readList(
                 "listFieldOptions",
                 () -> urlBuilder.workItemTypeFieldsUrl(organization, project, workItemType),
@@ -383,9 +411,11 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         var scope = discoveryScope(organization, project);
         var cached = discoveryCache.options("states", organization, scope, workItemType);
         if (cached.isPresent()) {
+            logDiscoveryCache("listStateOptions", true, organization, project, workItemType);
             return cached.get().toResult().withDiagnostics(discoveryDiagnostics("listStateOptions", true,
                     Map.of("stateOptionsCacheHit", true)));
         }
+        logDiscoveryCache("listStateOptions", false, organization, project, workItemType);
         var result = readList(
                 "listStateOptions",
                 () -> urlBuilder.workItemTypeStatesUrl(organization, project, workItemType),
@@ -1079,6 +1109,12 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         diagnostics.put("adoDiscoveryRequestCount", discoveryAdoRequestCount.get());
         diagnostics.putAll(details);
         return Map.copyOf(diagnostics);
+    }
+
+    private void logDiscoveryCache(String operation, boolean cacheHit, String organization, String project,
+            String workItemType) {
+        LOGGER.info("ADO config discovery cache operation={} organization={} project={} workItemType={} cacheHit={} cacheMiss={} durationMs=0",
+                operation, organization, project, workItemType, cacheHit, !cacheHit);
     }
 
     private List<ProcessIdCandidate> processIdCandidates(AdoRestProjectPropertiesResponse response) {
