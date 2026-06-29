@@ -24,6 +24,7 @@ import org.springframework.web.reactive.function.client.ExchangeFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsAuth;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsUrlBuilder;
+import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -36,7 +37,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AzureDevOpsConfigDiscoveryService.class);
-    private static final String MISSING_PAT_MESSAGE = "ADO_PERSONAL_ACCESS_TOKEN is required for read-only ADO discovery.";
+    private static final String MISSING_PAT_MESSAGE = "ADO_PERSONAL_ACCESS_TOKEN is not configured. Submit PAT in Config UI to enable ADO-backed discovery. Local draft editing is still available.";
     private static final int MAX_SAFE_DETAIL_LENGTH = 1000;
     private static final int MIN_IDENTITY_QUERY_LENGTH = 3;
     private static final int MAX_PROJECT_CANDIDATES = 250;
@@ -46,7 +47,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     private final WebClient webClient;
     private final AzureDevOpsUrlBuilder urlBuilder;
-    private final String personalAccessToken;
+    private final Supplier<String> personalAccessTokenSupplier;
     private final IdentitySearchResultCache identitySearchCache;
     private final ProjectIdentityCandidateCache projectIdentityCandidateCache;
     private final IdentityAvatarCache identityAvatarCache;
@@ -63,9 +64,10 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private final AtomicLong avatarAdoRequestCount = new AtomicLong();
 
     @Autowired
-    public AzureDevOpsConfigDiscoveryService(ApprovalBotProperties properties)
+    public AzureDevOpsConfigDiscoveryService(ApprovalBotProperties properties,
+            RuntimeAdoCredentialService credentialService)
     {
-        this(properties.getAdo().getPersonalAccessToken(), WebClient.builder().build(), new AzureDevOpsUrlBuilder(),
+        this(credentialService::currentPersonalAccessToken, WebClient.builder().build(), new AzureDevOpsUrlBuilder(),
                 new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
                 new GraphIdentityNegativeCache(), new ConfigUiAdoDiscoveryCache());
     }
@@ -73,7 +75,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     AzureDevOpsConfigDiscoveryService(String personalAccessToken, ExchangeFunction exchangeFunction,
             AzureDevOpsUrlBuilder urlBuilder)
     {
-        this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
+        this(() -> personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
                 new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
                 new GraphIdentityNegativeCache(), new ConfigUiAdoDiscoveryCache());
     }
@@ -81,7 +83,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     AzureDevOpsConfigDiscoveryService(String personalAccessToken, ExchangeFunction exchangeFunction,
             AzureDevOpsUrlBuilder urlBuilder, IdentitySearchResultCache identitySearchCache)
     {
-        this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
+        this(() -> personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
                 identitySearchCache, new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
                 new GraphIdentityNegativeCache(), new ConfigUiAdoDiscoveryCache());
     }
@@ -90,7 +92,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             AzureDevOpsUrlBuilder urlBuilder, IdentitySearchResultCache identitySearchCache,
             ProjectIdentityCandidateCache projectIdentityCandidateCache, IdentityAvatarCache identityAvatarCache)
     {
-        this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
+        this(() -> personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
                 identitySearchCache, projectIdentityCandidateCache, identityAvatarCache, new GraphIdentityNegativeCache(),
                 new ConfigUiAdoDiscoveryCache());
     }
@@ -104,7 +106,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             IdentityAvatarCache identityAvatarCache,
             GraphIdentityNegativeCache graphIdentityNegativeCache
     ) {
-        this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
+        this(() -> personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
                 identitySearchCache, projectIdentityCandidateCache, identityAvatarCache, graphIdentityNegativeCache,
                 new ConfigUiAdoDiscoveryCache());
     }
@@ -115,13 +117,13 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             AzureDevOpsUrlBuilder urlBuilder,
             ConfigUiAdoDiscoveryCache discoveryCache
     ) {
-        this(personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
+        this(() -> personalAccessToken, WebClient.builder().exchangeFunction(exchangeFunction).build(), urlBuilder,
                 new IdentitySearchResultCache(), new ProjectIdentityCandidateCache(), new IdentityAvatarCache(),
                 new GraphIdentityNegativeCache(), discoveryCache);
     }
 
     private AzureDevOpsConfigDiscoveryService(
-            String personalAccessToken,
+            Supplier<String> personalAccessTokenSupplier,
             WebClient webClient,
             AzureDevOpsUrlBuilder urlBuilder,
             IdentitySearchResultCache identitySearchCache,
@@ -130,7 +132,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             GraphIdentityNegativeCache graphIdentityNegativeCache,
             ConfigUiAdoDiscoveryCache discoveryCache
     ) {
-        this.personalAccessToken = personalAccessToken;
+        this.personalAccessTokenSupplier = personalAccessTokenSupplier;
         this.webClient = webClient;
         this.urlBuilder = urlBuilder;
         this.identitySearchCache = identitySearchCache;
@@ -421,7 +423,8 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
             }
             var lookup = searchIdentityOptions(organization, user);
             if (lookup.status() == ConfigValidationStatus.ERROR
-                    || lookup.status() == ConfigValidationStatus.NOT_CHECKED)
+                    || lookup.status() == ConfigValidationStatus.NOT_CHECKED
+                    || lookup.status() == ConfigValidationStatus.NOT_CONFIGURED)
             {
                 return new ConfigLookupResult<>(lookup.status(), lookup.message(), List.of());
             }
@@ -563,6 +566,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     @Override
     public Optional<IdentityAvatar> loadIdentityAvatar(String organization, String descriptor)
     {
+        var personalAccessToken = currentPersonalAccessToken();
         if (isBlank(organization) || isBlank(descriptor) || isBlank(personalAccessToken))
         {
             avatarFallbackCount.incrementAndGet();
@@ -588,7 +592,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         }
         avatarCacheMissCount.incrementAndGet();
         avatarAdoRequestCount.incrementAndGet();
-        var fetch = fetchAvatarBinary(organization, descriptor);
+        var fetch = fetchAvatarBinary(organization, descriptor, personalAccessToken);
         if (!fetch.successful() || fetch.bytes().length == 0 || fetch.bytes().length > MAX_AVATAR_BYTES)
         {
             identityAvatarCache.putFailure(organization, descriptor);
@@ -607,7 +611,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         return Optional.of(new IdentityAvatar(fetch.bytes(), fetch.contentType(), false));
     }
 
-    private AvatarBinaryFetch fetchAvatarBinary(String organization, String descriptor)
+    private AvatarBinaryFetch fetchAvatarBinary(String organization, String descriptor, String personalAccessToken)
     {
         try
         {
@@ -822,9 +826,10 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private <R, T> ConfigLookupResult<R> readPostList(String operation, Supplier<String> url, Object requestBody,
             Class<T> responseType, Function<T, List<R>> mapper)
     {
+        var personalAccessToken = currentPersonalAccessToken();
         if (isBlank(personalAccessToken))
         {
-            return ConfigLookupResult.error(MISSING_PAT_MESSAGE);
+            return ConfigLookupResult.notConfigured(MISSING_PAT_MESSAGE);
         }
         try
         {
@@ -845,9 +850,10 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private <R, T> ConfigLookupResult<R> read(String operation, Supplier<String> url, Class<T> responseType,
             Function<T, List<R>> mapper)
     {
+        var personalAccessToken = currentPersonalAccessToken();
         if (isBlank(personalAccessToken))
         {
-            return ConfigLookupResult.error(MISSING_PAT_MESSAGE);
+            return ConfigLookupResult.notConfigured(MISSING_PAT_MESSAGE);
         }
         try
         {
@@ -868,9 +874,10 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     private <T> AdoFetchResult<T> fetchBody(String operation, Supplier<String> url, Class<T> responseType)
     {
+        var personalAccessToken = currentPersonalAccessToken();
         if (isBlank(personalAccessToken))
         {
-            return AdoFetchResult.failure(ConfigLookupResult.error(MISSING_PAT_MESSAGE), 0, "");
+            return AdoFetchResult.failure(ConfigLookupResult.notConfigured(MISSING_PAT_MESSAGE), 0, "");
         }
         try
         {
@@ -1067,6 +1074,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
         }
         var sanitized = value.replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", " ").replace('\r', ' ').replace('\n', ' ')
                 .replace('\t', ' ').replaceAll("(?i)authorization\\s*[:=]\\s*\\S+", "Authorization=[redacted]");
+        var personalAccessToken = currentPersonalAccessToken();
         if (!isBlank(personalAccessToken))
         {
             sanitized = sanitized.replace(personalAccessToken, "[redacted]");
@@ -1082,6 +1090,12 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
     private boolean isBlank(String value)
     {
         return value == null || value.isBlank();
+    }
+
+    private String currentPersonalAccessToken()
+    {
+        var token = personalAccessTokenSupplier.get();
+        return token == null ? "" : token;
     }
 
     private String normalizedIdentity(String value)

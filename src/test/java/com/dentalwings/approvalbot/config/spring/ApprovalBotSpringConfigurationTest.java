@@ -1,18 +1,19 @@
 package com.dentalwings.approvalbot.config.spring;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import com.dentalwings.approvalbot.ApprovalBotApplication;
+
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ByteArrayResource;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.dentalwings.approvalbot.ApprovalBotApplication;
 
 class ApprovalBotSpringConfigurationTest {
 
@@ -105,13 +106,14 @@ class ApprovalBotSpringConfigurationTest {
     }
 
     @Test
-    void missingAdoTokenFailsStartupValidationWhenHttpClientIsEnabled() {
+    void missingAdoTokenPassesStartupValidationWhenHttpClientIsEnabled() {
         var validator = startupValidator(
                 bind(validYaml().replace("personal-access-token: test-token", "personal-access-token: \"\"")
                         .replace("http-client-enabled: false", "http-client-enabled: true")));
 
-        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
-                .hasMessageContaining("ado.personal-access-token is missing.");
+        var report = validator.validate();
+
+        assertThat(report.fatalMessages()).isEmpty();
     }
 
     @Test

@@ -69,10 +69,6 @@ public class ProjectApprovalConfigStartupValidator implements ApplicationRunner
             {
                 fatalMessages.add("ado.organization is missing while ado.http-client-enabled=true.");
             }
-            if (isBlank(properties.getAdo().getPersonalAccessToken()))
-            {
-                fatalMessages.add("ado.personal-access-token is missing.");
-            }
         }
         if (properties.getAdo().getProjects().isEmpty())
         {

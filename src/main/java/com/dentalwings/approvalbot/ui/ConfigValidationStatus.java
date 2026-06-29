@@ -5,5 +5,6 @@ public enum ConfigValidationStatus
     VALID,
     WARNING,
     ERROR,
-    NOT_CHECKED
+    NOT_CHECKED,
+    NOT_CONFIGURED
 }

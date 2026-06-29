@@ -11,6 +11,9 @@ import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 class ApplicationLocalConfigServiceTest
@@ -84,7 +87,7 @@ class ApplicationLocalConfigServiceTest
         var configFile = tempDir.resolve("application-local.yml");
         var discovery = validDiscovery();
         var service = new ApplicationLocalConfigService(configFile, validatingService(discovery));
-        var controller = new ConfigUiApiController(service, discovery);
+        var controller = new ConfigUiApiController(service, discovery, runtimeCredentialService());
 
         var response = controller.save(validModel());
         var json = new ObjectMapper().writeValueAsString(response);
@@ -99,7 +102,7 @@ class ApplicationLocalConfigServiceTest
         var configFile = tempDir.resolve("application-local.yml");
         var discovery = validDiscovery();
         var service = new ApplicationLocalConfigService(configFile, validatingService(discovery));
-        var controller = new ConfigUiApiController(service, discovery);
+        var controller = new ConfigUiApiController(service, discovery, runtimeCredentialService());
 
         var response = controller
                 .fields(new ConfigDiscoveryRequest("STMN-Group", "ADOnis 2.0 Test Project", "Test Case", ""));
@@ -205,6 +208,13 @@ class ApplicationLocalConfigServiceTest
     {
         return new AdoConfigDraftValidationService(discovery,
                 Map.of("ADO_PERSONAL_ACCESS_TOKEN", "real-pat", "ADO_WEBHOOK_SHARED_SECRET", "real-secret"));
+    }
+
+    private static RuntimeAdoCredentialService runtimeCredentialService()
+    {
+        var properties = new ApprovalBotProperties();
+        properties.getAdo().setPersonalAccessToken("real-pat");
+        return new RuntimeAdoCredentialService(properties);
     }
 
     static ConfigUiModel validModel()

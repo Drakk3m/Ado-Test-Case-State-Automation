@@ -52,4 +52,9 @@ public record ConfigLookupResult<T>(ConfigValidationStatus status, String messag
     {
         return new ConfigLookupResult<>(ConfigValidationStatus.ERROR, message, List.of());
     }
+
+    public static <T> ConfigLookupResult<T> notConfigured(String message)
+    {
+        return new ConfigLookupResult<>(ConfigValidationStatus.NOT_CONFIGURED, message, List.of());
+    }
 }

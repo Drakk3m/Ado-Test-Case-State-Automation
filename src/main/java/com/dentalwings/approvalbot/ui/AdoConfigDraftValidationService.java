@@ -9,6 +9,8 @@ import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+
 @Service
 public class AdoConfigDraftValidationService
 {
@@ -18,17 +20,26 @@ public class AdoConfigDraftValidationService
 
     private final AdoConfigDiscoveryService discoveryService;
     private final Map<String, String> environment;
+    private final RuntimeAdoCredentialService credentialService;
 
     @Autowired
-    public AdoConfigDraftValidationService(AdoConfigDiscoveryService discoveryService)
+    public AdoConfigDraftValidationService(AdoConfigDiscoveryService discoveryService,
+            RuntimeAdoCredentialService credentialService)
     {
-        this(discoveryService, System.getenv());
+        this(discoveryService, System.getenv(), credentialService);
     }
 
     AdoConfigDraftValidationService(AdoConfigDiscoveryService discoveryService, Map<String, String> environment)
     {
+        this(discoveryService, environment, null);
+    }
+
+    AdoConfigDraftValidationService(AdoConfigDiscoveryService discoveryService, Map<String, String> environment,
+            RuntimeAdoCredentialService credentialService)
+    {
         this.discoveryService = discoveryService;
         this.environment = environment;
+        this.credentialService = credentialService;
     }
 
     public ConfigValidationResult validate(ConfigUiModel model) {
@@ -66,10 +77,10 @@ public class AdoConfigDraftValidationService
         result.add("ado.organization", ConfigValidationStatus.VALID,
                 "Organization value is present; project discovery validates ADO access.");
 
-        if (isBlank(environment.get(PAT_ENV)))
+        if (!isPatConfigured())
         {
-            result.add("ado.personal-access-token", ConfigValidationStatus.ERROR,
-                    "PAT environment variable is required for ADO-backed validation. Keep the value as a placeholder in YAML.");
+            result.add("ado.personal-access-token", ConfigValidationStatus.NOT_CONFIGURED,
+                    "PAT is not configured. Local draft editing is available; submit a runtime PAT in Config UI to enable ADO-backed validation.");
         }
         else
         {
@@ -431,5 +442,14 @@ public class AdoConfigDraftValidationService
     private boolean isBlank(String value)
     {
         return value == null || value.isBlank();
+    }
+
+    private boolean isPatConfigured()
+    {
+        if (credentialService != null && credentialService.isPatConfigured())
+        {
+            return true;
+        }
+        return !isBlank(environment.get(PAT_ENV));
     }
 }

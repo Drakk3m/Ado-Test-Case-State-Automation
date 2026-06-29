@@ -23,8 +23,25 @@
             </label>
         </div>
         <p class="note" data-i18n-html="app.secretNote">Secrets are not written to disk: they stay as <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> and <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.</p>
-        <p class="note" data-i18n="app.discoveryNote">Read-only ADO validation loads projects, types, fields, and states when the PAT is available. Hot-load remains deferred: restart the service after YAML changes.</p>
+        <p class="note" data-i18n="app.discoveryNote">Read-only ADO validation loads projects, types, fields, and states when the PAT is available. If PAT is missing, submit it at runtime in this page.</p>
     </header>
+
+    <section id="localModeBanner" class="card mode-banner" hidden>
+        <strong data-i18n="mode.localOnlyTitle">Local-only mode</strong>
+        <p id="localModeBannerText" class="note compact" data-i18n="mode.localOnlyBody">ADO discovery is not configured. You can still edit and save a local draft; submit PAT below to re-enable live ADO discovery.</p>
+    </section>
+
+    <section id="adoPatBanner" class="card mode-banner" hidden>
+        <strong data-i18n="pat.requiredTitle">Azure DevOps PAT required</strong>
+        <p class="note compact" data-i18n="pat.requiredBody">Submit a PAT for this running process only. It is kept in memory and never written to disk.</p>
+        <div class="row">
+            <label class="pat-label"><span data-i18n="pat.inputLabel">PAT</span>
+                <input id="adoPatInput" type="password" autocomplete="off" data-i18n-placeholder="pat.inputPlaceholder" placeholder="Paste PAT">
+            </label>
+            <button id="submitAdoPat" type="button" data-i18n="pat.submitButton">Submit PAT</button>
+        </div>
+        <p id="adoPatStatus" class="note compact"></p>
+    </section>
 
     <section class="card grid-2">
         <div>

@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.dentalwings.approvalbot.ado.AdoClient;
 import com.dentalwings.approvalbot.ado.DryRunAdoClient;
+import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
 import com.dentalwings.approvalbot.idempotency.IdempotentWorkItemProcessor;
 import com.dentalwings.approvalbot.idempotency.ProcessedEventStore;
@@ -30,8 +31,14 @@ public class ProcessingPipelineBeanConfiguration
     @Bean
     @ConditionalOnProperty(name = "ado.http-client-enabled", havingValue = "true")
     @ConditionalOnMissingBean
-    public AdoClient azureDevOpsHttpClient(ApprovalBotProperties properties)
+    public AdoClient azureDevOpsHttpClient(ApprovalBotProperties properties, RuntimeAdoCredentialService credentialService)
     {
+        if (properties.getAdo().getPersonalAccessToken() == null
+                || properties.getAdo().getPersonalAccessToken().isBlank())
+        {
+            LOGGER.warn("ADO HTTP client enabled without PAT; startup continues in local-only mode and webhook ADO calls will fail as non-retryable until PAT is configured.");
+            return new MissingPatAdoClient(properties.getAdo(), credentialService);
+        }
         var httpClient = AzureDevOpsHttpClient.fromProperties(properties.getAdo());
         if (!properties.getAdo().isDryRun())
         {
