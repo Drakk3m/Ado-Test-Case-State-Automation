@@ -203,6 +203,35 @@ class ConfigUiStaticAssetsTest {
     }
 
     @Test
+    void discoveredProjectsDebugListIsReadOnlyAndCardSelectionIsScoped() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("function renderDiscoveredProjectsDebug(options)")
+                .contains("<span>${escapeHtml(optionLabel(option))}</span>")
+                .contains("handleProjectInput(projectConfigId, event)")
+                .contains("projectByConfigId(projectConfigId)")
+                .doesNotContain("data-project-value")
+                .doesNotContain("state.ado.projects[0].name =");
+    }
+
+    @Test
+    void javascriptBlocksDuplicateProjectsWithoutSharingCardState() throws Exception {
+        var javascript = read("src/main/resources/static/js/config-ui.js");
+
+        assertThat(javascript)
+                .contains("const DUPLICATE_PROJECT_MESSAGE = \"This project is already configured.\"")
+                .contains("function duplicateProjectConfigIds()")
+                .contains("const normalizedName = normalizedText(project.name)")
+                .contains("duplicateProjectConfigIds().size === 0")
+                .contains("projectLayoutState.get(projectConfigId)")
+                .contains("projectDiscovery.get(projectConfigId)")
+                .contains("selectedProjectName")
+                .contains("normalizedProjectName")
+                .contains("duplicateProjectStatus");
+    }
+
+    @Test
     void javascriptDiagnosticsPanelShowsSelectorHydrationCounts() throws Exception {
         var javascript = read("src/main/resources/static/js/config-ui.js");
 
