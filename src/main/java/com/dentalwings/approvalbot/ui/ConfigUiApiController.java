@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+
 @RestController
 @RequestMapping("/api/config-ui")
 public class ConfigUiApiController
@@ -28,12 +30,32 @@ public class ConfigUiApiController
 
     private final ApplicationLocalConfigService configService;
     private final AdoConfigDiscoveryService discoveryService;
+    private final RuntimeAdoCredentialService credentialService;
 
     public ConfigUiApiController(ApplicationLocalConfigService configService,
-            AdoConfigDiscoveryService discoveryService)
+            AdoConfigDiscoveryService discoveryService,
+            RuntimeAdoCredentialService credentialService)
     {
         this.configService = configService;
         this.discoveryService = discoveryService;
+        this.credentialService = credentialService;
+    }
+
+    @GetMapping("/credentials/ado-pat")
+    public Map<String, Object> adoPatCredentialStatus()
+    {
+        return Map.of("configured", credentialService.isPatConfigured());
+    }
+
+    @PostMapping("/credentials/ado-pat")
+    public Map<String, Object> submitAdoPatCredential(@RequestBody RuntimePatRequest request)
+    {
+        if (request == null)
+        {
+            throw new IllegalArgumentException("ADO PAT request is required.");
+        }
+        credentialService.submitPersonalAccessToken(request.personalAccessToken());
+        return Map.of("configured", true);
     }
 
     @GetMapping("/model")
@@ -210,6 +232,7 @@ public class ConfigUiApiController
             case WARNING -> result.optionCount() == 0 ? "empty-or-warning" : "warning";
             case ERROR -> "error";
             case NOT_CHECKED -> "not-checked";
+            case NOT_CONFIGURED -> "not-configured";
         };
     }
 
@@ -248,5 +271,9 @@ public class ConfigUiApiController
     public ResponseEntity<Map<String, String>> handleStateErrors(IllegalStateException ex)
     {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", ex.getMessage()));
+    }
+
+    record RuntimePatRequest(String personalAccessToken)
+    {
     }
 }

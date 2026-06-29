@@ -7,6 +7,12 @@ const diagnosticsPanelEl = document.getElementById("configUiDiagnosticsPanel");
 const diagnosticsContentEl = document.getElementById("configUiDiagnosticsContent");
 const discoveredProjectsDebugEl = document.getElementById("discoveredProjectsDebug");
 const languageSelectorEl = document.getElementById("languageSelector");
+const localModeBannerEl = document.getElementById("localModeBanner");
+const localModeBannerTextEl = document.getElementById("localModeBannerText");
+const adoPatBannerEl = document.getElementById("adoPatBanner");
+const adoPatInputEl = document.getElementById("adoPatInput");
+const submitAdoPatEl = document.getElementById("submitAdoPat");
+const adoPatStatusEl = document.getElementById("adoPatStatus");
 
 let state = { ado: { projects: [] } };
 let lastPreview = null;
@@ -29,6 +35,7 @@ let projectLayoutState = new Map();
 let localProjectSequence = 0;
 const LANGUAGE_STORAGE_KEY = "configUiLanguage";
 let currentLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY) || "en";
+let adoPatConfigured = false;
 
 const I18N = {
     en: {
@@ -36,7 +43,7 @@ const I18N = {
         "app.title": "Approval Bot configuration",
         "app.subtitle": "Prepare an <code>application-local.yml</code> draft and separate unchecked text from verified values.",
         "app.secretNote": "Secrets are not written to disk: they stay as <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> and <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.",
-        "app.discoveryNote": "Read-only ADO validation loads projects, types, fields, and states when the PAT is available. Hot-load remains deferred: restart the service after YAML changes.",
+        "app.discoveryNote": "Read-only ADO validation loads projects, types, fields, and states when the PAT is available. If PAT is missing, submit it at runtime in this page.",
         "section.ado": "ADO",
         "section.botWebhook": "Bot / Webhook",
         "section.projects": "Projects",
@@ -110,6 +117,7 @@ const I18N = {
         "validation.heading": "Validation",
         "validation.finalAllowed": "Final YAML allowed.",
         "validation.finalBlocked": "Final YAML blocked until errors, Not checked values, and current ADO selector verification are resolved.",
+        "validation.finalLocalOnly": "Final YAML allowed in local-only mode.",
         "status.loading": "Loading configuration...",
         "status.loaded": "Configuration loaded. Run ADO discovery to populate selectors.",
         "status.draftAllowed": "Final YAML allowed.",
@@ -152,14 +160,24 @@ const I18N = {
         "message.sqaFieldAlsoReversible": "SQA approval field cannot also be reversible.",
         "message.duplicateIdentity": "{role} users contain duplicate identity: {identity}.",
         "message.crossRoleIdentity": "Same identity appears in both SME and SQA lists.",
-        "message.duplicateProjectSelection": "That project is already selected in another card."
+        "message.duplicateProjectSelection": "That project is already selected in another card.",
+        "mode.localOnlyTitle": "Local-only mode",
+        "mode.localOnlyBody": "ADO discovery is not configured. You can still edit and save a local draft; submit PAT below to re-enable live ADO discovery.",
+        "pat.requiredTitle": "Azure DevOps PAT required",
+        "pat.requiredBody": "Submit a PAT for this running process only. It is kept in memory and never written to disk.",
+        "pat.inputLabel": "PAT",
+        "pat.inputPlaceholder": "Paste PAT",
+        "pat.submitButton": "Submit PAT",
+        "pat.statusConfigured": "PAT is configured for this process.",
+        "pat.statusSaved": "PAT submitted for this running process.",
+        "pat.statusInvalid": "PAT value is required."
     },
     fr: {
         "language.label": "Langue",
         "app.title": "Configuration Approval Bot",
         "app.subtitle": "Préparez un brouillon <code>application-local.yml</code> et séparez le texte non vérifié des valeurs vérifiées.",
         "app.secretNote": "Les secrets ne sont pas écrits sur disque : ils restent sous la forme <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> et <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.",
-        "app.discoveryNote": "La validation ADO en lecture seule charge les projets, types, champs et états lorsque le PAT est disponible. Le rechargement à chaud reste différé : redémarrez le service après les changements YAML.",
+        "app.discoveryNote": "La validation ADO en lecture seule charge les projets, types, champs et états lorsque le PAT est disponible. Si le PAT manque, envoyez-le à l'exécution depuis cette page.",
         "section.ado": "ADO",
         "section.botWebhook": "Bot / Webhook",
         "section.projects": "Projets",
@@ -233,6 +251,7 @@ const I18N = {
         "validation.heading": "Validation",
         "validation.finalAllowed": "YAML final autorisé.",
         "validation.finalBlocked": "YAML final bloqué jusqu'à résolution des erreurs, valeurs non vérifiées et validations ADO courantes.",
+        "validation.finalLocalOnly": "YAML final autorisé en mode local uniquement.",
         "status.loading": "Chargement de la configuration...",
         "status.loaded": "Configuration chargée. Lancez la découverte ADO pour remplir les sélecteurs.",
         "status.draftAllowed": "YAML final autorisé.",
@@ -275,14 +294,24 @@ const I18N = {
         "message.sqaFieldAlsoReversible": "Le champ d'approbation SQA ne peut pas aussi être réversible.",
         "message.duplicateIdentity": "Les utilisateurs {role} contiennent une identité dupliquée : {identity}.",
         "message.crossRoleIdentity": "La même identité apparaît dans les listes SME et SQA.",
-        "message.duplicateProjectSelection": "Ce projet est déjà sélectionné dans une autre carte."
+        "message.duplicateProjectSelection": "Ce projet est déjà sélectionné dans une autre carte.",
+        "mode.localOnlyTitle": "Mode local uniquement",
+        "mode.localOnlyBody": "La découverte ADO n'est pas configurée. Vous pouvez toujours modifier et enregistrer un brouillon local ; envoyez le PAT ci-dessous pour réactiver la découverte ADO.",
+        "pat.requiredTitle": "PAT Azure DevOps requis",
+        "pat.requiredBody": "Envoyez un PAT pour ce processus en cours uniquement. Il reste en mémoire et n'est jamais écrit sur disque.",
+        "pat.inputLabel": "PAT",
+        "pat.inputPlaceholder": "Collez le PAT",
+        "pat.submitButton": "Envoyer le PAT",
+        "pat.statusConfigured": "Le PAT est configuré pour ce processus.",
+        "pat.statusSaved": "PAT envoyé pour ce processus en cours.",
+        "pat.statusInvalid": "La valeur du PAT est requise."
     },
     es: {
         "language.label": "Idioma",
         "app.title": "Configuración de Approval Bot",
         "app.subtitle": "Prepara un borrador de <code>application-local.yml</code> y separa texto no verificado de valores verificados.",
         "app.secretNote": "Los secretos no se escriben en disco: se mantienen como <code>${ADO_PERSONAL_ACCESS_TOKEN:}</code> y <code>${ADO_WEBHOOK_SHARED_SECRET:}</code>.",
-        "app.discoveryNote": "La validación ADO de solo lectura carga proyectos, tipos, campos y estados cuando el PAT está disponible. Hot-load queda diferido: reinicia el servicio después de cambios YAML.",
+        "app.discoveryNote": "La validación ADO de solo lectura carga proyectos, tipos, campos y estados cuando el PAT está disponible. Si falta el PAT, envíalo en tiempo de ejecución desde esta página.",
         "section.ado": "ADO",
         "section.botWebhook": "Bot / Webhook",
         "section.projects": "Proyectos",
@@ -356,6 +385,7 @@ const I18N = {
         "validation.heading": "Validación",
         "validation.finalAllowed": "YAML final permitido.",
         "validation.finalBlocked": "YAML final bloqueado hasta resolver errores, valores no verificados y validación ADO actual.",
+        "validation.finalLocalOnly": "YAML final permitido en modo solo local.",
         "status.loading": "Cargando configuración...",
         "status.loaded": "Configuración cargada. Ejecuta ADO discovery para poblar selectores.",
         "status.draftAllowed": "YAML final permitido.",
@@ -398,7 +428,17 @@ const I18N = {
         "message.sqaFieldAlsoReversible": "El campo de aprobación SQA no puede ser reversible también.",
         "message.duplicateIdentity": "Los usuarios {role} contienen una identidad duplicada: {identity}.",
         "message.crossRoleIdentity": "La misma identidad aparece en las listas SME y SQA.",
-        "message.duplicateProjectSelection": "Ese proyecto ya está seleccionado en otra tarjeta."
+        "message.duplicateProjectSelection": "Ese proyecto ya está seleccionado en otra tarjeta.",
+        "mode.localOnlyTitle": "Modo solo local",
+        "mode.localOnlyBody": "La deteccion ADO no esta configurada. Aun puedes editar y guardar un borrador local; envia el PAT abajo para reactivar la deteccion ADO.",
+        "pat.requiredTitle": "Se requiere PAT de Azure DevOps",
+        "pat.requiredBody": "Envia un PAT solo para este proceso en ejecucion. Se mantiene en memoria y nunca se escribe en disco.",
+        "pat.inputLabel": "PAT",
+        "pat.inputPlaceholder": "Pega el PAT",
+        "pat.submitButton": "Enviar PAT",
+        "pat.statusConfigured": "El PAT esta configurado para este proceso.",
+        "pat.statusSaved": "PAT enviado para este proceso en ejecucion.",
+        "pat.statusInvalid": "Se requiere el valor del PAT."
     }
 };
 if (!I18N[currentLanguage]) {
@@ -441,6 +481,9 @@ function applyStaticTranslations() {
     for (const element of document.querySelectorAll("[data-i18n-html]")) {
         element.innerHTML = t(element.getAttribute("data-i18n-html"));
     }
+    for (const element of document.querySelectorAll("[data-i18n-placeholder]")) {
+        element.setAttribute("placeholder", t(element.getAttribute("data-i18n-placeholder")));
+    }
 }
 
 function setLanguage(language) {
@@ -466,6 +509,73 @@ function splitLines(value) {
 function setStatus(text, isError) {
     statusEl.textContent = text || "";
     statusEl.classList.toggle("error", !!isError);
+}
+
+function hasNotConfiguredValidation(validation) {
+    return (validation?.fields || []).some((field) => field?.status === "NOT_CONFIGURED");
+}
+
+function localOnlyMessageFromValidation(validation) {
+    const first = (validation?.fields || []).find((field) => field?.status === "NOT_CONFIGURED");
+    return first?.message || "";
+}
+
+function isLocalOnlyMode() {
+    return projectOptionLookup?.status === "NOT_CONFIGURED" || hasNotConfiguredValidation(lastPreview?.validation);
+}
+
+function updateLocalModeBanner(message = "") {
+    if (!localModeBannerEl) {
+        return;
+    }
+    const localOnly = isLocalOnlyMode();
+    localModeBannerEl.hidden = !localOnly;
+    if (localModeBannerTextEl) {
+        localModeBannerTextEl.textContent = message || t("mode.localOnlyBody");
+    }
+}
+
+function updateAdoPatBanner(message = "") {
+    if (!adoPatBannerEl) {
+        return;
+    }
+    adoPatBannerEl.hidden = adoPatConfigured;
+    if (adoPatStatusEl) {
+        adoPatStatusEl.textContent = message || (adoPatConfigured ? t("pat.statusConfigured") : "");
+    }
+}
+
+async function loadAdoPatCredentialStatus() {
+    try {
+        const response = await fetch("/api/config-ui/credentials/ado-pat", {
+            method: "GET",
+            headers: { "Accept": "application/json" }
+        });
+        if (!response.ok) {
+            return;
+        }
+        const payload = await response.json();
+        adoPatConfigured = payload?.configured === true;
+        updateAdoPatBanner();
+    } catch (_error) {
+        updateAdoPatBanner();
+    }
+}
+
+async function submitRuntimePat() {
+    const personalAccessToken = (adoPatInputEl?.value || "").trim();
+    if (!personalAccessToken) {
+        setStatus(t("pat.statusInvalid"), true);
+        updateAdoPatBanner(t("pat.statusInvalid"));
+        return;
+    }
+    const payload = await postJson("/api/config-ui/credentials/ado-pat", { personalAccessToken });
+    adoPatConfigured = payload?.configured === true;
+    if (adoPatInputEl) {
+        adoPatInputEl.value = "";
+    }
+    updateAdoPatBanner(t("pat.statusSaved"));
+    setStatus(t("pat.statusSaved"));
 }
 
 function isConfigUiDebugEnabled() {
@@ -1824,6 +1934,7 @@ function renderValidation(preview) {
     const validation = preview?.validation;
     const fields = validation?.fields || [];
     const uiAdoDiscoveryCurrent = isUiAdoDiscoveryCurrent();
+    updateLocalModeBanner(localOnlyMessageFromValidation(preview?.validation));
     saveBtn.disabled = !preview?.finalYamlAllowed || !uiAdoDiscoveryCurrent;
 
     if (fields.length === 0) {
@@ -1839,8 +1950,9 @@ function renderValidation(preview) {
         </li>
     `).join("");
 
+    const localOnly = isLocalOnlyMode();
     const finalState = preview.finalYamlAllowed && uiAdoDiscoveryCurrent
-        ? t("validation.finalAllowed")
+        ? (localOnly ? t("validation.finalLocalOnly") : t("validation.finalAllowed"))
         : t("validation.finalBlocked");
     validationSummaryEl.innerHTML = `
         <div class="validation-heading">
@@ -1973,6 +2085,9 @@ function isCurrentDiscoveryRequest(projectConfigId, requestToken, projectName, w
 }
 
 function isProjectVerified(discovery, project) {
+    if (isLocalOnlyMode()) {
+        return !!(project?.name || "").trim();
+    }
     return discovery?.projectStatus?.status === "VALID"
         && lookupContainsValue(discovery.projectStatus, project.name);
 }
@@ -1992,6 +2107,15 @@ function allValuesInLookup(values, lookup) {
 }
 
 function isProjectDiscoveryCurrent(project, discovery) {
+    if (isLocalOnlyMode()) {
+        return !!(project?.name || "").trim()
+            && !!(project.supportedWorkItemTypes?.[0] || "").trim()
+            && !!(project.fields?.approvedBySme || "").trim()
+            && !!(project.fields?.approvedBySqa || "").trim()
+            && !!(project.states?.design || "").trim()
+            && !!(project.states?.inReview || "").trim()
+            && !!(project.states?.approved || "").trim();
+    }
     const selectedType = project.supportedWorkItemTypes?.[0] || "";
     const fieldLookups = filteredFieldLookups(project, discovery?.fields || {});
     const requiredFields = [
@@ -2017,6 +2141,9 @@ function isProjectDiscoveryCurrent(project, discovery) {
 }
 
 function isUiAdoDiscoveryCurrent() {
+    if (isLocalOnlyMode()) {
+        return (state.ado.projects || []).length > 0 && duplicateProjectConfigIds().size === 0;
+    }
     ensureDiscovery();
     return (state.ado.projects || []).length > 0
         && duplicateProjectConfigIds().size === 0
@@ -2071,6 +2198,8 @@ function renderProjects() {
         const workItemTypeDisabled = projectVerified && lookupHasOptions(discovery.workItemTypes) ? "" : "disabled";
         const loadFieldsStatesDisabled = projectVerified && selectedType ? "" : "disabled";
         const fieldAndStateDisabled = dependentOptionsReady ? "" : "disabled";
+        const localOnly = isLocalOnlyMode();
+        const localOnlyTooltip = localOnly ? `title="${escapeHtml(t("mode.localOnlyBody"))}"` : "";
         const workItemTypeEnabled = !workItemTypeDisabled;
         const fieldAndStateEnabled = !fieldAndStateDisabled;
         const projectSelectorEnabled = lookupHasOptions(projectOptionLookup);
@@ -2159,7 +2288,7 @@ function renderProjects() {
                                 ${selectOptions("project", projectOptionLookup, project.name || "", t("message.loadProjectFirst"), projectSelectorEnabled, projectConfigId, selectedProjectNamesByOtherProjects)}
                             </select>
                         </label>
-                        <button type="button" data-action="load-project">${escapeHtml(t("button.verifyProject"))}</button>
+                        <button type="button" data-action="load-project" ${localOnlyTooltip}>${escapeHtml(t("button.verifyProject"))}</button>
                     </div>
                     ${duplicateProject ? `<span class="lookup-status">${validationBadge("ERROR")} ${escapeHtml(t("message.duplicateProjectSelection"))}</span>` : ""}
                     ${lookupBadge(discovery.projectStatus)}
@@ -2170,7 +2299,7 @@ function renderProjects() {
                         </select>
                     </label>
                     ${lookupBadge(discovery.workItemTypes)}
-                    <button type="button" data-action="load-fields-states" ${loadFieldsStatesDisabled}>${escapeHtml(t("button.loadFieldsStates"))}</button>
+                    <button type="button" data-action="load-fields-states" ${loadFieldsStatesDisabled} ${localOnlyTooltip}>${escapeHtml(t("button.loadFieldsStates"))}</button>
                     <div class="grid-2">
                         <label>${escapeHtml(t("project.stateDesign"))}
                             <select id="${projectControlId(projectConfigId, "state-design")}" data-field="states.design" ${fieldAndStateDisabled}>
@@ -2535,6 +2664,10 @@ async function discover(operation, url, body) {
         });
         if (result.status === "ERROR") {
             setStatus(result.message || t("message.adoDiscoveryError"), true);
+        } else if (result.status === "NOT_CONFIGURED") {
+            adoPatConfigured = false;
+            updateAdoPatBanner(result.message || t("mode.localOnlyBody"));
+            setStatus(result.message || t("mode.localOnlyBody"));
         } else if (result.status === "NOT_CHECKED" || result.status === "WARNING") {
             setStatus(result.message || t("message.adoDiscoveryUnchecked"));
         }
@@ -3013,6 +3146,8 @@ function handleOrganizationChanged() {
 
 async function initialize() {
     applyStaticTranslations();
+    updateAdoPatBanner();
+    await loadAdoPatCredentialStatus();
     setStatus(t("status.loading"));
     renderDiagnosticsPanel();
     const response = await fetch("/api/config-ui/model");
@@ -3026,10 +3161,15 @@ async function initialize() {
     saveBtn.disabled = true;
     setStatus(t("status.loaded"));
     await updateYamlPreviewLocalOnly(false, "initial-load");
+    updateLocalModeBanner(localOnlyMessageFromValidation(lastPreview?.validation));
 }
 
 document.getElementById("loadProjects").addEventListener("click", () => {
     runExplicitProjectListDiscovery().catch((error) => setStatus(error.message, true));
+});
+
+submitAdoPatEl?.addEventListener("click", () => {
+    submitRuntimePat().catch((error) => setStatus(error.message, true));
 });
 
 languageSelectorEl?.addEventListener("change", (event) => {

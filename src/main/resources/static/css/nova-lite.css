@@ -530,6 +530,21 @@ button.remove {
     border-color: #2563eb;
 }
 
+.badge-not-configured {
+    color: #f5d0fe;
+    border-color: #a21caf;
+}
+
+.mode-banner {
+    border-color: #a21caf;
+    background: rgba(162, 28, 175, 0.08);
+}
+
+.pat-label {
+    flex: 1 1 280px;
+    margin-bottom: 0;
+}
+
 pre {
     margin: 0;
     background: #020617;

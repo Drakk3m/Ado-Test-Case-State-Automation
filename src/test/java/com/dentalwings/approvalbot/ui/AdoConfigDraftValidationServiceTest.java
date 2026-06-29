@@ -228,17 +228,17 @@ class AdoConfigDraftValidationServiceTest {
     }
 
     @Test
-    void missingPatEnvironmentVariableBlocksAdoBackedValidation() {
+    void missingPatEnvironmentVariableMarksCredentialAsNotConfiguredForLocalMode() {
         var service = new AdoConfigDraftValidationService(ApplicationLocalConfigServiceTest.validDiscovery(),
                 java.util.Map.of("ADO_WEBHOOK_SHARED_SECRET", "real-secret"));
 
         var result = service.validate(ApplicationLocalConfigServiceTest.validModel());
 
-        assertThat(result.canGenerateFinalYaml()).isFalse();
+        assertThat(result.canGenerateDraftYaml()).isTrue();
         assertThat(result.fields()).anySatisfy(field -> {
             assertThat(field.field()).isEqualTo("ado.personal-access-token");
-            assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
-            assertThat(field.message()).contains("required");
+            assertThat(field.status()).isEqualTo(ConfigValidationStatus.NOT_CONFIGURED);
+            assertThat(field.message()).contains("submit a runtime PAT");
         });
     }
 

@@ -23,6 +23,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
+
 @WebMvcTest({ ConfigUiPageController.class, ConfigUiApiController.class })
 class ConfigUiControllerTest
 {
@@ -35,6 +37,9 @@ class ConfigUiControllerTest
 
     @MockBean
     private AdoConfigDiscoveryService discoveryService;
+
+    @MockBean
+    private RuntimeAdoCredentialService credentialService;
 
     @Test
     void uiPageAndModelEndpointReturnOk() throws Exception
@@ -215,5 +220,30 @@ class ConfigUiControllerTest
                 .andExpect(content().string(containsString("no options")))
                 .andExpect(content().string(not(containsString("secret-pat"))))
                 .andExpect(content().string(not(containsString("Authorization"))));
+    }
+
+    @Test
+    void runtimePatCredentialStatusEndpointReturnsConfiguredFlag() throws Exception
+    {
+        when(credentialService.isPatConfigured()).thenReturn(false);
+
+        mockMvc.perform(get("/api/config-ui/credentials/ado-pat")).andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"configured\":false")));
+    }
+
+    @Test
+    void runtimePatCredentialSubmitEndpointAcceptsPatWithoutEchoingValue() throws Exception
+    {
+        mockMvc.perform(post("/api/config-ui/credentials/ado-pat").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "personalAccessToken": "secret-pat"
+                        }
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"configured\":true")))
+                .andExpect(content().string(not(containsString("secret-pat"))));
+
+        verify(credentialService).submitPersonalAccessToken("secret-pat");
     }
 }

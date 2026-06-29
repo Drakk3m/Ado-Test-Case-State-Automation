@@ -54,6 +54,13 @@ public class AzureDevOpsHttpClient implements AdoClient
         return new AzureDevOpsHttpClient(webClient, new AzureDevOpsUrlBuilder());
     }
 
+    public static AzureDevOpsHttpClient fromProperties(AdoProperties properties, String personalAccessToken)
+    {
+        var authHeader = new AzureDevOpsAuth().basicAuthHeader(personalAccessToken);
+        var webClient = WebClient.builder().defaultHeader(HttpHeaders.AUTHORIZATION, authHeader).build();
+        return new AzureDevOpsHttpClient(webClient, new AzureDevOpsUrlBuilder());
+    }
+
     public static AzureDevOpsHttpClient forExchangeFunction(ExchangeFunction exchangeFunction,
             String personalAccessToken)
     {

@@ -183,7 +183,7 @@ class AzureDevOpsConfigDiscoveryServiceTest
 
         var result = service.listFieldReferenceNames("STMN-Group", "Sandbox", "Test Case");
 
-        assertThat(result.status()).isEqualTo(ConfigValidationStatus.ERROR);
+        assertThat(result.status()).isEqualTo(ConfigValidationStatus.NOT_CONFIGURED);
         assertThat(result.message()).contains("ADO_PERSONAL_ACCESS_TOKEN").doesNotContain("secret-pat");
         assertThat(exchange.requests).isEmpty();
     }
