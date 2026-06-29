@@ -121,7 +121,7 @@ public class AdoConfigDraftValidationService {
 
         var normalizedName = normalize(project.getName());
         if (!seen.add(normalizedName)) {
-            result.add(prefix + ".name", ConfigValidationStatus.ERROR, "Duplicate project name.");
+            result.add(prefix + ".name", ConfigValidationStatus.ERROR, "This project is already configured.");
         } else if (useAdoDiscovery) {
             var projectLookup = discoveryService.validateProject(model.getAdo().getOrganization(), project.getName());
             validateValueFromLookup(prefix + ".name", project.getName(), projectLookup, "Project was found in ADO.", "Project was not found in ADO.", result);

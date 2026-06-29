@@ -234,6 +234,25 @@ class AdoConfigDraftValidationServiceTest {
     }
 
     @Test
+    void duplicateProjectNamesAreBlockingAfterTrimAndCaseNormalization() {
+        var service = ApplicationLocalConfigServiceTest.validatingService(ApplicationLocalConfigServiceTest.validDiscovery());
+        var model = ApplicationLocalConfigServiceTest.validModel();
+        var original = model.getAdo().getProjects().getFirst();
+        model.getAdo().getProjects().add(copyProject(original, "  adonis 2.0 test project  "));
+
+        var result = service.validateLocalDraft(model);
+
+        assertThat(result.canGenerateDraftYaml()).isFalse();
+        assertThat(result.canGenerateFinalYaml()).isFalse();
+        assertThat(result.fields())
+                .anySatisfy(field -> {
+                    assertThat(field.field()).isEqualTo("ado.projects[1].name");
+                    assertThat(field.status()).isEqualTo(ConfigValidationStatus.ERROR);
+                    assertThat(field.message()).isEqualTo("This project is already configured.");
+                });
+    }
+
+    @Test
     void missingPatEnvironmentVariableBlocksAdoBackedValidation() {
         var service = new AdoConfigDraftValidationService(ApplicationLocalConfigServiceTest.validDiscovery(), java.util.Map.of(
                 "ADO_WEBHOOK_SHARED_SECRET", "real-secret"
@@ -261,5 +280,21 @@ class AdoConfigDraftValidationServiceTest {
         assertThat(result.canGenerateDraftYaml()).isTrue();
         assertThat(result.canGenerateFinalYaml()).isFalse();
         assertThat(result.fields()).anyMatch(field -> field.status() == ConfigValidationStatus.NOT_CHECKED);
+    }
+
+    private static ConfigUiModel.ProjectConfig copyProject(ConfigUiModel.ProjectConfig source, String name) {
+        var copy = new ConfigUiModel.ProjectConfig();
+        copy.setName(name);
+        copy.setEnabled(source.isEnabled());
+        copy.getSupportedWorkItemTypes().addAll(source.getSupportedWorkItemTypes());
+        copy.getStates().setDesign(source.getStates().getDesign());
+        copy.getStates().setInReview(source.getStates().getInReview());
+        copy.getStates().setApproved(source.getStates().getApproved());
+        copy.getFields().setApprovedBySme(source.getFields().getApprovedBySme());
+        copy.getFields().setApprovedBySqa(source.getFields().getApprovedBySqa());
+        copy.getFields().getReversibleBusinessFields().addAll(source.getFields().getReversibleBusinessFields());
+        copy.getApprovals().getSmeUsers().addAll(source.getApprovals().getSmeUsers());
+        copy.getApprovals().getSqaUsers().addAll(source.getApprovals().getSqaUsers());
+        return copy;
     }
 }

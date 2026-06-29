@@ -25,6 +25,7 @@ const IDENTITY_CACHE_TTL_MS = 10 * 60 * 1000;
 const IDENTITY_CACHE_MAX_ENTRIES = 50;
 const IDENTITY_CACHE_USEFUL_RESULT_COUNT = 3;
 const STRUCTURAL_DISCOVERY_TTL_MS = 10 * 60 * 1000;
+const DUPLICATE_PROJECT_MESSAGE = "This project is already configured.";
 let projectLayoutState = new Map();
 let localProjectSequence = 0;
 const LANGUAGE_STORAGE_KEY = "configUiLanguage";
@@ -504,6 +505,9 @@ function ensureSelectorDiagnostic(selectorName, projectConfigId = "") {
         selectorDiagnostics[key] = {
             selector: selectorName,
             projectConfigId,
+            selectedProjectName: "",
+            normalizedProjectName: "",
+            duplicateProjectStatus: false,
             status: "NOT_CHECKED",
             backendOptionCount: 0,
             receivedLength: 0,
@@ -645,6 +649,9 @@ function diagnosticGroupMarkup(group) {
 function diagnosticItemMarkup(item) {
     const metrics = [
         ["projectConfigId", item.projectConfigId],
+        ["selected project", item.selectedProjectName],
+        ["normalized project", item.normalizedProjectName],
+        ["duplicate project", item.duplicateProjectStatus],
         ["backend optionCount", item.backendOptionCount],
         ["received length", item.receivedLength],
         ["normalized length", item.normalizedLength],
@@ -1489,6 +1496,23 @@ function projectByConfigId(projectConfigId) {
     return state.ado.projects.find((project) => ensureProjectConfigId(project) === projectConfigId);
 }
 
+function duplicateProjectConfigIds() {
+    const projectIdsByName = new Map();
+    for (const project of state.ado.projects) {
+        const normalizedName = normalizedText(project.name);
+        if (!normalizedName) {
+            continue;
+        }
+        const projectConfigId = ensureProjectConfigId(project);
+        const projectIds = projectIdsByName.get(normalizedName) || [];
+        projectIds.push(projectConfigId);
+        projectIdsByName.set(normalizedName, projectIds);
+    }
+    return new Set(Array.from(projectIdsByName.values())
+        .filter((projectIds) => projectIds.length > 1)
+        .flat());
+}
+
 function projectControlId(projectConfigId, controlName) {
     return `${projectConfigId}-${controlName}`;
 }
@@ -1689,7 +1713,7 @@ function projectDisplayName(project, index) {
 }
 
 function projectSectionStatus(project, discovery, fieldDuplicateMessages, identityMessages) {
-    if (fieldDuplicateMessages.length > 0) {
+    if (duplicateProjectConfigIds().has(ensureProjectConfigId(project)) || fieldDuplicateMessages.length > 0) {
         return "ERROR";
     }
     if (identityMessages.length > 0) {
@@ -1727,6 +1751,7 @@ function projectSummary(project, index, selectedType, status) {
 
 function projectCanCollapse(project, discovery, fieldDuplicateMessages, identityMessages) {
     return isProjectDiscoveryCurrent(project, discovery)
+        && !duplicateProjectConfigIds().has(ensureProjectConfigId(project))
         && fieldDuplicateMessages.length === 0
         && identityMessages.length === 0;
 }
@@ -1938,6 +1963,7 @@ function isProjectDiscoveryCurrent(project, discovery) {
 function isUiAdoDiscoveryCurrent() {
     ensureDiscovery();
     return (state.ado.projects || []).length > 0
+        && duplicateProjectConfigIds().size === 0
         && state.ado.projects.every((project) => isProjectDiscoveryCurrent(project, projectDiscovery.get(ensureProjectConfigId(project))));
 }
 
@@ -1977,8 +2003,10 @@ function selectOptions(selectorName, lookup, selected, placeholder, enabled = fa
 function renderProjects() {
     ensureDiscovery();
     projectsEl.innerHTML = "";
+    const duplicateProjectIds = duplicateProjectConfigIds();
     state.ado.projects.forEach((project, index) => {
         const projectConfigId = ensureProjectConfigId(project);
+        const duplicateProject = duplicateProjectIds.has(projectConfigId);
         const discovery = projectDiscovery.get(projectConfigId);
         const selectedType = project.supportedWorkItemTypes?.[0] || "";
         const projectVerified = isProjectVerified(discovery, project);
@@ -2019,6 +2047,14 @@ function renderProjects() {
             stateOptionCount: lookupOptionCount(discovery.states),
             stateRenderedOptionCount: renderedOptionCount(discovery.states)
         });
+        updateSelectorDiagnostics("projectSelection", {
+            status: duplicateProject ? "ERROR" : (project.name ? "VALID" : "NOT_CHECKED"),
+            selectedProjectName: project.name || "",
+            normalizedProjectName: normalizedText(project.name),
+            duplicateProjectStatus: duplicateProject,
+            enabled: !duplicateProject,
+            message: duplicateProject ? DUPLICATE_PROJECT_MESSAGE : ""
+        }, projectConfigId);
         updateSelectorDiagnostics("reversibleBusinessFields", {
             status: discovery.fields?.status || "NOT_CHECKED",
             backendOptionCount: lookupOptionCount(discovery.fields),
@@ -2047,6 +2083,7 @@ function renderProjects() {
             ${collapsed ? `
                 <div class="project-collapsed-body">
                     <span>${escapeHtml(t("project.workItemTypeCount", { count: (project.supportedWorkItemTypes || []).length }))}</span>
+                    ${duplicateProject ? `<span>${validationBadge("ERROR")} ${escapeHtml(DUPLICATE_PROJECT_MESSAGE)}</span>` : ""}
                     ${fieldDuplicateMessages.length ? `<span>${validationBadge("ERROR")} ${escapeHtml(fieldDuplicateMessages.join(" "))}</span>` : ""}
                     ${identityMessages.length ? `<span>${validationBadge("WARNING")} ${escapeHtml(identityMessages.join(" "))}</span>` : ""}
                 </div>
@@ -2060,6 +2097,7 @@ function renderProjects() {
                         </label>
                         <button type="button" data-action="load-project">${escapeHtml(t("button.verifyProject"))}</button>
                     </div>
+                    ${duplicateProject ? `<span class="lookup-status">${validationBadge("ERROR")} ${escapeHtml(DUPLICATE_PROJECT_MESSAGE)}</span>` : ""}
                     ${lookupBadge(discovery.projectStatus)}
                     <label class="switch-row"><input data-field="enabled" type="checkbox" ${project.enabled ? "checked" : ""}> ${escapeHtml(t("project.enabled"))}</label>
                     <label>${escapeHtml(t("project.workItemType"))}
@@ -2845,7 +2883,7 @@ function renderDiscoveredProjectsDebug(options) {
     discoveredProjectsDebugEl.hidden = false;
     const rows = options.map((option) => `
         <li>
-            <button type="button" data-project-value="${escapeHtml(option.value)}">${escapeHtml(optionLabel(option))}</button>
+            <span>${escapeHtml(optionLabel(option))}</span>
         </li>
     `).join("");
     discoveredProjectsDebugEl.innerHTML = `
@@ -2853,19 +2891,6 @@ function renderDiscoveredProjectsDebug(options) {
         <p class="note compact">${escapeHtml(t("diagnostics.discoveredProjectsNote"))}</p>
         <ul>${rows || `<li>${escapeHtml(t("diagnostics.noProjectsRendered"))}</li>`}</ul>
     `;
-    for (const button of discoveredProjectsDebugEl.querySelectorAll("[data-project-value]")) {
-        button.addEventListener("click", () => {
-            if (state.ado.projects.length === 0) {
-                state.ado.projects.push(createProjectModel());
-                ensureDiscovery();
-            }
-            state.ado.projects[0].name = button.getAttribute("data-project-value") || "";
-            clearChildSelections(state.ado.projects[0]);
-            clearDiscovery(ensureProjectConfigId(state.ado.projects[0]), "project");
-            renderProjects();
-            schedulePreview();
-        });
-    }
 }
 
 function handleGlobalInput() {
