@@ -1113,7 +1113,7 @@ public class AzureDevOpsConfigDiscoveryService implements AdoConfigDiscoveryServ
 
     private void logDiscoveryCache(String operation, boolean cacheHit, String organization, String project,
             String workItemType) {
-        LOGGER.info("ADO config discovery cache operation={} organization={} project={} workItemType={} cacheHit={} cacheMiss={} durationMs=0",
+        LOGGER.info("ADO config discovery cache operation={} organization={} project={} workItemType={} cacheHit={} cacheMiss={} skippedBecauseCurrent=false inFlightDeduped=false processFailureCacheHit=false durationMs=0",
                 operation, organization, project, workItemType, cacheHit, !cacheHit);
     }
 

@@ -4,6 +4,9 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -39,6 +42,40 @@ class ConfigUiControllerTest {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/config-ui/model"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void yamlPreviewUsesLocalValidationWithoutStructuralDiscovery() throws Exception {
+        var validation = new ConfigValidationResult();
+        when(configService.previewLocalDraft(any()))
+                .thenReturn(new AdoConfigPreview("ado:\n", validation, true, true));
+
+        mockMvc.perform(post("/api/config-ui/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("ado:")));
+
+        verify(configService).previewLocalDraft(any());
+        verifyNoInteractions(discoveryService);
+    }
+
+    @Test
+    void saveDoesNotRepeatAdoValidationForResponsePreview() throws Exception {
+        var validation = new ConfigValidationResult();
+        when(configService.save(any())).thenReturn(java.nio.file.Path.of("application-local.yml"));
+        when(configService.previewLocalDraft(any()))
+                .thenReturn(new AdoConfigPreview("ado:\n", validation, true, true));
+
+        mockMvc.perform(post("/api/config-ui/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk());
+
+        verify(configService).save(any());
+        verify(configService).previewLocalDraft(any());
+        verify(configService, never()).preview(any());
+        verifyNoInteractions(discoveryService);
     }
 
     @Test

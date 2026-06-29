@@ -39,7 +39,7 @@ public class ConfigUiApiController {
 
     @PostMapping("/preview")
     public AdoConfigPreview preview(@RequestBody ConfigUiModel model) {
-        return configService.preview(model);
+        return configService.previewLocalDraft(model);
     }
 
     @PostMapping("/validate")
@@ -53,7 +53,7 @@ public class ConfigUiApiController {
         return Map.of(
                 "message", "application-local.yml actualizado sin persistir secretos.",
                 "path", path.toString(),
-                "preview", configService.preview(model)
+                "preview", configService.previewLocalDraft(model)
         );
     }
 
@@ -166,7 +166,7 @@ public class ConfigUiApiController {
         var message = safeMessage(result.message());
         if (result.status() == ConfigValidationStatus.VALID && result.optionCount() > 0) {
             LOGGER.info(
-                    "Config UI discovery completed operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} durationMs={} failureCategory={} message={}",
+                    "Config UI discovery completed operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} cacheHit={} skippedBecauseCurrent=false inFlightDeduped=false processFailureCacheHit={} durationMs={} failureCategory={} message={}",
                     operation,
                     requestId,
                     safe(request.organization()),
@@ -175,6 +175,8 @@ public class ConfigUiApiController {
                     queryLength(request),
                     result.status(),
                     result.optionCount(),
+                    diagnosticFlag(result, "discoveryCacheHit"),
+                    diagnosticFlag(result, "processFailureCacheHit"),
                     durationMs,
                     failureCategory,
                     message
@@ -182,7 +184,7 @@ public class ConfigUiApiController {
             return;
         }
         LOGGER.warn(
-                "Config UI discovery needs attention operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} durationMs={} failureCategory={} message={}",
+                "Config UI discovery needs attention operation={} requestId={} organization={} project={} workItemType={} queryLength={} status={} optionCount={} cacheHit={} skippedBecauseCurrent=false inFlightDeduped=false processFailureCacheHit={} durationMs={} failureCategory={} message={}",
                 operation,
                 requestId,
                 safe(request.organization()),
@@ -191,10 +193,16 @@ public class ConfigUiApiController {
                 queryLength(request),
                 result.status(),
                 result.optionCount(),
+                diagnosticFlag(result, "discoveryCacheHit"),
+                diagnosticFlag(result, "processFailureCacheHit"),
                 durationMs,
                 failureCategory,
                 message
         );
+    }
+
+    private boolean diagnosticFlag(ConfigLookupResult<?> result, String key) {
+        return Boolean.TRUE.equals(result.diagnostics().get(key));
     }
 
     private String failureCategory(ConfigLookupResult<?> result) {

@@ -256,7 +256,18 @@ class ConfigUiStaticAssetsTest {
                 .contains("frontendLoadFieldsCallCount")
                 .contains("frontendLoadStatesCallCount")
                 .contains("function structuralLookupIsCurrent(")
-                .contains("function updateStructuralDiscoveryDiagnostics(");
+                .contains("function updateStructuralDiscoveryDiagnostics(")
+                .contains("STRUCTURAL_DISCOVERY_TTL_MS")
+                .contains("structuralDiscoverySuppressedCount")
+                .contains("lastStructuralDiscoveryReason")
+                .contains("lastStructuralDiscoveryDependencyKey")
+                .contains("function suppressStructuralDiscovery(")
+                .contains("validateProject:current")
+                .contains("loadWorkItemTypes:current")
+                .contains("loadFields:current")
+                .contains("loadStates:current")
+                .contains("yaml-preview")
+                .contains("identity-search");
     }
 
     @Test
