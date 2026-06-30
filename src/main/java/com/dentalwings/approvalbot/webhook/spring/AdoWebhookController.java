@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.ContentCachingRequestWrapper;
+import org.springframework.web.util.WebUtils;
+
+import jakarta.servlet.http.HttpServletRequest;
 import com.dentalwings.approvalbot.config.spring.ProjectApprovalConfigResolver;
 import com.dentalwings.approvalbot.processing.pipeline.WebhookEventProcessingPipeline;
 import com.dentalwings.approvalbot.processing.pipeline.WebhookProcessingStatus;
@@ -27,21 +31,25 @@ public class AdoWebhookController
     private final AdoWebhookEventMapper mapper;
     private final ProjectApprovalConfigResolver configResolver;
     private final WebhookSharedSecretValidator sharedSecretValidator;
+    private final WebhookDebugCaptureService debugCaptureService;
 
     public AdoWebhookController(ObjectProvider<WebhookEventProcessingPipeline> pipelineProvider,
             AdoWebhookEventMapper mapper, ProjectApprovalConfigResolver configResolver,
-            WebhookSharedSecretValidator sharedSecretValidator)
+            WebhookSharedSecretValidator sharedSecretValidator, WebhookDebugCaptureService debugCaptureService)
     {
         this.pipelineProvider = pipelineProvider;
         this.mapper = mapper;
         this.configResolver = configResolver;
         this.sharedSecretValidator = sharedSecretValidator;
+        this.debugCaptureService = debugCaptureService;
     }
 
     @PostMapping("/work-item-updated")
     public ResponseEntity<WebhookResponse> workItemUpdated(@RequestHeader HttpHeaders headers,
-            @RequestBody AdoServiceHookWorkItemUpdatedRequest request)
+            @RequestBody AdoServiceHookWorkItemUpdatedRequest request, HttpServletRequest servletRequest)
     {
+        debugCaptureService.capture(extractRawBody(servletRequest), request);
+
         var sharedSecretResult = sharedSecretValidator.validate(headers.getFirst(sharedSecretValidator.headerName()));
         if (!sharedSecretResult.valid())
         {
@@ -77,6 +85,22 @@ public class AdoWebhookController
                 resource == null ? null : resource.project(), resource == null ? null : resource.workItemId(),
                 resource == null ? null : resource.revision(), result.status(), httpStatus.value(), result.reason());
         return ResponseEntity.status(httpStatus).body(new WebhookResponse(result.status().name(), result.reason()));
+    }
+
+    private String extractRawBody(HttpServletRequest request)
+    {
+        var wrapper = WebUtils.getNativeRequest(request, ContentCachingRequestWrapper.class);
+        if (wrapper == null)
+        {
+            return "";
+        }
+        var bytes = wrapper.getContentAsByteArray();
+        if (bytes.length == 0)
+        {
+            return "";
+        }
+        return new String(bytes, wrapper.getCharacterEncoding() == null ? java.nio.charset.StandardCharsets.UTF_8
+                : java.nio.charset.Charset.forName(wrapper.getCharacterEncoding()));
     }
 
     private HttpStatus status(WebhookProcessingStatus status)

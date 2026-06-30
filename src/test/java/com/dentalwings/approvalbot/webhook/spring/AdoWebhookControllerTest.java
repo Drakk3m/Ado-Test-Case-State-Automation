@@ -55,6 +55,9 @@ class AdoWebhookControllerTest
     @MockBean
     private WebhookSharedSecretValidator sharedSecretValidator;
 
+    @MockBean
+    private WebhookDebugCaptureService debugCaptureService;
+
     @BeforeEach
     void allowSharedSecretByDefault()
     {
@@ -169,6 +172,7 @@ class AdoWebhookControllerTest
         verify(pipeline).process(eventCaptor.capture(), configCaptor.capture());
         assertThat(eventCaptor.getValue().resource().project()).isEqualTo("ProjectA");
         assertThat(configCaptor.getValue().projectName()).isEqualTo("ProjectA");
+        verify(debugCaptureService).capture(any(), any());
     }
 
     @Test
