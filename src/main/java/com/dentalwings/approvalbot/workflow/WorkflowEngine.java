@@ -15,6 +15,8 @@ import com.dentalwings.approvalbot.domain.WorkflowInput;
 import com.dentalwings.approvalbot.identity.EmailNormalizer;
 import com.dentalwings.approvalbot.identity.IdentityClassification;
 import com.dentalwings.approvalbot.identity.IdentityClassifier;
+import com.dentalwings.approvalbot.workflow.comment.CommentBuilder;
+import com.dentalwings.approvalbot.workflow.comment.CommentBuilder.RejectedChange;
 
 public class WorkflowEngine
 {
@@ -31,9 +33,16 @@ public class WorkflowEngine
     private final IdentityClassifier identityClassifier;
     private final EmailNormalizer emailNormalizer;
     private final ValueComparator valueComparator;
+    private final CommentBuilder commentBuilder;
 
     public WorkflowEngine()
     {
+        this(new CommentBuilder());
+    }
+
+    public WorkflowEngine(CommentBuilder commentBuilder)
+    {
+        this.commentBuilder = Objects.requireNonNull(commentBuilder);
         this.emailNormalizer = new EmailNormalizer();
         this.valueComparator = new ValueComparator();
         this.changeAnalyzer = new ChangeAnalyzer(valueComparator);
@@ -111,6 +120,7 @@ public class WorkflowEngine
     {
         var changedReversibleFields = changeAnalyzer.changedReversibleFields(input.previousFields(),
                 input.currentFields(), config);
+        var approvalRejections = approvalFieldRejections(input, config, false);
         var classification = identityClassifier.classify(input.changedBy(), config);
 
         if (!changedReversibleFields.isEmpty() && !classification.authorizedApprover())
@@ -120,7 +130,10 @@ public class WorkflowEngine
                     .map(field -> PatchOperation.replaceField(field, input.previousFields().get(field)))
                     .forEach(operations::add);
             operations.addAll(restoreChangedApprovalFields(input, config));
-            return WorkflowDecision.completed(operations, proposedChangesComment(input.changedBy()),
+            var rejectedChanges = new ArrayList<>(reversibleFieldRejections(input, changedReversibleFields));
+            rejectedChanges.addAll(approvalRejections);
+            return WorkflowDecision.completed(operations,
+                    commentBuilder.unauthorizedModifications(input.changedBy(), rejectedChanges),
                     "Unauthorized reversible content changes were reverted.");
         }
 
@@ -130,7 +143,9 @@ public class WorkflowEngine
             operations.add(clearApprovalField(config.approvedBySmeField()));
             operations.add(clearApprovalField(config.approvedBySqaField()));
             operations.addAll(currentUserApprovalOperations(input.changedBy(), classification, config, Map.of()));
-            return WorkflowDecision.completed(operations, null,
+            var approvalCorrections = approvalFieldRejections(input, config, true);
+            return WorkflowDecision.completed(operations,
+                    detailedCorrectionComment(input.changedBy(), approvalCorrections),
                     "Authorized content change resets approvals and records current reviewer.");
         }
 
@@ -142,7 +157,9 @@ public class WorkflowEngine
         var approvalRestores = restoreChangedApprovalFields(input, config);
         if (!approvalRestores.isEmpty())
         {
-            return WorkflowDecision.completed(approvalRestores, null, "Manual approval field edit was ignored.");
+            return WorkflowDecision.completed(approvalRestores,
+                    detailedCorrectionComment(input.changedBy(), approvalRejections),
+                    "Manual approval field edit was ignored.");
         }
 
         return finalizeInReviewApprovals(input, config, classification);
@@ -154,6 +171,8 @@ public class WorkflowEngine
         var projectedFields = fieldsWithTrustedApprovals(input, config);
         var validationFields = new LinkedHashMap<>(projectedFields);
         var operations = new ArrayList<>(restoreChangedApprovalFields(input, config));
+        var correctionComment = detailedCorrectionComment(input.changedBy(),
+                approvalFieldRejections(input, config, false));
 
         applyCurrentUserApproval(input, config, classification, operations, projectedFields, validationFields);
 
@@ -182,7 +201,8 @@ public class WorkflowEngine
         if (validation.fullyApprovedByDifferentUsers())
         {
             operations.add(PatchOperation.replaceField(SYSTEM_STATE, config.stateNames().approved()));
-            return WorkflowDecision.completed(operations, approvedComment(projectedFields, config),
+            return WorkflowDecision.completed(operations,
+                    combineComments(correctionComment, approvedComment(projectedFields, config)),
                     "Approvals are valid and complete.");
         }
 
@@ -190,7 +210,7 @@ public class WorkflowEngine
         {
             return WorkflowDecision.skipped("Approval already reflects current reviewer.");
         }
-        return WorkflowDecision.completed(operations, null, "Current reviewer approval was recorded.");
+        return WorkflowDecision.completed(operations, correctionComment, "Current reviewer approval was recorded.");
     }
 
     private void addProjectedOperation(PatchOperation operation, List<PatchOperation> operations,
@@ -208,6 +228,8 @@ public class WorkflowEngine
         var projectedFields = fieldsWithTrustedApprovals(input, config);
         var validationFields = new LinkedHashMap<>(projectedFields);
         var operations = new ArrayList<>(restoreChangedApprovalFields(input, config));
+        var correctionComment = detailedCorrectionComment(input.changedBy(),
+                approvalFieldRejections(input, config, false));
         var classification = identityClassifier.classify(input.changedBy(), config);
         applyCurrentUserApproval(input, config, classification, operations, projectedFields, validationFields);
 
@@ -216,7 +238,7 @@ public class WorkflowEngine
         {
             if (!operations.isEmpty())
             {
-                return WorkflowDecision.completed(operations, null,
+                return WorkflowDecision.completed(operations, correctionComment,
                         "Approved state approval fields were restored from trusted values.");
             }
             return WorkflowDecision.skipped("Approved state already has valid approvals.");
@@ -238,9 +260,75 @@ public class WorkflowEngine
         var correctionOperations = new ArrayList<PatchOperation>();
         correctionOperations.add(PatchOperation.replaceField(SYSTEM_STATE, config.stateNames().inReview()));
         correctionOperations.addAll(operations);
-        return WorkflowDecision.completed(correctionOperations,
-                "The Test Case was returned to In Review because it does not have valid SME and SQA approvals from different users.",
+        return WorkflowDecision.completed(correctionOperations, combineComments(correctionComment,
+                "The Test Case was returned to In Review because it does not have valid SME and SQA approvals from different users."),
                 "Approved state has invalid approvals.");
+    }
+
+    private List<RejectedChange> approvalFieldRejections(WorkflowInput input, ProjectApprovalConfig config,
+            boolean approvalsResetForContentChange)
+    {
+        var rejectedChanges = new ArrayList<RejectedChange>();
+        addApprovalFieldRejection(input, config.approvedBySmeField(), approvalsResetForContentChange,
+                rejectedChanges);
+        addApprovalFieldRejection(input, config.approvedBySqaField(), approvalsResetForContentChange,
+                rejectedChanges);
+        return List.copyOf(rejectedChanges);
+    }
+
+    private void addApprovalFieldRejection(WorkflowInput input, String field, boolean approvalsResetForContentChange,
+            List<RejectedChange> rejectedChanges)
+    {
+        if (!Objects.deepEquals(input.previousFields().get(field), input.currentFields().get(field)))
+        {
+            var previousValue = input.previousFields().get(field);
+            var actionTaken = approvalFieldAction(previousValue, approvalsResetForContentChange);
+            rejectedChanges.add(new RejectedChange(field, input.previousFields().get(field),
+                    input.currentFields().get(field),
+                    "Approval fields are bot-owned; manually supplied identity values are not trusted.", actionTaken));
+        }
+    }
+
+    private String approvalFieldAction(Object previousValue, boolean approvalsResetForContentChange)
+    {
+        if (approvalsResetForContentChange)
+        {
+            return "Discarded the manual approval value while approvals were reset and recalculated from the actual modifier identity.";
+        }
+        return hasValue(previousValue) ? "Restored the previous bot-owned approval value."
+                : "Cleared the approval field because no previous bot-owned value existed.";
+    }
+
+    private List<RejectedChange> reversibleFieldRejections(WorkflowInput input, Iterable<String> fields)
+    {
+        var rejectedChanges = new ArrayList<RejectedChange>();
+        for (String field : fields)
+        {
+            rejectedChanges.add(new RejectedChange(field, input.previousFields().get(field),
+                    input.currentFields().get(field),
+                    "The field is configured as reversible-business-fields and the modifier is not an authorized SME/SQA approver.",
+                    "Reverted the configured field to its previous value."));
+        }
+        return List.copyOf(rejectedChanges);
+    }
+
+    private String detailedCorrectionComment(Identity changedBy, List<RejectedChange> rejectedChanges)
+    {
+        return rejectedChanges.isEmpty() ? null
+                : commentBuilder.unauthorizedModifications(changedBy, rejectedChanges);
+    }
+
+    private String combineComments(String first, String second)
+    {
+        if (first == null || first.isBlank())
+        {
+            return second;
+        }
+        if (second == null || second.isBlank())
+        {
+            return first;
+        }
+        return first + "\n\n" + second;
     }
 
     private LinkedHashMap<String, Object> fieldsWithTrustedApprovals(WorkflowInput input,
@@ -397,17 +485,6 @@ public class WorkflowEngine
                 
                 Approved by SQA:
                 %s""".formatted(fields.get(config.approvedBySmeField()), fields.get(config.approvedBySqaField()));
-    }
-
-    private String proposedChangesComment(Identity changedBy)
-    {
-        var identity = changedBy == null || changedBy.displayName() == null || changedBy.displayName().isBlank()
-                ? "Unknown user" : changedBy.displayName().trim();
-        return """
-                Proposed changes by %s.
-                
-                The original Test Case field values were automatically restored because this user is not an SME/SQA approver."""
-                .formatted(identity);
     }
 
     private boolean hasValue(Object value)

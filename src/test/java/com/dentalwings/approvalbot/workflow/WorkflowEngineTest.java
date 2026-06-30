@@ -103,7 +103,10 @@ class WorkflowEngineTest
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "Old title"));
-        assertThat(decision.comment()).contains("Proposed changes");
+        assertThat(decision.comment()).contains("Proposed changes").contains("Modifier:\nNora User")
+                .contains("* System.Title:").contains("Previous:\n  Old title")
+                .contains("Proposed:\n  New title").contains("Action taken:")
+                .contains("Reverted the configured field to its previous value.");
     }
 
     @Test
@@ -317,6 +320,10 @@ class WorkflowEngineTest
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations())
                 .containsExactly(PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
+        assertThat(decision.comment()).contains("Unauthorized Test Case modifications corrected.")
+                .contains("* " + SME_FIELD + ":").contains("Approval fields are bot-owned")
+                .contains("Previous:\n  Ana Perez <ana@example.com>")
+                .contains("Proposed:\n  Nora User <nora@example.com>").contains("Action taken:");
     }
 
     @Test
@@ -328,6 +335,8 @@ class WorkflowEngineTest
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""),
                 PatchOperation.replaceField(SME_FIELD, "Ana Perez"));
+        assertThat(decision.comment())
+                .contains("Cleared the approval field because no previous bot-owned value existed.");
     }
 
     @Test
@@ -343,6 +352,10 @@ class WorkflowEngineTest
                 PatchOperation.replaceField(SME_FIELD, "Ana Perez"), PatchOperation.replaceField(SQA_FIELD, ""));
         assertThat(decision.patchOperations())
                 .doesNotContain(PatchOperation.replaceField("System.State", "Approved"));
+        assertThat(decision.comment()).contains("* " + SQA_FIELD + ":")
+                .contains("Previous:\n  Previous Test <previous@example.com>")
+                .contains("Proposed:\n  Sam Quality <sam@example.com>")
+                .contains("Restored the previous bot-owned approval value");
     }
 
     @Test
@@ -358,6 +371,10 @@ class WorkflowEngineTest
                 PatchOperation.replaceField(SQA_FIELD, "Sam Quality"), PatchOperation.replaceField(SME_FIELD, ""));
         assertThat(decision.patchOperations())
                 .doesNotContain(PatchOperation.replaceField("System.State", "Approved"));
+        assertThat(decision.comment()).contains("* " + SME_FIELD + ":")
+                .contains("Previous:\n  Previous Tech <previous@example.com>")
+                .contains("Proposed:\n  Ana Perez <ana@example.com>")
+                .contains("Restored the previous bot-owned approval value");
     }
 
     @Test
@@ -386,6 +403,8 @@ class WorkflowEngineTest
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""),
                 PatchOperation.replaceField(SME_FIELD, "Ana Perez"),
                 PatchOperation.replaceField("System.State", "Approved"));
+        assertThat(decision.comment()).contains("Unauthorized Test Case modifications corrected.")
+                .contains("Test Case approved automatically.");
     }
 
     @Test
@@ -436,6 +455,11 @@ class WorkflowEngineTest
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(TITLE_FIELD, "Old"),
                 PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
+        assertThat(decision.comment()).containsOnlyOnce("Unauthorized Test Case modifications corrected.")
+                .contains("* " + SME_FIELD + ":").contains("* " + TITLE_FIELD + ":")
+                .contains("Previous:\n  Ana Perez <ana@example.com>")
+                .contains("Proposed:\n  Nora User <nora@example.com>").contains("Previous:\n  Old")
+                .contains("Proposed:\n  New");
     }
 
     @Test

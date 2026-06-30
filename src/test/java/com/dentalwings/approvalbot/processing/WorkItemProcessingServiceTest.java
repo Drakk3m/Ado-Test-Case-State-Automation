@@ -97,6 +97,21 @@ class WorkItemProcessingServiceTest {
     }
 
     @Test
+    void detailedApprovalCorrectionCommentIsPassedToAdoClient() {
+        var previous = fields("System.State", "In Review", SME_FIELD, "Ana <ana@example.com>");
+        var current = fields(SME_FIELD, "Claimed <claimed@example.com>");
+        var client = fakeClient(workItem(10, 30, "In Review", current), revision(29, nonApprover(), previous));
+
+        var result = service(client).process(command(30));
+
+        assertThat(result.result()).isEqualTo(ProcessingResult.COMPLETED);
+        assertThat(client.commentCalls).isOne();
+        assertThat(client.commentText).contains("Unauthorized Test Case modifications corrected.")
+                .contains("* " + SME_FIELD + ":").contains("Previous:\n  Ana <ana@example.com>")
+                .contains("Proposed:\n  Claimed <claimed@example.com>");
+    }
+
+    @Test
     void patchFailureDoesNotCreateComment() {
         var client = fakeClient(workItem(10, 30, "Approved", fields()),
                 revision(29, nonApprover(), fields("System.State", "In Review")));

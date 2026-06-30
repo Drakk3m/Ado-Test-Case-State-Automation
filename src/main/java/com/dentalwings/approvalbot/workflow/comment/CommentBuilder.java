@@ -54,6 +54,26 @@ public class CommentBuilder
                 %s""".formatted(identityLine, reasonLine, changedFieldsText(changedFields));
     }
 
+    public String unauthorizedModifications(Identity changedBy, Collection<RejectedChange> rejectedChanges)
+    {
+        var verifiedEmail = changedBy != null && changedBy.email() != null && !changedBy.email().isBlank();
+        var modifier = verifiedEmail ? "%s [%s](mailto:%s)".formatted(displayName(changedBy),
+                changedBy.email().trim(), changedBy.email().trim()) : displayName(changedBy);
+        return """
+                Unauthorized Test Case modifications corrected.
+                Proposed changes were rejected and corrected by the approval automation.
+
+                Modifier:
+                %s
+
+                Reason:
+                The original Test Case field values were automatically restored because one or more submitted changes were not authorized by the approval workflow.
+
+                Rejected changes:
+
+                %s""".formatted(modifier, rejectedChangesText(rejectedChanges));
+    }
+
     public String manualApprovalFieldEditCorrected()
     {
         return """
@@ -88,6 +108,24 @@ public class CommentBuilder
                 renderValue(field.proposedValue()))).collect(Collectors.joining("\n\n"));
     }
 
+    private String rejectedChangesText(Collection<RejectedChange> rejectedChanges)
+    {
+        return rejectedChanges.stream().sorted(Comparator.comparing(RejectedChange::fieldReferenceName)).map(change -> """
+                * %s:
+                  Reason:
+                  %s
+
+                  Previous:
+                  %s
+
+                  Proposed:
+                  %s
+
+                  Action taken:
+                  %s""".formatted(change.fieldReferenceName(), change.reason(), renderValue(change.previousValue()),
+                renderValue(change.proposedValue()), change.actionTaken())).collect(Collectors.joining("\n\n"));
+    }
+
     private String displayName(Identity identity)
     {
         if (identity == null || identity.displayName() == null || identity.displayName().isBlank())
@@ -103,6 +141,11 @@ public class CommentBuilder
     }
 
     public record ChangedField(String fieldReferenceName, Object previousValue, Object proposedValue)
+    {
+    }
+
+    public record RejectedChange(String fieldReferenceName, Object previousValue, Object proposedValue, String reason,
+                                 String actionTaken)
     {
     }
 }
