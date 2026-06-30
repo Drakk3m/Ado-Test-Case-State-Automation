@@ -48,8 +48,6 @@ public class AdoWebhookController
     public ResponseEntity<WebhookResponse> workItemUpdated(@RequestHeader HttpHeaders headers,
             @RequestBody AdoServiceHookWorkItemUpdatedRequest request, HttpServletRequest servletRequest)
     {
-        debugCaptureService.capture(extractRawBody(servletRequest), request);
-
         var sharedSecretResult = sharedSecretValidator.validate(headers.getFirst(sharedSecretValidator.headerName()));
         if (!sharedSecretResult.valid())
         {
@@ -64,6 +62,8 @@ public class AdoWebhookController
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new WebhookResponse("UNAUTHORIZED", "Webhook shared-secret validation failed."));
         }
+
+        captureDebugPayloadSafely(servletRequest, request);
 
         var pipeline = pipelineProvider.getIfAvailable();
         if (pipeline == null)
@@ -85,6 +85,19 @@ public class AdoWebhookController
                 resource == null ? null : resource.project(), resource == null ? null : resource.workItemId(),
                 resource == null ? null : resource.revision(), result.status(), httpStatus.value(), result.reason());
         return ResponseEntity.status(httpStatus).body(new WebhookResponse(result.status().name(), result.reason()));
+    }
+
+    private void captureDebugPayloadSafely(HttpServletRequest servletRequest,
+            AdoServiceHookWorkItemUpdatedRequest request)
+    {
+        try
+        {
+            debugCaptureService.capture(extractRawBody(servletRequest), request);
+        }
+        catch (RuntimeException ex)
+        {
+            LOGGER.warn("ADO webhook debug capture failed cause={}", ex.getClass().getSimpleName());
+        }
     }
 
     private String extractRawBody(HttpServletRequest request)

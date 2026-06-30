@@ -2,6 +2,7 @@ package com.dentalwings.approvalbot.webhook.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -91,6 +92,7 @@ class AdoWebhookControllerTest
                 .andExpect(jsonPath("$.status").value("UNAUTHORIZED"));
 
         verifyNoInteractions(pipeline);
+        verifyNoInteractions(debugCaptureService);
     }
 
     @Test
@@ -105,6 +107,22 @@ class AdoWebhookControllerTest
                 .andExpect(jsonPath("$.reason").value("Webhook shared secret is required but not configured."));
 
         verifyNoInteractions(pipeline);
+        verifyNoInteractions(debugCaptureService);
+    }
+
+    @Test
+    void debugCaptureFailureDoesNotBlockWebhookProcessing() throws Exception
+    {
+        when(configResolver.findByProjectName("ProjectA")).thenReturn(Optional.of(config()));
+        when(pipeline.process(any(), any())).thenReturn(completedResult());
+        doThrow(new IllegalStateException("capture failed")).when(debugCaptureService).capture(any(), any());
+
+        mockMvc.perform(post("/api/ado/webhooks/work-item-updated").contentType(MediaType.APPLICATION_JSON)
+                        .content(minimalPayload())).andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        verify(debugCaptureService).capture(any(), any());
+        verify(pipeline).process(any(), any());
     }
 
     @Test
