@@ -1,10 +1,11 @@
 # GitHub `repository_dispatch` Payload Contract
 
-This document defines the payload expected by the approval bot one-shot runner when a GitHub workflow is triggered via `repository_dispatch`.
+This document defines the canonical Azure DevOps event payload expected by the approval bot when a GitHub workflow is triggered via `repository_dispatch`.
 
 ## Purpose
 
 - The GitHub App dispatch event wakes the workflow only.
+- Spring webhook mode and the Java one-shot runner normalize the same ADO `workitem.updated` event shape.
 - The Java runner still fetches Azure DevOps (ADO) source of truth before making decisions.
 - Processing eligibility is still controlled by YAML config (project enablement, supported work item type, workflow settings).
 
@@ -22,7 +23,53 @@ Expected payload location in workflow context:
 github.event.client_payload
 ```
 
-## Required Fields
+## Canonical `client_payload`
+
+New integrations must place the unmodified ADO event under `ado_event`:
+
+```json
+{
+  "ado_event": {
+    "eventType": "workitem.updated",
+    "id": "delivery-1",
+    "subscriptionId": "subscription-1",
+    "resource": {
+      "workItemId": 12345,
+      "rev": 17,
+      "id": 17,
+      "url": "https://dev.azure.com/example/project/_apis/wit/workItems/12345/updates/17",
+      "revisedBy": {
+        "displayName": "Example User",
+        "uniqueName": "user@example.com"
+      },
+      "revision": {
+        "id": 12345,
+        "rev": 17,
+        "fields": {
+          "System.TeamProject": "Project Name",
+          "System.WorkItemType": "Test Case",
+          "System.State": "Design"
+        }
+      }
+    },
+    "resourceContainers": {
+      "account": {
+        "baseUrl": "https://dev.azure.com/ExampleOrg/"
+      }
+    }
+  }
+}
+```
+
+`resource.workItemId` is the Work Item ID, with `resource.revision.id` as its fallback. `resource.id` is the update/revision ID and is never interpreted as a Work Item ID. Revision comes from `resource.rev`, falling back to `resource.revision.rev`.
+
+The parser derives organization from `resourceContainers.account.baseUrl` and project from `resource.revision.fields["System.TeamProject"]`. Only `workitem.updated` is accepted.
+
+## Legacy Flat Input
+
+The flat payload remains available for manual/backward-compatible runner invocation. New repository dispatch integrations should use `ado_event`.
+
+### Required Fields
 
 All required fields must be present in `client_payload`.
 
@@ -35,7 +82,7 @@ All required fields must be present in `client_payload`.
 | `revision` | `number` | ADO revision number tied to the triggering change. |
 | `eventType` | `string` | Event classification, for example `workitem.updated`. |
 
-## Optional Fields
+### Optional Fields
 
 These fields are accepted when available.
 
@@ -47,7 +94,7 @@ These fields are accepted when available.
 | `subscriptionId` | `string` | ADO Service Hook subscription identifier. |
 | `deliveryId` | `string` | Delivery identifier for tracing a single webhook delivery. |
 
-## Example `client_payload`
+### Flat Example
 
 ```json
 {

@@ -194,6 +194,19 @@ class AdoWebhookControllerTest
     }
 
     @Test
+    void controllerAcceptsCanonicalAdoEventEnvelope() throws Exception
+    {
+        when(configResolver.findByProjectName("ProjectA")).thenReturn(Optional.of(config()));
+        when(pipeline.process(any(), any())).thenReturn(completedResult());
+
+        mockMvc.perform(post("/api/ado/webhooks/work-item-updated").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ado_event\":" + minimalPayload() + "}"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        verify(pipeline).process(any(), any());
+    }
+
+    @Test
     void controllerMapsCompletedPipelineResultToAccepted() throws Exception
     {
         when(configResolver.findByProjectName("ProjectA")).thenReturn(Optional.of(config()));
@@ -302,9 +315,9 @@ class AdoWebhookControllerTest
         return """
                 {
                   "eventType": "workitem.updated",
-                  "organization": "org",
                   "resource": {
-                    "id": 123,
+                    "workItemId": 123,
+                    "id": 27,
                     "rev": 27,
                     "revisedBy": {
                       "displayName": "Human User",
@@ -322,6 +335,11 @@ class AdoWebhookControllerTest
                         "oldValue": "Old title",
                         "newValue": "New title"
                       }
+                    }
+                  },
+                  "resourceContainers": {
+                    "account": {
+                      "baseUrl": "https://dev.azure.com/org/"
                     }
                   }
                 }

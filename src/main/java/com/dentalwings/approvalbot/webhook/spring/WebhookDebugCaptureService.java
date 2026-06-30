@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
-import com.dentalwings.approvalbot.webhook.spring.dto.AdoServiceHookWorkItemUpdatedRequest;
+import com.dentalwings.approvalbot.event.NormalizedWorkItemEvent;
 
 @Service
 public class WebhookDebugCaptureService
@@ -28,14 +28,15 @@ public class WebhookDebugCaptureService
         this.enabled = enabled;
     }
 
-    public void capture(String rawRequestBody, AdoServiceHookWorkItemUpdatedRequest request)
+    public void capture(String rawRequestBody, NormalizedWorkItemEvent event)
     {
         if (!enabled)
         {
             return;
         }
         latest.set(new CapturedWebhookEvent(Instant.now(), value(rawRequestBody),
-                value(request == null ? null : request.eventType()), project(request), workItemId(request), revision(request)));
+                value(event == null ? null : event.eventType()), event == null ? null : event.project(),
+                workItemId(event), event == null ? null : event.revision()));
     }
 
     public Optional<CapturedWebhookEvent> latestCapture()
@@ -43,45 +44,13 @@ public class WebhookDebugCaptureService
         return Optional.ofNullable(latest.get());
     }
 
-    private String project(AdoServiceHookWorkItemUpdatedRequest request)
+    private Integer workItemId(NormalizedWorkItemEvent event)
     {
-        if (request == null || request.resource() == null)
+        if (event == null || event.workItemId() == null)
         {
             return null;
         }
-        if (request.resource().project() != null && !request.resource().project().isBlank())
-        {
-            return request.resource().project();
-        }
-        var revision = request.resource().revision();
-        if (revision == null || revision.fields() == null)
-        {
-            return null;
-        }
-        var value = revision.fields().get("System.TeamProject");
-        return value == null ? null : value.toString();
-    }
-
-    private Integer workItemId(AdoServiceHookWorkItemUpdatedRequest request)
-    {
-        if (request == null || request.resource() == null || request.resource().id() == null)
-        {
-            return null;
-        }
-        return Math.toIntExact(request.resource().id());
-    }
-
-    private Integer revision(AdoServiceHookWorkItemUpdatedRequest request)
-    {
-        if (request == null || request.resource() == null)
-        {
-            return null;
-        }
-        if (request.resource().rev() != null)
-        {
-            return request.resource().rev();
-        }
-        return request.resource().revision() == null ? null : request.resource().revision().rev();
+        return Math.toIntExact(event.workItemId());
     }
 
     private String value(String input)

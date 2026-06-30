@@ -53,6 +53,52 @@ class RepositoryDispatchPayloadParserTest
     }
 
     @Test
+    void prefersCanonicalAdoEventWhenEnvelopeIsPresent() throws IOException
+    {
+        var file = writePayload("""
+                {
+                  "source": "ignored-flat-source",
+                  "ado_event": {
+                    "eventType": "workitem.updated",
+                    "id": "delivery-9",
+                    "subscriptionId": "subscription-9",
+                    "resource": {
+                      "workItemId": 25691,
+                      "rev": 7,
+                      "id": 7,
+                      "url": "https://example.invalid/update/7",
+                      "revisedBy": {
+                        "displayName": "Jane Doe",
+                        "uniqueName": "jane.doe@example.com"
+                      },
+                      "revision": {
+                        "id": 25691,
+                        "rev": 7,
+                        "fields": {
+                          "System.TeamProject": "ADOnis 2.0 Test Project",
+                          "System.WorkItemType": "Test Case"
+                        }
+                      }
+                    },
+                    "resourceContainers": {
+                      "account": {
+                        "baseUrl": "https://dev.azure.com/STMN-Group/"
+                      }
+                    }
+                  }
+                }
+                """);
+
+        var payload = parser.parse(file);
+
+        assertThat(payload.organization()).isEqualTo("STMN-Group");
+        assertThat(payload.project()).isEqualTo("ADOnis 2.0 Test Project");
+        assertThat(payload.workItemId()).isEqualTo(25691L);
+        assertThat(payload.revision()).isEqualTo(7);
+        assertThat(payload.deliveryId()).isEqualTo("delivery-9");
+    }
+
+    @Test
     void returnsAllMissingRequiredFieldErrors()
     {
         var file = writePayloadUnchecked("""

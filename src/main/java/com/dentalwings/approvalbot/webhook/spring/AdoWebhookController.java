@@ -16,9 +16,11 @@ import org.springframework.web.util.WebUtils;
 
 import jakarta.servlet.http.HttpServletRequest;
 import com.dentalwings.approvalbot.config.spring.ProjectApprovalConfigResolver;
+import com.dentalwings.approvalbot.event.InvalidAdoEventPayloadException;
+import com.dentalwings.approvalbot.event.NormalizedWorkItemEvent;
 import com.dentalwings.approvalbot.processing.pipeline.WebhookEventProcessingPipeline;
 import com.dentalwings.approvalbot.processing.pipeline.WebhookProcessingStatus;
-import com.dentalwings.approvalbot.webhook.spring.dto.AdoServiceHookWorkItemUpdatedRequest;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @RestController
 @RequestMapping("/api/ado/webhooks")
@@ -46,7 +48,7 @@ public class AdoWebhookController
 
     @PostMapping("/work-item-updated")
     public ResponseEntity<WebhookResponse> workItemUpdated(@RequestHeader HttpHeaders headers,
-            @RequestBody AdoServiceHookWorkItemUpdatedRequest request, HttpServletRequest servletRequest)
+            @RequestBody JsonNode request, HttpServletRequest servletRequest)
     {
         var sharedSecretResult = sharedSecretValidator.validate(headers.getFirst(sharedSecretValidator.headerName()));
         if (!sharedSecretResult.valid())
@@ -63,7 +65,19 @@ public class AdoWebhookController
                     .body(new WebhookResponse("UNAUTHORIZED", "Webhook shared-secret validation failed."));
         }
 
-        captureDebugPayloadSafely(servletRequest, request);
+        NormalizedWorkItemEvent normalizedEvent;
+        try
+        {
+            normalizedEvent = mapper.normalize(request);
+        }
+        catch (InvalidAdoEventPayloadException ex)
+        {
+            LOGGER.warn("ADO webhook payload validation failed errorCount={}", ex.errors().size());
+            return ResponseEntity.badRequest()
+                    .body(new WebhookResponse("FAILED_MALFORMED_EVENT", String.join("; ", ex.errors())));
+        }
+
+        captureDebugPayloadSafely(servletRequest, normalizedEvent);
 
         var pipeline = pipelineProvider.getIfAvailable();
         if (pipeline == null)
@@ -72,7 +86,7 @@ public class AdoWebhookController
                     .body(new WebhookResponse("UNAVAILABLE", "Webhook processing pipeline is not configured."));
         }
 
-        var event = mapper.toWebhookEvent(request);
+        var event = mapper.toWebhookEvent(normalizedEvent);
         var resource = event.resource();
         LOGGER.info("Received ADO webhook event project={} workItemId={} revision={}",
                 resource == null ? null : resource.project(), resource == null ? null : resource.workItemId(),
@@ -88,11 +102,11 @@ public class AdoWebhookController
     }
 
     private void captureDebugPayloadSafely(HttpServletRequest servletRequest,
-            AdoServiceHookWorkItemUpdatedRequest request)
+            NormalizedWorkItemEvent event)
     {
         try
         {
-            debugCaptureService.capture(extractRawBody(servletRequest), request);
+            debugCaptureService.capture(extractRawBody(servletRequest), event);
         }
         catch (RuntimeException ex)
         {

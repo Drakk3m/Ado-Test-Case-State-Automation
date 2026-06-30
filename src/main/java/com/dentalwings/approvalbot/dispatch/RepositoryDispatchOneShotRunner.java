@@ -16,6 +16,7 @@ import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
 import com.dentalwings.approvalbot.config.spring.ProjectApprovalConfigResolver;
 import com.dentalwings.approvalbot.config.validation.ProjectApprovalConfigValidator;
 import com.dentalwings.approvalbot.domain.ProcessingResult;
+import com.dentalwings.approvalbot.event.NormalizedWorkItemEvent;
 import com.dentalwings.approvalbot.processing.ProcessWorkItemCommand;
 import com.dentalwings.approvalbot.processing.WorkItemProcessingResult;
 import com.dentalwings.approvalbot.processing.WorkItemProcessingService;
@@ -301,7 +302,7 @@ public final class RepositoryDispatchOneShotRunner
 
     private record ExecutionContext(String project, long workItemId, int revision)
     {
-        private static ExecutionContext from(RepositoryDispatchPayload payload)
+        private static ExecutionContext from(NormalizedWorkItemEvent payload)
         {
             return new ExecutionContext(payload.project(), payload.workItemId(), payload.revision());
         }

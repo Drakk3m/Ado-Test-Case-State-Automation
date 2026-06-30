@@ -207,8 +207,8 @@ class AdoWebhookPipelineSmokeTest
         return """
                 {
                   "eventType": "workitem.updated",
-                  "organization": "org",
                   "resource": {
+                    "workItemId": %d,
                     "id": %d,
                     "rev": %d,
                     "revisedBy": {
@@ -216,6 +216,7 @@ class AdoWebhookPipelineSmokeTest
                       "uniqueName": "%s"
                     },
                     "revision": {
+                      "id": %d,
                       "rev": %d,
                       "fields": {
                         "System.TeamProject": "ProjectA",
@@ -228,9 +229,14 @@ class AdoWebhookPipelineSmokeTest
                         "newValue": "New title"
                       }
                     }
+                  },
+                  "resourceContainers": {
+                    "account": {
+                      "baseUrl": "https://dev.azure.com/org/"
+                    }
                   }
                 }
-                """.formatted(workItemId, revision, displayName, email, revision);
+                """.formatted(workItemId, revision, revision, displayName, email, workItemId, revision);
     }
 
     private String currentWorkItemJson(long workItemId, int revision)
