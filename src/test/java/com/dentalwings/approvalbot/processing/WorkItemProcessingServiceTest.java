@@ -37,7 +37,8 @@ class WorkItemProcessingServiceTest {
         var client = fakeClient(
                 workItem(10, 30, "Approved",
                         fields(SME_FIELD, "Ana <ana@example.com>", SQA_FIELD, "Sam <sam@example.com>")),
-                revision(29, nonApprover(), fields("System.State", "Approved")));
+                revision(29, nonApprover(), fields("System.State", "Approved", SME_FIELD,
+                        "Ana <ana@example.com>", SQA_FIELD, "Sam <sam@example.com>")));
 
         var result = service(client).process(command(30));
 
