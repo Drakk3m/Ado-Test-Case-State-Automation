@@ -9,6 +9,7 @@ import com.dentalwings.approvalbot.domain.Identity;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import com.dentalwings.approvalbot.domain.WorkflowDecision;
 import com.dentalwings.approvalbot.workflow.comment.CommentBuilder.ChangedField;
+import com.dentalwings.approvalbot.workflow.comment.CommentBuilder.RejectedChange;
 
 class CommentBuilderTest
 {
@@ -76,6 +77,23 @@ class CommentBuilderTest
 
         assertThat(comment).contains("Previous:\n  (null)");
         assertThat(comment).contains("Proposed:\n  (null)");
+    }
+
+    @Test
+    void unauthorizedModificationCommentIncludesDeterministicReasonsValuesAndActions()
+    {
+        var comment = commentBuilder.unauthorizedModifications(new Identity("John Doe", "john.doe@company.com"),
+                List.of(
+                        new RejectedChange("System.Title", "Old title", "New title", "Protected field.",
+                                "Reverted to the previous value."),
+                        new RejectedChange("Custom.ApproverTest", null, "Claimed User", "Bot-owned field.",
+                                "Cleared the field.")));
+
+        assertThat(comment).contains("Unauthorized Test Case modifications corrected.")
+                .contains("Modifier:\nJohn Doe [john.doe@company.com](mailto:john.doe@company.com)")
+                .containsSubsequence("* Custom.ApproverTest:", "* System.Title:")
+                .contains("Reason:\n  Bot-owned field.").contains("Previous:\n  (null)")
+                .contains("Proposed:\n  Claimed User").contains("Action taken:\n  Cleared the field.");
     }
 
     @Test

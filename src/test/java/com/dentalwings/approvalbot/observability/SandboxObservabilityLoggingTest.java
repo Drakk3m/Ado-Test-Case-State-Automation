@@ -111,6 +111,26 @@ class SandboxObservabilityLoggingTest {
     }
 
     @Test
+    void detailedRejectedValuesAppearInCommentButNotLogs() {
+        var currentFields = new HashMap<String, Object>();
+        currentFields.put("System.State", "In Review");
+        currentFields.put("System.Title", "SECRET_REJECTED_PROPOSED");
+        var previousFields = new HashMap<String, Object>();
+        previousFields.put("System.State", "In Review");
+        previousFields.put("System.Title", "SECRET_REJECTED_PREVIOUS");
+        var adoClient = new FakeAdoClient(
+                new AdoWorkItem(123, "ProjectA", "Test Case", 10, "In Review", currentFields),
+                new AdoWorkItemRevision(123, 9, new AdoIdentity("Human User", "human@example.com"), previousFields,
+                        previousFields.keySet()));
+
+        var logs = captureLogs(() -> processingService(adoClient, new CommentBuilder()).process(command()));
+
+        assertThat(adoClient.commentText).contains("SECRET_REJECTED_PREVIOUS")
+                .contains("SECRET_REJECTED_PROPOSED");
+        assertThat(logs).doesNotContain("SECRET_REJECTED_PREVIOUS").doesNotContain("SECRET_REJECTED_PROPOSED");
+    }
+
+    @Test
     void idempotentDuplicateLogsDuplicateSkip() {
         var store = new InMemoryProcessedEventStore(Duration.ofHours(1), 10);
         var delegate = processingService(fakeAdoClient(), new CommentBuilder());
@@ -199,6 +219,7 @@ class SandboxObservabilityLoggingTest {
         private final AdoWorkItemRevision revision;
         private AdoPatchResult patchResult = AdoPatchResult.success(11);
         private AdoCommentResult commentResult = AdoCommentResult.success("comment-1");
+        private String commentText;
 
         private FakeAdoClient(AdoWorkItem workItem, AdoWorkItemRevision revision) {
             this.workItem = workItem;
@@ -222,6 +243,7 @@ class SandboxObservabilityLoggingTest {
 
         @Override
         public AdoCommentResult createWorkItemComment(AdoWorkItemKey key, String commentText) {
+            this.commentText = commentText;
             return commentResult;
         }
     }

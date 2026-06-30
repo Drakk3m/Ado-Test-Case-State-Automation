@@ -19,8 +19,8 @@ public class ApprovalBotBeanConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public WorkflowEngine workflowEngine() {
-        return new WorkflowEngine();
+    public WorkflowEngine workflowEngine(CommentBuilder commentBuilder) {
+        return new WorkflowEngine(commentBuilder);
     }
 
     @Bean
