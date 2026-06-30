@@ -132,6 +132,27 @@ class RepositoryDispatchOneShotRunnerTest
     }
 
     @Test
+    void processesCanonicalAdoEventEnvelope() throws IOException
+    {
+        var payloadFile = writeCanonicalPayload();
+        var configFile = writeConfig();
+        var fakeClient = new FakeAdoClient();
+        ProcessWorkItemCommand[] capturedCommand = new ProcessWorkItemCommand[1];
+        var runner = new RepositoryDispatchOneShotRunner(new RepositoryDispatchPayloadParser(),
+                new ApprovalBotYamlConfigLoader(), properties -> fakeClient, adoClient -> command -> {
+                    capturedCommand[0] = command;
+                    return WorkItemProcessingResult.completed("done", null);
+                });
+
+        var exit = runner.run(arguments(payloadFile, configFile), System.out, System.err);
+
+        assertThat(exit).isZero();
+        assertThat(capturedCommand[0].workItemKey().project()).isEqualTo("Project A");
+        assertThat(capturedCommand[0].workItemKey().workItemId()).isEqualTo(12345L);
+        assertThat(capturedCommand[0].revision()).isEqualTo(17);
+    }
+
+    @Test
     void mapsRetryableAndNonRetryableProcessingResultsToDocumentedExitCodes() throws IOException
     {
         assertProcessingExit(WorkItemProcessingResult.failedRetryable("retry later", null),
@@ -214,6 +235,38 @@ class RepositoryDispatchOneShotRunnerTest
                   "eventType": "workitem.updated"
                 }
                 """.formatted(organization, project));
+        return file;
+    }
+
+    private Path writeCanonicalPayload() throws IOException
+    {
+        var file = tempDir.resolve("canonical-payload.json");
+        Files.writeString(file, """
+                {
+                  "ado_event": {
+                    "eventType": "workitem.updated",
+                    "id": "delivery-1",
+                    "resource": {
+                      "workItemId": 12345,
+                      "rev": 17,
+                      "id": 17,
+                      "revision": {
+                        "id": 12345,
+                        "rev": 17,
+                        "fields": {
+                          "System.TeamProject": "Project A",
+                          "System.WorkItemType": "Test Case"
+                        }
+                      }
+                    },
+                    "resourceContainers": {
+                      "account": {
+                        "baseUrl": "https://dev.azure.com/Payload-Organization/"
+                      }
+                    }
+                  }
+                }
+                """);
         return file;
     }
 

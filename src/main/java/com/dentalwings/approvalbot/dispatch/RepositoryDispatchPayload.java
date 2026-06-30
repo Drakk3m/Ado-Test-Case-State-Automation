@@ -3,6 +3,7 @@ package com.dentalwings.approvalbot.dispatch;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.dentalwings.approvalbot.event.AdoWorkItemEventParser;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -33,6 +34,10 @@ public record RepositoryDispatchPayload(
         requirePositive(workItemId, "workItemId", errors);
         requirePositive(revision, "revision", errors);
         requireText(eventType, "eventType", errors);
+        if (eventType != null && !eventType.isBlank() && !AdoWorkItemEventParser.WORK_ITEM_UPDATED.equals(eventType))
+        {
+            errors.add("'eventType' must be '" + AdoWorkItemEventParser.WORK_ITEM_UPDATED + "'");
+        }
         return errors;
     }
 

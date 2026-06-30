@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-import com.dentalwings.approvalbot.webhook.spring.dto.AdoServiceHookWorkItemUpdatedRequest;
+import com.dentalwings.approvalbot.event.NormalizedWorkItemEvent;
 
 class WebhookDebugCaptureServiceTest
 {
@@ -47,13 +47,10 @@ class WebhookDebugCaptureServiceTest
         assertThat(service.latestCapture().orElseThrow().rawRequestBody()).isEqualTo("");
     }
 
-    private AdoServiceHookWorkItemUpdatedRequest request(String project, int workItemId, int revision)
+    private NormalizedWorkItemEvent request(String project, int workItemId, int revision)
     {
-        var fields = java.util.Map.<String, Object>of("System.TeamProject", project);
-        var revisionData = new AdoServiceHookWorkItemUpdatedRequest.Revision(revision, fields);
-        var resource = new AdoServiceHookWorkItemUpdatedRequest.Resource((long) workItemId, revision, project,
-                "Test Case", null, revisionData, java.util.Map.of());
-        return new AdoServiceHookWorkItemUpdatedRequest("workitem.updated", "workitem.updated", "org", resource);
+        return new NormalizedWorkItemEvent("ado-service-hook", "org", project, (long) workItemId, revision,
+                "workitem.updated", null, null, null, null, "Test Case", java.util.Set.of());
     }
 }
 
