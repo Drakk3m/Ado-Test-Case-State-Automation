@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.dentalwings.approvalbot.ado.AdoClient;
 import com.dentalwings.approvalbot.ado.DryRunAdoClient;
+import com.dentalwings.approvalbot.ado.RetryingAdoClient;
 import com.dentalwings.approvalbot.ado.RuntimeAdoCredentialService;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
 import com.dentalwings.approvalbot.idempotency.IdempotentWorkItemProcessor;
@@ -37,18 +38,18 @@ public class ProcessingPipelineBeanConfiguration
                 || properties.getAdo().getPersonalAccessToken().isBlank())
         {
             LOGGER.warn("ADO HTTP client enabled without PAT; startup continues in local-only mode and webhook ADO calls will fail as non-retryable until PAT is configured.");
-            return new MissingPatAdoClient(properties.getAdo(), credentialService);
+            return new RetryingAdoClient(new MissingPatAdoClient(properties.getAdo(), credentialService));
         }
         var httpClient = AzureDevOpsHttpClient.fromProperties(properties.getAdo());
         if (!properties.getAdo().isDryRun())
         {
             LOGGER.info(
                     "Azure DevOps HTTP client enabled with dry-run disabled; write operations will be sent to ADO.");
-            return httpClient;
+            return new RetryingAdoClient(httpClient);
         }
 
         LOGGER.info("Azure DevOps dry-run mode is enabled; write operations will be suppressed.");
-        return new DryRunAdoClient(httpClient);
+        return new RetryingAdoClient(new DryRunAdoClient(httpClient));
     }
 
     @Bean

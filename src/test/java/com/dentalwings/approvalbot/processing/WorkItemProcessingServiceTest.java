@@ -7,6 +7,7 @@ import com.dentalwings.approvalbot.ado.AdoPatchResult;
 import com.dentalwings.approvalbot.ado.AdoWorkItem;
 import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
 import com.dentalwings.approvalbot.ado.AdoWorkItemRevision;
+import com.dentalwings.approvalbot.ado.RetryingAdoClient;
 import com.dentalwings.approvalbot.ado.http.AdoClientNonRetryableException;
 import com.dentalwings.approvalbot.ado.http.AdoClientRetryableException;
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
@@ -112,7 +113,7 @@ class WorkItemProcessingServiceTest {
                 revision(29, nonApprover(), fields("System.State", "In Review")));
         client.commentResult = AdoCommentResult.failure("comment failed");
 
-        var result = service(client).process(command(30));
+        var result = service(new RetryingAdoClient(client)).process(command(30));
 
         assertThat(result.result()).isEqualTo(ProcessingResult.COMPLETED_WITH_WARNING);
         assertThat(client.patchCalls).isOne();
@@ -164,6 +165,21 @@ class WorkItemProcessingServiceTest {
 
         assertThat(result.result()).isEqualTo(ProcessingResult.FAILED_RETRYABLE);
         assertThat(result.reason()).isEqualTo("ADO read failed with retryable error.");
+        assertThat(client.patchCalls).isZero();
+        assertThat(client.commentCalls).isZero();
+    }
+
+    @Test
+    void exhaustedReadRetriesReturnFailedRetryableWithoutPatchOrComment() {
+        var client = fakeClient(workItem(10, 30, "Approved", fields()),
+                revision(29, nonApprover(), fields("System.State", "In Review")));
+        client.fetchWorkItemException = new AdoClientRetryableException(
+                "Azure DevOps read request failed with retryable status 503.");
+
+        var result = service(new RetryingAdoClient(client)).process(command(30));
+
+        assertThat(result.result()).isEqualTo(ProcessingResult.FAILED_RETRYABLE);
+        assertThat(client.fetchWorkItemCalls).isEqualTo(3);
         assertThat(client.patchCalls).isZero();
         assertThat(client.commentCalls).isZero();
     }
@@ -246,7 +262,7 @@ class WorkItemProcessingServiceTest {
                 WorkItemProcessingResult.class);
     }
 
-    private WorkItemProcessingService service(FakeAdoClient client) {
+    private WorkItemProcessingService service(AdoClient client) {
         return new WorkItemProcessingService(client, new WorkflowEngine(), new PatchBuilder(), new CommentBuilder());
     }
 
@@ -306,6 +322,7 @@ class WorkItemProcessingServiceTest {
         private AdoCommentResult commentResult = AdoCommentResult.success("1");
         private RuntimeException fetchWorkItemException;
         private RuntimeException fetchRevisionException;
+        private int fetchWorkItemCalls;
         private int patchCalls;
         private int commentCalls;
         private List<PatchOperation> patchOperations = List.of();
@@ -318,6 +335,7 @@ class WorkItemProcessingServiceTest {
 
         @Override
         public AdoWorkItem fetchWorkItem(AdoWorkItemKey key) {
+            fetchWorkItemCalls++;
             if (fetchWorkItemException != null) {
                 throw fetchWorkItemException;
             }
