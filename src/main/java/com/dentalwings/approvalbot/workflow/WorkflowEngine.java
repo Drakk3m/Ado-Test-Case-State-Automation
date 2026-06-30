@@ -151,19 +151,11 @@ public class WorkflowEngine
     private WorkflowDecision finalizeInReviewApprovals(WorkflowInput input, ProjectApprovalConfig config,
             IdentityClassification classification)
     {
-        var projectedFields = new LinkedHashMap<>(input.currentFields());
-        var validationFields = new LinkedHashMap<>(input.currentFields());
-        var operations = new ArrayList<PatchOperation>();
+        var projectedFields = fieldsWithTrustedApprovals(input, config);
+        var validationFields = new LinkedHashMap<>(projectedFields);
+        var operations = new ArrayList<>(restoreChangedApprovalFields(input, config));
 
-        if (classification.authorizedApprover())
-        {
-            for (PatchOperation operation : currentUserApprovalOperations(input.changedBy(), classification, config,
-                    projectedFields))
-            {
-                addProjectedOperation(operation, operations, projectedFields, validationFields, input.changedBy(),
-                        config);
-            }
-        }
+        applyCurrentUserApproval(input, config, classification, operations, projectedFields, validationFields);
 
         var validation = approvalValidator.validate(validationFields, config);
         if (hasValue(projectedFields.get(config.approvedBySmeField())) && !validation.validSme())
@@ -213,27 +205,71 @@ public class WorkflowEngine
 
     private WorkflowDecision handleApproved(WorkflowInput input, ProjectApprovalConfig config)
     {
-        var validation = approvalValidator.validate(input.currentFields(), config);
+        var projectedFields = fieldsWithTrustedApprovals(input, config);
+        var validationFields = new LinkedHashMap<>(projectedFields);
+        var operations = new ArrayList<>(restoreChangedApprovalFields(input, config));
+        var classification = identityClassifier.classify(input.changedBy(), config);
+        applyCurrentUserApproval(input, config, classification, operations, projectedFields, validationFields);
+
+        var validation = approvalValidator.validate(validationFields, config);
         if (validation.fullyApprovedByDifferentUsers())
         {
+            if (!operations.isEmpty())
+            {
+                return WorkflowDecision.completed(operations, null,
+                        "Approved state approval fields were restored from trusted values.");
+            }
             return WorkflowDecision.skipped("Approved state already has valid approvals.");
         }
 
-        var operations = new ArrayList<PatchOperation>();
-        operations.add(PatchOperation.replaceField(SYSTEM_STATE, config.stateNames().inReview()));
         var sameApprovalEmail = validation.smeEmail().isPresent()
                 && validation.smeEmail().equals(validation.sqaEmail());
-        if (!validation.validSme())
+        if (!validation.validSme() && !containsClearOperation(operations, config.approvedBySmeField()))
         {
-            operations.add(clearApprovalField(config.approvedBySmeField()));
+            addProjectedOperation(clearApprovalField(config.approvedBySmeField()), operations, projectedFields,
+                    validationFields, input.changedBy(), config);
         }
-        if (!validation.validSqa() || sameApprovalEmail)
+        if ((!validation.validSqa() || sameApprovalEmail)
+                && !containsClearOperation(operations, config.approvedBySqaField()))
         {
-            operations.add(clearApprovalField(config.approvedBySqaField()));
+            addProjectedOperation(clearApprovalField(config.approvedBySqaField()), operations, projectedFields,
+                    validationFields, input.changedBy(), config);
         }
-        return WorkflowDecision.completed(operations,
+        var correctionOperations = new ArrayList<PatchOperation>();
+        correctionOperations.add(PatchOperation.replaceField(SYSTEM_STATE, config.stateNames().inReview()));
+        correctionOperations.addAll(operations);
+        return WorkflowDecision.completed(correctionOperations,
                 "The Test Case was returned to In Review because it does not have valid SME and SQA approvals from different users.",
                 "Approved state has invalid approvals.");
+    }
+
+    private LinkedHashMap<String, Object> fieldsWithTrustedApprovals(WorkflowInput input,
+            ProjectApprovalConfig config)
+    {
+        var trustedFields = new LinkedHashMap<>(input.currentFields());
+        trustedFields.put(config.approvedBySmeField(), input.previousFields().get(config.approvedBySmeField()));
+        trustedFields.put(config.approvedBySqaField(), input.previousFields().get(config.approvedBySqaField()));
+        return trustedFields;
+    }
+
+    private void applyCurrentUserApproval(WorkflowInput input, ProjectApprovalConfig config,
+            IdentityClassification classification, List<PatchOperation> operations, Map<String, Object> projectedFields,
+            Map<String, Object> validationFields)
+    {
+        if (!classification.authorizedApprover())
+        {
+            return;
+        }
+        for (PatchOperation operation : currentUserApprovalOperations(input.changedBy(), classification, config,
+                projectedFields))
+        {
+            addProjectedOperation(operation, operations, projectedFields, validationFields, input.changedBy(), config);
+        }
+    }
+
+    private boolean containsClearOperation(List<PatchOperation> operations, String field)
+    {
+        return operations.contains(clearApprovalField(field));
     }
 
     private List<PatchOperation> clearApprovalsIfPresent(Map<String, Object> fields, ProjectApprovalConfig config)
@@ -314,7 +350,7 @@ public class WorkflowEngine
 
     private void restoreApprovalFieldIfChanged(WorkflowInput input, String field, List<PatchOperation> operations)
     {
-        if (!valueComparator.equivalent(input.previousFields().get(field), input.currentFields().get(field)))
+        if (!Objects.deepEquals(input.previousFields().get(field), input.currentFields().get(field)))
         {
             var previousValue = input.previousFields().get(field);
             operations.add(hasValue(previousValue) ? PatchOperation.replaceField(field, previousValue)

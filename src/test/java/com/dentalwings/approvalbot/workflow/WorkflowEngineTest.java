@@ -139,7 +139,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
@@ -153,7 +153,7 @@ class WorkflowEngineTest
         var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
-        var decision = workflowEngine.decide(input("Peer Review", config, sqa(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Peer Review", config, sqa(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
@@ -166,7 +166,7 @@ class WorkflowEngineTest
         var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
-        var decision = workflowEngine.decide(input("Approval", config, nonApprover(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Approval", config, nonApprover(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
@@ -190,7 +190,7 @@ class WorkflowEngineTest
         var config = config(true, new WorkflowStateNames("Draft", "Peer Review", "Approval"));
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
-        var decision = workflowEngine.decide(input("Peer Review", config, sqa(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Peer Review", config, sqa(), current, current));
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, "Sam Quality"),
                 PatchOperation.replaceField("System.State", "Approval"));
@@ -201,7 +201,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "Approved"));
@@ -213,7 +213,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "Approved"));
@@ -225,7 +225,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Other User <other@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, ""));
@@ -238,7 +238,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Other User <other@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""));
@@ -250,7 +250,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
@@ -262,7 +262,7 @@ class WorkflowEngineTest
     {
         var current = fields(SQA_FIELD, "Sam Quality <sam@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
@@ -275,7 +275,7 @@ class WorkflowEngineTest
         var config = config(true, Set.of("dual@example.com"), Set.of("dual@example.com"));
         var current = fields(SME_FIELD, "Dual Role <dual@example.com>", SQA_FIELD, "Dual Role <dual@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config, dualRole(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config, dualRole(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SQA_FIELD, ""));
@@ -299,7 +299,7 @@ class WorkflowEngineTest
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Ana Perez <ana@example.com>");
         var config = config(true, Set.of("ana@example.com"), Set.of("ana@example.com"));
 
-        var decision = workflowEngine.decide(input("Approved", config, nonApprover(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Approved", config, nonApprover(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "In Review"),
@@ -320,13 +320,96 @@ class WorkflowEngineTest
     }
 
     @Test
-    void manualApprovalFieldEditByApproverWithoutContentChangeCountsAsReview()
+    void manualApprovalFieldEditByApproverIsRestoredBeforeOwnApprovalIsRecorded()
     {
         var current = fields(SME_FIELD, "Manual Value <other@example.com>");
 
         var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
 
-        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, "Ana Perez"));
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SME_FIELD, "Ana Perez"));
+    }
+
+    @Test
+    void smeCannotClaimSqaApprovalByManuallySettingApproverTest()
+    {
+        var previous = fields(SQA_FIELD, "Previous Test <previous@example.com>");
+        var current = fields(SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), previous, current));
+
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField(SQA_FIELD, "Previous Test <previous@example.com>"),
+                PatchOperation.replaceField(SME_FIELD, "Ana Perez"), PatchOperation.replaceField(SQA_FIELD, ""));
+        assertThat(decision.patchOperations())
+                .doesNotContain(PatchOperation.replaceField("System.State", "Approved"));
+    }
+
+    @Test
+    void sqaCannotClaimSmeApprovalByManuallySettingApproverTech()
+    {
+        var previous = fields(SME_FIELD, "Previous Tech <previous@example.com>");
+        var current = fields(SME_FIELD, "Ana Perez <ana@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sqa(), previous, current));
+
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField(SME_FIELD, "Previous Tech <previous@example.com>"),
+                PatchOperation.replaceField(SQA_FIELD, "Sam Quality"), PatchOperation.replaceField(SME_FIELD, ""));
+        assertThat(decision.patchOperations())
+                .doesNotContain(PatchOperation.replaceField("System.State", "Approved"));
+    }
+
+    @Test
+    void authorizedUserEditingBothApprovalFieldsCannotClaimOtherRole()
+    {
+        var current = fields(SME_FIELD, "Claimed SME <other-sme@example.com>", SQA_FIELD,
+                "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), Map.of(), current));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SQA_FIELD, ""), PatchOperation.replaceField(SME_FIELD, "Ana Perez"));
+        assertThat(decision.patchOperations())
+                .doesNotContain(PatchOperation.replaceField("System.State", "Approved"));
+    }
+
+    @Test
+    void previousTrustedOtherRoleCombinesWithCurrentUsersOwnApproval()
+    {
+        var previous = fields(SQA_FIELD, "Sam Quality <sam@example.com>");
+        var current = fields(SME_FIELD, "Claimed SME <other-sme@example.com>", SQA_FIELD,
+                "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), sme(), previous, current));
+
+        assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField(SME_FIELD, ""),
+                PatchOperation.replaceField(SME_FIELD, "Ana Perez"),
+                PatchOperation.replaceField("System.State", "Approved"));
+    }
+
+    @Test
+    void directApprovedTransitionCannotUseManuallyClaimedOtherRole()
+    {
+        var current = fields(SQA_FIELD, "Sam Quality <sam@example.com>");
+
+        var decision = workflowEngine.decide(input("Approved", config(true), sme(), Map.of(), current));
+
+        assertThat(decision.patchOperations()).containsExactly(
+                PatchOperation.replaceField("System.State", "In Review"),
+                PatchOperation.replaceField(SQA_FIELD, ""), PatchOperation.replaceField(SME_FIELD, "Ana Perez"));
+    }
+
+    @Test
+    void whitespaceOnlyManualApprovalEditRestoresExactPreviousValue()
+    {
+        var previous = fields(SME_FIELD, "Ana Perez <ana@example.com>");
+        var current = fields(SME_FIELD, "  Ana Perez <ana@example.com>  ");
+
+        var decision = workflowEngine.decide(input("In Review", config(true), nonApprover(), previous, current));
+
+        assertThat(decision.patchOperations())
+                .containsExactly(PatchOperation.replaceField(SME_FIELD, "Ana Perez <ana@example.com>"));
     }
 
     @Test
@@ -421,7 +504,7 @@ class WorkflowEngineTest
         var config = config(true, Set.of("dual@example.com"), Set.of("dual@example.com"));
         var current = fields(SME_FIELD, "Dual Role <dual@example.com>");
 
-        var decision = workflowEngine.decide(input("In Review", config, dualRole(), Map.of(), current));
+        var decision = workflowEngine.decide(input("In Review", config, dualRole(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
@@ -432,7 +515,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Ana Perez <ana@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
-        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
@@ -443,7 +526,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "ana@example.com", SQA_FIELD, "sam@example.com");
 
-        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
@@ -455,7 +538,7 @@ class WorkflowEngineTest
         var current = fields(SME_FIELD, new AdoIdentity("Ana Perez", "ana@example.com"), SQA_FIELD,
                 new AdoIdentity("Sam Quality", "sam@example.com"));
 
-        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
@@ -467,7 +550,7 @@ class WorkflowEngineTest
         var current = fields(SME_FIELD, Map.of("displayName", "Ana Perez", "uniqueName", "ana@example.com"), SQA_FIELD,
                 Map.of("displayName", "Sam Quality", "mailAddress", "sam@example.com"));
 
-        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), current, current));
 
         assertThat(decision.result()).isEqualTo(ProcessingResult.SKIPPED);
         assertThat(decision.patchRequired()).isFalse();
@@ -478,7 +561,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Ana Perez", SQA_FIELD, "Sam Quality <sam@example.com>");
 
-        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), current, current));
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "In Review"),
                 PatchOperation.replaceField(SME_FIELD, ""));
@@ -489,7 +572,7 @@ class WorkflowEngineTest
     {
         var current = fields(SME_FIELD, "Other <other@example.com>", SQA_FIELD, "Sam Quality <sam@example.com>");
 
-        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), Map.of(), current));
+        var decision = workflowEngine.decide(input("Approved", config(true), nonApprover(), current, current));
 
         assertThat(decision.patchOperations()).containsExactly(PatchOperation.replaceField("System.State", "In Review"),
                 PatchOperation.replaceField(SME_FIELD, ""));
