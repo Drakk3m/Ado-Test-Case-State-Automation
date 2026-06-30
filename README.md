@@ -5,6 +5,7 @@ Azure DevOps Test Case approval automation for V1 sandbox validation.
 For local execution, safe sandbox setup, and manual validation steps, see:
 
 * [Local Run and Azure DevOps Sandbox Validation](docs/Local%20Run%20and%20Azure%20DevOps%20Sandbox%20Validation.md)
+* [Local ADO Webhook Testing](docs/local-ado-webhook-testing.md)
 * [Azure DevOps Sandbox Validation Playbook](docs/Azure%20DevOps%20Sandbox%20Validation%20Playbook.md)
 * [Azure DevOps Write Enabled Sandbox Validation](docs/Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md)
 * [Azure DevOps Sandbox Validation Evidence](docs/Azure%20DevOps%20Sandbox%20Validation%20Evidence.md)
