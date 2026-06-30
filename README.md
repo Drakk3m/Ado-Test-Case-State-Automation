@@ -8,6 +8,7 @@ For local execution, safe sandbox setup, and manual validation steps, see:
 * [Local ADO Webhook Testing](docs/local-ado-webhook-testing.md)
 * [GitHub Dispatch Payload Contract](docs/architecture/github-dispatch-payload-contract.md)
 * [One-Shot Runner](docs/architecture/one-shot-runner.md)
+* [GitHub Action E2E Testing](docs/github-action-e2e-testing.md)
 * [Azure DevOps Sandbox Validation Playbook](docs/Azure%20DevOps%20Sandbox%20Validation%20Playbook.md)
 * [Azure DevOps Write Enabled Sandbox Validation](docs/Azure%20DevOps%20Write%20Enabled%20Sandbox%20Validation.md)
 * [Azure DevOps Sandbox Validation Evidence](docs/Azure%20DevOps%20Sandbox%20Validation%20Evidence.md)

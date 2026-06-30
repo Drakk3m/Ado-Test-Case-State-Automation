@@ -1,0 +1,30 @@
+ado:
+  organization: ExampleOrg
+  personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
+  http-client-enabled: true
+  dry-run: true
+  projects:
+    "[Example Sandbox Project]":
+      enabled: true
+      supported-work-item-types:
+        - Test Case
+      states:
+        design: Design
+        in-review: In Review
+        approved: Approved
+      fields:
+        approved-by-sme: Custom.ApproverTech
+        approved-by-sqa: Custom.ApproverTest
+        reversible-business-fields:
+          - System.Title
+          - System.Description
+          - Microsoft.VSTS.TCM.Steps
+          - Microsoft.VSTS.TCM.LocalDataSource
+      approvals:
+        sme-users:
+          - sme.user@example.test
+        sqa-users:
+          - sqa.user@example.test
+
+bot:
+  identity-email: approval-bot@example.test
