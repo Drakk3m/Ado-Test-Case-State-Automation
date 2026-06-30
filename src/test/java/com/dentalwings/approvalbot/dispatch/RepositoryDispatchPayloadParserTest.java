@@ -105,6 +105,26 @@ class RepositoryDispatchPayloadParserTest
                 });
     }
 
+    @Test
+    void returnsClearValidationErrorForInvalidRequiredFieldType()
+    {
+        var file = writePayloadUnchecked("""
+                {
+                  "source": "ado-service-hook",
+                  "organization": "org",
+                  "project": "project",
+                  "workItemId": "not-a-number",
+                  "revision": 1,
+                  "eventType": "workitem.updated"
+                }
+                """);
+
+        assertThatThrownBy(() -> parser.parse(file))
+                .isInstanceOf(InvalidRepositoryDispatchPayloadException.class)
+                .satisfies(ex -> assertThat(((InvalidRepositoryDispatchPayloadException) ex).errors())
+                        .containsExactly("'workItemId' has an invalid value"));
+    }
+
     private Path writePayload(String json) throws IOException
     {
         var file = tempDir.resolve("payload.json");

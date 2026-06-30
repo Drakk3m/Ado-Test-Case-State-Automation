@@ -2,8 +2,10 @@ package com.dentalwings.approvalbot.dispatch;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 
 public final class RepositoryDispatchPayloadParser
 {
@@ -41,6 +43,11 @@ public final class RepositoryDispatchPayloadParser
         try
         {
             return objectMapper.readValue(jsonFile.toFile(), RepositoryDispatchPayload.class);
+        }
+        catch (MismatchedInputException ex)
+        {
+            var fieldName = ex.getPath().isEmpty() ? "payload" : ex.getPath().getLast().getFieldName();
+            throw new InvalidRepositoryDispatchPayloadException(List.of("'" + fieldName + "' has an invalid value"));
         }
         catch (IOException ex)
         {
