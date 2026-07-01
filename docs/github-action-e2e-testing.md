@@ -8,7 +8,7 @@ The `ADO Work Item Updated` workflow runs `RepositoryDispatchOneShotRunner` once
 2. Review `config/application-github-action.yml` and replace every example organization, project, field, state, user, and bot identity with sandbox values. The configured organization and project name must match ADO exactly.
 3. Keep `ado.dry-run: true` for the first validation.
 
-The workflow calls `software/nimbus_azure-authentication@v1` with `auth_method: sp_creds`. Nimbus produces an access token, and the workflow passes that output to the Java runner only through `ADO_ACCESS_TOKEN`. Do not add the token or Service Principal secret to YAML, dispatch JSON, logs, artifacts, repository variables, or workflow output.
+The workflow calls the organization-provided internal Azure authentication action with Service Principal credentials. The action produces an access token, and the workflow passes that output to the Java runner only through `ADO_ACCESS_TOKEN`. Do not add the token or Service Principal secret to YAML, dispatch JSON, logs, artifacts, repository variables, or workflow output.
 
 PAT authentication remains available for legacy/local execution with `ado.authentication.mode: pat` (the default) and `ado.personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}`. The GitHub Action does not require or use a PAT.
 
@@ -102,7 +102,7 @@ Any nonzero code fails the Actions job. Runner output never includes PATs, beare
 
 ## Security Notes
 
-- Store Service Principal credentials only in the three `CAL__AZURE_*` GitHub secrets. Nimbus supplies the short-lived token to `ADO_ACCESS_TOKEN` at runtime.
+- Store Service Principal credentials only in the three `CAL__AZURE_*` GitHub secrets. The internal Azure authentication action supplies the short-lived token to `ADO_ACCESS_TOKEN` at runtime.
 - Keep PAT mode for legacy/local use only; never add a PAT to the GitHub Action configuration.
 - Store GitHub App private keys and installation tokens outside this repository and dispatch payload.
 - Do not upload the temporary payload as an artifact.

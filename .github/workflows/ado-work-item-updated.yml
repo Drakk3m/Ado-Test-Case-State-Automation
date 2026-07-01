@@ -29,9 +29,8 @@ jobs:
 
       - name: Acquire Azure DevOps access token
         id: auth_token
-        uses: software/nimbus_azure-authentication@v1
+        uses: ./.github/actions/azure-service-principal-auth
         with:
-          auth_method: "sp_creds"
           sp_client_id: ${{ secrets.CAL__AZURE_CLIENT_ID }}
           sp_client_tenant_id: ${{ secrets.CAL__AZURE_TENANT_ID }}
           sp_client_secret: ${{ secrets.CAL__AZURE_CLIENT_SECRET }}
