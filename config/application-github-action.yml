@@ -4,7 +4,7 @@ ado:
     mode: pat
     personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
   http-client-enabled: true
-  dry-run: true
+  dry-run: false
   projects:
     "[ADOnis 2.0 Test Project]":
       enabled: true

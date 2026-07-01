@@ -36,12 +36,12 @@ class GitHubActionWorkflowTest
                 "ADO_PERSONAL_ACCESS_TOKEN: ${{ secrets.ADO_PERSONAL_ACCESS_TOKEN }}")
                 .doesNotContain("SpringApplication", "ADO_WEBHOOK_SHARED_SECRET", "echo \"$CLIENT_PAYLOAD\"",
                         "secrets.ADO_ACCESS_TOKEN", "CAL__AZURE_CLIENT_SECRET");
-        assertThat(config).contains("mode: pat", "personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}", "dry-run: true")
+        assertThat(config).contains("mode: pat", "personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}", "dry-run: false")
                 .doesNotContain("bearer-token", "ADO_ACCESS_TOKEN")
                 .doesNotContain("webhook:", "sqlite");
 
         var properties = new ApprovalBotYamlConfigLoader().load(Path.of("config/application-github-action.yml"));
-        assertThat(properties.getAdo().isDryRun()).isTrue();
+        assertThat(properties.getAdo().isDryRun()).isFalse();
         assertThat(properties.getAdo().getAuthentication().getMode()).isEqualTo(AdoAuthenticationMode.PAT);
         var project = new ProjectApprovalConfigResolver(properties).findByProjectName("ADOnis 2.0 Test Project")
                 .orElseThrow();
