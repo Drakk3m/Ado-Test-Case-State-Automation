@@ -4,11 +4,12 @@ The `ADO Work Item Updated` workflow runs `RepositoryDispatchOneShotRunner` once
 
 ## Prerequisites
 
-1. Add the Service Principal credentials as GitHub repository secrets: `CAL__AZURE_CLIENT_ID`, `CAL__AZURE_TENANT_ID`, and `CAL__AZURE_CLIENT_SECRET`. Grant the Service Principal only the Azure DevOps permissions needed to read Work Items and, when write mode is intentionally enabled, update Work Items and create comments.
-2. Review `config/application-github-action.yml` and replace every example organization, project, field, state, user, and bot identity with sandbox values. The configured organization and project name must match ADO exactly.
-3. Keep `ado.dry-run: true` for the first validation.
+1. Configure the organization-provided Service Principal authentication automation outside this repository. It should use `CAL__AZURE_CLIENT_ID`, `CAL__AZURE_TENANT_ID`, and `CAL__AZURE_CLIENT_SECRET` from its own protected secret store and grant only the Azure DevOps permissions required by the runner.
+2. Make the resulting short-lived token available to this workflow as the protected repository or environment secret `ADO_ACCESS_TOKEN` before dispatching the event.
+3. Review `config/application-github-action.yml` and replace every example organization, project, field, state, user, and bot identity with sandbox values. The configured organization and project name must match ADO exactly.
+4. Keep `ado.dry-run: true` for the first validation.
 
-The workflow calls the organization-provided internal Azure authentication action with Service Principal credentials. The action produces an access token, and the workflow passes that output to the Java runner only through `ADO_ACCESS_TOKEN`. Do not add the token or Service Principal secret to YAML, dispatch JSON, logs, artifacts, repository variables, or workflow output.
+Token acquisition is intentionally external to this repository. This workflow only reads the resulting `ADO_ACCESS_TOKEN` secret and passes it to the Java runner through the environment. Do not add the token or Service Principal credentials to YAML, dispatch JSON, logs, artifacts, repository variables, or workflow output.
 
 PAT authentication remains available for legacy/local execution with `ado.authentication.mode: pat` (the default) and `ado.personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}`. The GitHub Action does not require or use a PAT.
 
@@ -102,7 +103,8 @@ Any nonzero code fails the Actions job. Runner output never includes PATs, beare
 
 ## Security Notes
 
-- Store Service Principal credentials only in the three `CAL__AZURE_*` GitHub secrets. The internal Azure authentication action supplies the short-lived token to `ADO_ACCESS_TOKEN` at runtime.
+- Keep the three `CAL__AZURE_*` Service Principal credentials in the external authentication system, not this repository's workflow or configuration.
+- Expose only the resulting short-lived token to this workflow as the protected `ADO_ACCESS_TOKEN` secret, and rotate/update it through the external automation.
 - Keep PAT mode for legacy/local use only; never add a PAT to the GitHub Action configuration.
 - Store GitHub App private keys and installation tokens outside this repository and dispatch payload.
 - Do not upload the temporary payload as an artifact.
