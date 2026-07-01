@@ -46,7 +46,8 @@ project=... workItemId=... revision=... result=COMPLETED reason=...
 ## Notes
 
 - `ado.http-client-enabled=true` is required.
-- A valid PAT must be available via config/env expansion.
+- Authentication mode defaults to legacy `pat`. PAT mode reads `ado.personal-access-token`, normally from `ADO_PERSONAL_ACCESS_TOKEN`.
+- Service Principal workflows use `ado.authentication.mode: bearer` and `ado.authentication.bearer-token`, normally from `ADO_ACCESS_TOKEN`. Java consumes the token but does not acquire or refresh it.
 - YAML is the source of truth. In particular, ADO calls use `ado.organization`; the payload organization remains required trigger metadata.
 - If project is missing/disabled in YAML, runner exits with `SKIPPED` before ADO fetch.
 - Unsupported work item types are skipped after one eligibility fetch and before PATCH/comment.
@@ -54,6 +55,6 @@ project=... workItemId=... revision=... result=COMPLETED reason=...
 - The standard `RetryingAdoClient` wraps one-shot ADO operations. Configured dry-run mode still performs reads while suppressing PATCH/comment writes.
 - One-shot mode does not persist idempotency state. Dispatch delivery deduplication must be handled by the caller/workflow if required.
 - Required payload fields are validated before execution.
-- Output includes only project, work item ID, revision, result, reason, and safe source-of-truth metadata. It never includes PATs, webhook secrets, authorization headers, patch values, or comment bodies.
+- Output includes only project, work item ID, revision, result, reason, and safe source-of-truth metadata. It never includes PATs, bearer tokens, webhook secrets, authorization headers, patch values, or comment bodies.
 - Do not print or commit secrets, PATs, installation tokens, or private keys.
 

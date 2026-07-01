@@ -1,6 +1,7 @@
 package com.dentalwings.approvalbot.dispatch;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ import com.dentalwings.approvalbot.ado.AdoWorkItemRevision;
 import com.dentalwings.approvalbot.ado.DryRunAdoClient;
 import com.dentalwings.approvalbot.ado.RetryingAdoClient;
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
+import com.dentalwings.approvalbot.config.spring.AdoAuthenticationMode;
 import com.dentalwings.approvalbot.domain.ProcessingResult;
 import com.dentalwings.approvalbot.processing.ProcessWorkItemCommand;
 import com.dentalwings.approvalbot.processing.WorkItemProcessingResult;
@@ -181,6 +183,23 @@ class RepositoryDispatchOneShotRunnerTest
     }
 
     @Test
+    void missingBearerTokenIsAValidationErrorWithoutLeakingCredentialValues() throws IOException
+    {
+        var payloadFile = writePayload("Project A");
+        var configFile = writeBearerConfig("");
+        var out = new ByteArrayOutputStream();
+        var err = new ByteArrayOutputStream();
+
+        var exit = new RepositoryDispatchOneShotRunner().run(arguments(payloadFile, configFile),
+                new PrintStream(out), new PrintStream(err));
+
+        assertThat(exit).isEqualTo(RepositoryDispatchOneShotRunner.EXIT_VALIDATION_ERROR);
+        assertThat(err.toString()).contains("ADO bearer token is required").doesNotContain("Authorization")
+                .doesNotContain("Bearer ");
+        assertThat(out.toString()).contains("result=VALIDATION_ERROR").doesNotContain("bearer-token");
+    }
+
+    @Test
     void defaultClientPreservesRetryAndDryRunDecorators()
     {
         var properties = new ApprovalBotProperties();
@@ -194,6 +213,25 @@ class RepositoryDispatchOneShotRunnerTest
         assertThat(client).isInstanceOf(RetryingAdoClient.class);
         var retrying = (RetryingAdoClient) client;
         assertThat(retrying.delegate()).isInstanceOf(DryRunAdoClient.class);
+    }
+
+    @Test
+    void defaultClientSupportsBearerModeAndRejectsMissingBearerTokenSafely()
+    {
+        var properties = new ApprovalBotProperties();
+        properties.getAdo().setHttpClientEnabled(true);
+        properties.getAdo().setDryRun(true);
+        properties.getAdo().setOrganization("ExampleOrg");
+        properties.getAdo().getAuthentication().setMode(AdoAuthenticationMode.BEARER);
+        properties.getAdo().getAuthentication().setBearerToken("service-principal-token");
+
+        assertThat(RepositoryDispatchOneShotRunner.defaultAdoClient(properties))
+                .isInstanceOf(RetryingAdoClient.class);
+
+        properties.getAdo().getAuthentication().setBearerToken(" ");
+        assertThatThrownBy(() -> RepositoryDispatchOneShotRunner.defaultAdoClient(properties))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("ADO bearer token is required for one-shot execution.")
+                .hasMessageNotContaining("service-principal-token").hasMessageNotContaining("Authorization");
     }
 
     private void assertProcessingExit(WorkItemProcessingResult result, int expectedExit, String expectedOutput)
@@ -302,6 +340,15 @@ class RepositoryDispatchOneShotRunnerTest
                 bot:
                   identity-email: bot@example.com
                 """.formatted(pat, enabled, supportedType));
+        return file;
+    }
+
+    private Path writeBearerConfig(String token) throws IOException
+    {
+        var file = writeConfig();
+        var yaml = Files.readString(file).replace("  personal-access-token: \"dummy\"",
+                "  authentication:\n    mode: bearer\n    bearer-token: \"" + token + "\"");
+        Files.writeString(file, yaml);
         return file;
     }
 

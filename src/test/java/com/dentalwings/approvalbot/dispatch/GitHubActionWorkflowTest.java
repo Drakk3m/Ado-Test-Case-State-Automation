@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.core.io.FileSystemResource;
 
+import com.dentalwings.approvalbot.config.spring.AdoAuthenticationMode;
 import com.dentalwings.approvalbot.config.spring.ProjectApprovalConfigResolver;
 
 class GitHubActionWorkflowTest
@@ -29,13 +30,20 @@ class GitHubActionWorkflowTest
                 "CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}",
                 "com.dentalwings.approvalbot.dispatch.RepositoryDispatchOneShotRunner",
                 "--config \"config/application-github-action.yml\"",
-                "ADO_PERSONAL_ACCESS_TOKEN: ${{ secrets.ADO_PERSONAL_ACCESS_TOKEN }}")
-                .doesNotContain("SpringApplication", "ADO_WEBHOOK_SHARED_SECRET", "echo \"$CLIENT_PAYLOAD\"");
-        assertThat(config).contains("personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}", "dry-run: true")
+                "uses: software/nimbus_azure-authentication@v1", "auth_method: \"sp_creds\"",
+                "sp_client_id: ${{ secrets.CAL__AZURE_CLIENT_ID }}",
+                "sp_client_tenant_id: ${{ secrets.CAL__AZURE_TENANT_ID }}",
+                "sp_client_secret: ${{ secrets.CAL__AZURE_CLIENT_SECRET }}",
+                "ADO_ACCESS_TOKEN: ${{ steps.auth_token.outputs.token }}")
+                .doesNotContain("SpringApplication", "ADO_WEBHOOK_SHARED_SECRET", "echo \"$CLIENT_PAYLOAD\"",
+                        "secrets.ADO_PERSONAL_ACCESS_TOKEN");
+        assertThat(config).contains("mode: bearer", "bearer-token: ${ADO_ACCESS_TOKEN:}", "dry-run: true")
+                .doesNotContain("personal-access-token", "ADO_PERSONAL_ACCESS_TOKEN")
                 .doesNotContain("webhook:", "sqlite");
 
         var properties = new ApprovalBotYamlConfigLoader().load(Path.of("config/application-github-action.yml"));
         assertThat(properties.getAdo().isDryRun()).isTrue();
+        assertThat(properties.getAdo().getAuthentication().getMode()).isEqualTo(AdoAuthenticationMode.BEARER);
         var project = new ProjectApprovalConfigResolver(properties).findByProjectName("Example Sandbox Project")
                 .orElseThrow();
         assertThat(project.enabled()).isTrue();

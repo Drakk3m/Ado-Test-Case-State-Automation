@@ -20,6 +20,8 @@ import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.ExchangeFunction;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
+import com.dentalwings.approvalbot.config.spring.AdoAuthenticationMode;
+import com.dentalwings.approvalbot.config.spring.AdoProperties;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 
 import reactor.core.publisher.Mono;
@@ -211,6 +213,14 @@ class AzureDevOpsHttpClientTest
     }
 
     @Test
+    void bearerAuthHeaderRejectsMissingTokenWithoutExposingValues()
+    {
+        assertThatThrownBy(() -> new AzureDevOpsAuth().bearerAuthHeader(" "))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("bearerToken must not be blank")
+                .hasMessageNotContaining("Authorization");
+    }
+
+    @Test
     void workItemJsonResponseMapsToAdoWorkItem()
     {
         var client = clientReturning(workItemJson());
@@ -300,6 +310,22 @@ class AzureDevOpsHttpClientTest
         assertThat(exchange.requests.getFirst().url().toString()).doesNotContain("secret-pat");
         assertThat(exchange.requests.getFirst().headers().getFirst(HttpHeaders.AUTHORIZATION))
                 .isEqualTo(new AzureDevOpsAuth().basicAuthHeader("secret-pat"));
+    }
+
+    @Test
+    void fetchRequestUsesBearerAuthorizationWhenConfigured()
+    {
+        var exchange = new RecordingExchangeFunction(workItemJson(), HttpStatus.OK);
+        var properties = new AdoProperties();
+        properties.getAuthentication().setMode(AdoAuthenticationMode.BEARER);
+        var client = AzureDevOpsHttpClient.forExchangeFunction(exchange, properties, "service-principal-token");
+
+        client.fetchWorkItem(KEY);
+
+        assertThat(exchange.requests).hasSize(1);
+        assertThat(exchange.requests.getFirst().headers().getFirst(HttpHeaders.AUTHORIZATION))
+                .isEqualTo("Bearer service-principal-token");
+        assertThat(exchange.requests.getFirst().url().toString()).doesNotContain("service-principal-token");
     }
 
     @Test

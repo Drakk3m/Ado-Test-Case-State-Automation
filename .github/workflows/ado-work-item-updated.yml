@@ -27,15 +27,14 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Verify required credential
-        env:
-          ADO_PERSONAL_ACCESS_TOKEN: ${{ secrets.ADO_PERSONAL_ACCESS_TOKEN }}
-        shell: bash
-        run: |
-          if [[ -z "$ADO_PERSONAL_ACCESS_TOKEN" ]]; then
-            echo "ADO_PERSONAL_ACCESS_TOKEN is not configured." >&2
-            exit 2
-          fi
+      - name: Acquire Azure DevOps access token
+        id: auth_token
+        uses: software/nimbus_azure-authentication@v1
+        with:
+          auth_method: "sp_creds"
+          sp_client_id: ${{ secrets.CAL__AZURE_CLIENT_ID }}
+          sp_client_tenant_id: ${{ secrets.CAL__AZURE_TENANT_ID }}
+          sp_client_secret: ${{ secrets.CAL__AZURE_CLIENT_SECRET }}
 
       - name: Build one-shot runner
         run: mvn -B -q -DskipTests compile dependency:copy-dependencies -DincludeScope=runtime
@@ -52,7 +51,7 @@ jobs:
 
       - name: Run approval bot once
         env:
-          ADO_PERSONAL_ACCESS_TOKEN: ${{ secrets.ADO_PERSONAL_ACCESS_TOKEN }}
+          ADO_ACCESS_TOKEN: ${{ steps.auth_token.outputs.token }}
         shell: bash
         run: |
           java -cp "target/classes:target/dependency/*" \

@@ -18,6 +18,7 @@ import com.dentalwings.approvalbot.ado.AdoPatchResult;
 import com.dentalwings.approvalbot.ado.AdoWorkItem;
 import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
 import com.dentalwings.approvalbot.ado.AdoWorkItemRevision;
+import com.dentalwings.approvalbot.config.spring.AdoAuthenticationMode;
 import com.dentalwings.approvalbot.config.spring.AdoProperties;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 
@@ -49,14 +50,14 @@ public class AzureDevOpsHttpClient implements AdoClient
 
     public static AzureDevOpsHttpClient fromProperties(AdoProperties properties)
     {
-        var authHeader = new AzureDevOpsAuth().basicAuthHeader(properties.getPersonalAccessToken());
+        var authHeader = authorizationHeader(properties, configuredCredential(properties));
         var webClient = WebClient.builder().defaultHeader(HttpHeaders.AUTHORIZATION, authHeader).build();
         return new AzureDevOpsHttpClient(webClient, new AzureDevOpsUrlBuilder());
     }
 
-    public static AzureDevOpsHttpClient fromProperties(AdoProperties properties, String personalAccessToken)
+    public static AzureDevOpsHttpClient fromProperties(AdoProperties properties, String credential)
     {
-        var authHeader = new AzureDevOpsAuth().basicAuthHeader(personalAccessToken);
+        var authHeader = authorizationHeader(properties, credential);
         var webClient = WebClient.builder().defaultHeader(HttpHeaders.AUTHORIZATION, authHeader).build();
         return new AzureDevOpsHttpClient(webClient, new AzureDevOpsUrlBuilder());
     }
@@ -68,6 +69,27 @@ public class AzureDevOpsHttpClient implements AdoClient
         var webClient = WebClient.builder().exchangeFunction(exchangeFunction)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, authHeader).build();
         return new AzureDevOpsHttpClient(webClient, new AzureDevOpsUrlBuilder());
+    }
+
+    public static AzureDevOpsHttpClient forExchangeFunction(ExchangeFunction exchangeFunction,
+            AdoProperties properties, String credential)
+    {
+        var webClient = WebClient.builder().exchangeFunction(exchangeFunction)
+                .defaultHeader(HttpHeaders.AUTHORIZATION, authorizationHeader(properties, credential)).build();
+        return new AzureDevOpsHttpClient(webClient, new AzureDevOpsUrlBuilder());
+    }
+
+    private static String configuredCredential(AdoProperties properties)
+    {
+        return properties.getAuthentication().getMode()
+                == AdoAuthenticationMode.BEARER
+                        ? properties.getAuthentication().getBearerToken()
+                        : properties.getPersonalAccessToken();
+    }
+
+    private static String authorizationHeader(AdoProperties properties, String credential)
+    {
+        return new AzureDevOpsAuth().authorizationHeader(properties.getAuthentication().getMode(), credential);
     }
 
     @Override

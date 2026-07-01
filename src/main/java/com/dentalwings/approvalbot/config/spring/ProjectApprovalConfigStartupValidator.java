@@ -69,6 +69,12 @@ public class ProjectApprovalConfigStartupValidator implements ApplicationRunner
             {
                 fatalMessages.add("ado.organization is missing while ado.http-client-enabled=true.");
             }
+            if (properties.getAdo().getAuthentication().getMode() == AdoAuthenticationMode.BEARER
+                    && isBlank(properties.getAdo().getAuthentication().getBearerToken()))
+            {
+                fatalMessages.add(
+                        "ado.authentication.bearer-token is missing while ado.authentication.mode=bearer.");
+            }
         }
         if (properties.getAdo().getProjects().isEmpty())
         {

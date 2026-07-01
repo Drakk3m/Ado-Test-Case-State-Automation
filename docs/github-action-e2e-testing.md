@@ -4,11 +4,13 @@ The `ADO Work Item Updated` workflow runs `RepositoryDispatchOneShotRunner` once
 
 ## Prerequisites
 
-1. Add `ADO_PERSONAL_ACCESS_TOKEN` as a GitHub repository secret. Grant only the Azure DevOps scopes needed to read Work Items and, when write mode is intentionally enabled, update Work Items and create comments.
+1. Add the Service Principal credentials as GitHub repository secrets: `CAL__AZURE_CLIENT_ID`, `CAL__AZURE_TENANT_ID`, and `CAL__AZURE_CLIENT_SECRET`. Grant the Service Principal only the Azure DevOps permissions needed to read Work Items and, when write mode is intentionally enabled, update Work Items and create comments.
 2. Review `config/application-github-action.yml` and replace every example organization, project, field, state, user, and bot identity with sandbox values. The configured organization and project name must match ADO exactly.
 3. Keep `ado.dry-run: true` for the first validation.
 
-The PAT is read only from the runner environment. Do not add it to YAML, dispatch JSON, logs, artifacts, repository variables, or workflow output.
+The workflow calls `software/nimbus_azure-authentication@v1` with `auth_method: sp_creds`. Nimbus produces an access token, and the workflow passes that output to the Java runner only through `ADO_ACCESS_TOKEN`. Do not add the token or Service Principal secret to YAML, dispatch JSON, logs, artifacts, repository variables, or workflow output.
+
+PAT authentication remains available for legacy/local execution with `ado.authentication.mode: pat` (the default) and `ado.personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}`. The GitHub Action does not require or use a PAT.
 
 ## Dispatch Contract
 
@@ -51,7 +53,7 @@ The bridge sends a GitHub `repository_dispatch` request with:
 }
 ```
 
-The Azure DevOps/GitHub App bridge should forward the ADO event as `client_payload.ado_event` without flattening or remapping `resource.id`. The bridge authenticates to GitHub with an installation token obtained at runtime from its private key. Neither the installation token nor private key belongs in the dispatch payload.
+The Azure DevOps/GitHub App bridge should forward the ADO event as `client_payload.ado_event` without flattening or remapping `resource.id`. The bridge authenticates to GitHub with an installation token obtained at runtime from its private key. This GitHub authentication is separate from the Service Principal token used by the runner for ADO. No token, client secret, or private key belongs in the dispatch payload.
 
 For a manual sandbox dispatch, store the JSON above in `dispatch.json`, set `GH_TOKEN` from a secure installation or fine-grained token source, and run:
 
@@ -76,7 +78,7 @@ The workflow writes `github.event.client_payload` to a permission-restricted fil
 
 Use only a disposable Test Case in an ADO sandbox. After dry-run evidence is clean:
 
-1. Review PAT permissions, configured field reference names, users, and project-specific state names.
+1. Review Service Principal permissions, configured field reference names, users, and project-specific state names.
 2. Change `ado.dry-run` to `false` in `config/application-github-action.yml` through a reviewed commit.
 3. Dispatch one new ADO revision and verify PATCH/comment results.
 4. Restore `ado.dry-run: true` immediately after testing.
@@ -96,11 +98,12 @@ The V1 concurrency group uses the canonical `resource.workItemId`, falling back 
 | `2` | Payload, usage, credential, or YAML configuration error. |
 | `3` | Non-retryable processing failure. |
 
-Any nonzero code fails the Actions job. Runner output never includes the PAT, authorization headers, full payload, PATCH values, or comment body.
+Any nonzero code fails the Actions job. Runner output never includes PATs, bearer tokens, authorization headers, full payload, PATCH values, or comment body.
 
 ## Security Notes
 
-- Store the ADO PAT only in `ADO_PERSONAL_ACCESS_TOKEN` as a GitHub secret.
+- Store Service Principal credentials only in the three `CAL__AZURE_*` GitHub secrets. Nimbus supplies the short-lived token to `ADO_ACCESS_TOKEN` at runtime.
+- Keep PAT mode for legacy/local use only; never add a PAT to the GitHub Action configuration.
 - Store GitHub App private keys and installation tokens outside this repository and dispatch payload.
 - Do not upload the temporary payload as an artifact.
 - Do not enable shell tracing or print environment variables.

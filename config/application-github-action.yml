@@ -1,6 +1,8 @@
 ado:
   organization: ExampleOrg
-  personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
+  authentication:
+    mode: bearer
+    bearer-token: ${ADO_ACCESS_TOKEN:}
   http-client-enabled: true
   dry-run: true
   projects:

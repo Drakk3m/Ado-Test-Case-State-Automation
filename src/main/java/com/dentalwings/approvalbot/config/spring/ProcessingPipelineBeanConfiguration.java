@@ -34,13 +34,27 @@ public class ProcessingPipelineBeanConfiguration
     @ConditionalOnMissingBean
     public AdoClient azureDevOpsHttpClient(ApprovalBotProperties properties, RuntimeAdoCredentialService credentialService)
     {
+        if (properties.getAdo().getAuthentication().getMode() == AdoAuthenticationMode.BEARER)
+        {
+            if (properties.getAdo().getAuthentication().getBearerToken() == null
+                    || properties.getAdo().getAuthentication().getBearerToken().isBlank())
+            {
+                throw new ApprovalBotConfigurationException(
+                        "ado.authentication.bearer-token is required when ado.authentication.mode=bearer.");
+            }
+            return decorate(properties, AzureDevOpsHttpClient.fromProperties(properties.getAdo()));
+        }
         if (properties.getAdo().getPersonalAccessToken() == null
                 || properties.getAdo().getPersonalAccessToken().isBlank())
         {
             LOGGER.warn("ADO HTTP client enabled without PAT; startup continues in local-only mode and webhook ADO calls will fail as non-retryable until PAT is configured.");
             return new RetryingAdoClient(new MissingPatAdoClient(properties.getAdo(), credentialService));
         }
-        var httpClient = AzureDevOpsHttpClient.fromProperties(properties.getAdo());
+        return decorate(properties, AzureDevOpsHttpClient.fromProperties(properties.getAdo()));
+    }
+
+    private AdoClient decorate(ApprovalBotProperties properties, AdoClient httpClient)
+    {
         if (!properties.getAdo().isDryRun())
         {
             LOGGER.info(
