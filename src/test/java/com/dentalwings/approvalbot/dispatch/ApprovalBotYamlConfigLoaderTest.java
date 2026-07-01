@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import com.dentalwings.approvalbot.config.spring.AdoAuthenticationMode;
+
 class ApprovalBotYamlConfigLoaderTest
 {
 
@@ -53,6 +55,26 @@ class ApprovalBotYamlConfigLoaderTest
         assertThat(properties.getAdo().getProjects().get("Project A").getSupportedWorkItemTypes())
                 .contains("Test Case");
         assertThat(properties.getBot().getIdentityEmail()).isEqualTo("bot@example.com");
+    }
+
+    @Test
+    void loadsBearerAuthenticationConfigurationFromYaml() throws IOException
+    {
+        var file = tempDir.resolve("application-bearer.yml");
+        Files.writeString(file, """
+                ado:
+                  organization: ExampleOrg
+                  authentication:
+                    mode: bearer
+                    bearer-token: ${ADO_ACCESS_TOKEN:}
+                  http-client-enabled: true
+                  dry-run: true
+                """);
+
+        var properties = new ApprovalBotYamlConfigLoader().load(file);
+
+        assertThat(properties.getAdo().getAuthentication().getMode()).isEqualTo(AdoAuthenticationMode.BEARER);
+        assertThat(properties.getAdo().getAuthentication().getBearerToken()).isEmpty();
     }
 }
 

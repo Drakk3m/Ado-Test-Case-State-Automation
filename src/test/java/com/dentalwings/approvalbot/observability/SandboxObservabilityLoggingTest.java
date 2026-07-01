@@ -13,6 +13,8 @@ import com.dentalwings.approvalbot.ado.AdoWorkItemKey;
 import com.dentalwings.approvalbot.ado.AdoWorkItemRevision;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.config.spring.AdoAuthenticationMode;
+import com.dentalwings.approvalbot.config.spring.AdoProperties;
 import com.dentalwings.approvalbot.domain.PatchOperation;
 import com.dentalwings.approvalbot.domain.WorkflowDecision;
 import com.dentalwings.approvalbot.idempotency.IdempotentWorkItemProcessor;
@@ -61,6 +63,23 @@ class SandboxObservabilityLoggingTest {
         assertThat(logs).contains("operation=patchWorkItem").contains("httpStatus=409").contains("retryable=true")
                 .contains("operationPaths=[/rev, /fields/System.State]").doesNotContain("SECRET_PAT_VALUE")
                 .doesNotContain("Authorization").doesNotContain("Basic ").doesNotContain("In Review");
+    }
+
+    @Test
+    void httpClientLogsDoNotExposeBearerTokenOrAuthorizationHeader() {
+        var logs = captureLogs(() -> {
+            var properties = new AdoProperties();
+            properties.getAuthentication().setMode(AdoAuthenticationMode.BEARER);
+            var client = AzureDevOpsHttpClient.forExchangeFunction(
+                    request -> Mono.just(ClientResponse.create(HttpStatus.CONFLICT).body("{}").build()), properties,
+                    "SECRET_BEARER_VALUE");
+
+            client.patchWorkItem(KEY,
+                    List.of(PatchOperation.testRevision(10), PatchOperation.replaceField("System.State", "In Review")));
+        });
+
+        assertThat(logs).contains("operation=patchWorkItem").doesNotContain("SECRET_BEARER_VALUE")
+                .doesNotContain("Authorization").doesNotContain("Bearer ").doesNotContain("In Review");
     }
 
     @Test

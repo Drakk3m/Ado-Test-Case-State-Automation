@@ -7,6 +7,7 @@ public class AdoProperties {
 
     private String organization;
     private String personalAccessToken;
+    private AdoAuthenticationProperties authentication = new AdoAuthenticationProperties();
     private boolean httpClientEnabled;
     private boolean dryRun = true;
     private Map<String, ProjectApprovalProperties> projects = new LinkedHashMap<>();
@@ -25,6 +26,14 @@ public class AdoProperties {
 
     public void setPersonalAccessToken(String personalAccessToken) {
         this.personalAccessToken = personalAccessToken;
+    }
+
+    public AdoAuthenticationProperties getAuthentication() {
+        return authentication;
+    }
+
+    public void setAuthentication(AdoAuthenticationProperties authentication) {
+        this.authentication = authentication == null ? new AdoAuthenticationProperties() : authentication;
     }
 
     public boolean isHttpClientEnabled() {

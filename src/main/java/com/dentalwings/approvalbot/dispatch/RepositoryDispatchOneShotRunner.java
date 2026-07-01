@@ -12,6 +12,7 @@ import com.dentalwings.approvalbot.ado.http.AdoClientNonRetryableException;
 import com.dentalwings.approvalbot.ado.http.AdoClientRetryableException;
 import com.dentalwings.approvalbot.ado.http.AzureDevOpsHttpClient;
 import com.dentalwings.approvalbot.config.ProjectApprovalConfig;
+import com.dentalwings.approvalbot.config.spring.AdoAuthenticationMode;
 import com.dentalwings.approvalbot.config.spring.ApprovalBotProperties;
 import com.dentalwings.approvalbot.config.spring.ProjectApprovalConfigResolver;
 import com.dentalwings.approvalbot.config.validation.ProjectApprovalConfigValidator;
@@ -215,13 +216,18 @@ public final class RepositoryDispatchOneShotRunner
         {
             throw new IllegalArgumentException("ado.http-client-enabled=true is required for one-shot execution.");
         }
-        var pat = resolvePat(properties.getAdo().getPersonalAccessToken());
-        if (pat.isBlank())
+        var mode = properties.getAdo().getAuthentication().getMode();
+        var configuredCredential = mode == AdoAuthenticationMode.BEARER
+                ? properties.getAdo().getAuthentication().getBearerToken()
+                : properties.getAdo().getPersonalAccessToken();
+        var credential = resolveEnvironmentExpression(configuredCredential);
+        if (credential.isBlank())
         {
-            throw new IllegalArgumentException("ADO PAT is required for one-shot execution.");
+            var credentialName = mode == AdoAuthenticationMode.BEARER ? "bearer token" : "PAT";
+            throw new IllegalArgumentException("ADO " + credentialName + " is required for one-shot execution.");
         }
 
-        AdoClient client = AzureDevOpsHttpClient.fromProperties(properties.getAdo(), pat);
+        AdoClient client = AzureDevOpsHttpClient.fromProperties(properties.getAdo(), credential);
         if (properties.getAdo().isDryRun())
         {
             client = new DryRunAdoClient(client);
@@ -229,7 +235,7 @@ public final class RepositoryDispatchOneShotRunner
         return new RetryingAdoClient(client);
     }
 
-    private static String resolvePat(String configuredValue)
+    private static String resolveEnvironmentExpression(String configuredValue)
     {
         var normalized = configuredValue == null ? "" : configuredValue.trim();
         if (normalized.startsWith("${") && normalized.endsWith("}"))

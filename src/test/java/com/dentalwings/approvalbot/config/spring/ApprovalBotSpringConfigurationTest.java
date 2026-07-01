@@ -150,6 +150,18 @@ class ApprovalBotSpringConfigurationTest {
     }
 
     @Test
+    void missingBearerTokenFailsStartupValidationWhenBearerModeIsEnabled() {
+        var yaml = validYaml().replace("  personal-access-token: test-token",
+                "  personal-access-token: test-token\n  authentication:\n    mode: bearer\n    bearer-token: \"\"")
+                .replace("http-client-enabled: false", "http-client-enabled: true");
+        var validator = startupValidator(bind(yaml));
+
+        assertThatThrownBy(validator::validate).isInstanceOf(ApprovalBotConfigurationException.class)
+                .hasMessageContaining("ado.authentication.bearer-token is missing")
+                .hasMessageNotContaining("Authorization");
+    }
+
+    @Test
     void missingAdoOrganizationFailsStartupValidationWhenHttpClientIsEnabled() {
         var validator = startupValidator(bind(validYaml().replace("organization: my-org", "organization: \"\"")
                 .replace("http-client-enabled: false", "http-client-enabled: true")));
