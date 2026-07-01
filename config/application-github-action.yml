@@ -1,8 +1,8 @@
 ado:
   organization: STMN-Group
   authentication:
-    mode: bearer
-    bearer-token: ${ADO_ACCESS_TOKEN:}
+    mode: pat
+    personal-access-token: ${ADO_PERSONAL_ACCESS_TOKEN:}
   http-client-enabled: true
   dry-run: true
   projects:

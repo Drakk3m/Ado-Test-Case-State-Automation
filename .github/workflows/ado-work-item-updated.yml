@@ -27,13 +27,13 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Verify externally provided Azure access token
+      - name: Verify externally provided ADO credential
         env:
-          ADO_ACCESS_TOKEN: ${{ secrets.ADO_ACCESS_TOKEN }}
+          ADO_PERSONAL_ACCESS_TOKEN: ${{ secrets.ADO_PERSONAL_ACCESS_TOKEN }}
         shell: bash
         run: |
-          if [[ -z "$ADO_ACCESS_TOKEN" ]]; then
-            echo "ADO_ACCESS_TOKEN is not configured." >&2
+          if [[ -z "$ADO_PERSONAL_ACCESS_TOKEN" ]]; then
+            echo "ADO_PERSONAL_ACCESS_TOKEN is not configured." >&2
             exit 2
           fi
 
@@ -52,7 +52,7 @@ jobs:
 
       - name: Run approval bot once
         env:
-          ADO_ACCESS_TOKEN: ${{ secrets.ADO_ACCESS_TOKEN }}
+          ADO_PERSONAL_ACCESS_TOKEN: ${{ secrets.ADO_PERSONAL_ACCESS_TOKEN }}
         shell: bash
         run: |
           java -cp "target/classes:target/dependency/*" \
