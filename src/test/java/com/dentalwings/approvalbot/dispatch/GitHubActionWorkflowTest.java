@@ -43,7 +43,7 @@ class GitHubActionWorkflowTest
         var properties = new ApprovalBotYamlConfigLoader().load(Path.of("config/application-github-action.yml"));
         assertThat(properties.getAdo().isDryRun()).isTrue();
         assertThat(properties.getAdo().getAuthentication().getMode()).isEqualTo(AdoAuthenticationMode.BEARER);
-        var project = new ProjectApprovalConfigResolver(properties).findByProjectName("Example Sandbox Project")
+        var project = new ProjectApprovalConfigResolver(properties).findByProjectName("ADOnis 2.0 Test Project")
                 .orElseThrow();
         assertThat(project.enabled()).isTrue();
     }

@@ -1,19 +1,19 @@
 ado:
-  organization: ExampleOrg
+  organization: STMN-Group
   authentication:
     mode: bearer
     bearer-token: ${ADO_ACCESS_TOKEN:}
   http-client-enabled: true
   dry-run: true
   projects:
-    "[Example Sandbox Project]":
+    "[ADOnis 2.0 Test Project]":
       enabled: true
       supported-work-item-types:
         - Test Case
       states:
         design: Design
         in-review: In Review
-        approved: Approved
+        approved: Approval
       fields:
         approved-by-sme: Custom.ApproverTech
         approved-by-sqa: Custom.ApproverTest
@@ -24,9 +24,9 @@ ado:
           - Microsoft.VSTS.TCM.LocalDataSource
       approvals:
         sme-users:
-          - sme.user@example.test
+          - u129670@straumann.com
         sqa-users:
-          - sqa.user@example.test
+          - u116727@straumann.com
 
 bot:
-  identity-email: approval-bot@example.test
+  identity-email: ado-approval-bot-sandbox@straumann.com
