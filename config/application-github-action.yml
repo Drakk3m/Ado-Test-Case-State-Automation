@@ -24,7 +24,7 @@ ado:
           - Microsoft.VSTS.TCM.LocalDataSource
       approvals:
         sme-users:
-          - u129670@straumann.com
+          - disabled.u129670@straumann.com
         sqa-users:
           - u116727@straumann.com
 
