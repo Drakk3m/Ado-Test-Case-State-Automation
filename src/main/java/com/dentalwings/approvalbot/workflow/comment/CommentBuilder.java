@@ -56,22 +56,17 @@ public class CommentBuilder
 
     public String unauthorizedModifications(Identity changedBy, Collection<RejectedChange> rejectedChanges)
     {
-        var verifiedEmail = changedBy != null && changedBy.email() != null && !changedBy.email().isBlank();
-        var modifier = verifiedEmail ? "%s [%s](mailto:%s)".formatted(displayName(changedBy),
-                changedBy.email().trim(), changedBy.email().trim()) : displayName(changedBy);
         return """
-                Unauthorized Test Case modifications corrected.
-                Proposed changes were rejected and corrected by the approval automation.
+                <h3>Unauthorized Test Case modifications corrected.</h3>
+                <p>Proposed changes were rejected and corrected by the approval automation.</p>
 
-                Modifier:
-                %s
+                <p><strong>Modifier:</strong>
+%s</p>
 
-                Reason:
-                The original Test Case field values were automatically restored because one or more submitted changes were not authorized by the approval workflow.
+                <p><strong>Reason:</strong><br/>The original Test Case field values were automatically restored because one or more submitted changes were not authorized by the approval workflow.</p>
 
-                Rejected changes:
-
-                %s""".formatted(modifier, rejectedChangesText(rejectedChanges));
+                <p><strong>Rejected changes:</strong></p>
+                %s""".formatted(modifierHtml(changedBy), rejectedChangesHtml(rejectedChanges));
     }
 
     public String manualApprovalFieldEditCorrected()
@@ -108,22 +103,31 @@ public class CommentBuilder
                 renderValue(field.proposedValue()))).collect(Collectors.joining("\n\n"));
     }
 
-    private String rejectedChangesText(Collection<RejectedChange> rejectedChanges)
+    private String rejectedChangesHtml(Collection<RejectedChange> rejectedChanges)
     {
         return rejectedChanges.stream().sorted(Comparator.comparing(RejectedChange::fieldReferenceName)).map(change -> """
-                * %s:
-                  Reason:
-                  %s
+                <details>
+                  <summary><strong>* %s:</strong></summary>
+                  <ul>
+                    <li><strong>Reason:</strong> %s</li>
+                    <li><strong>Previous:</strong> %s</li>
+                    <li><strong>Proposed:</strong> %s</li>
+                    <li><strong>Action taken:</strong> %s</li>
+                  </ul>
+                </details>""".formatted(escapeHtml(change.fieldReferenceName()), renderHtmlValue(change.reason()),
+                renderHtmlValue(change.previousValue()), renderHtmlValue(change.proposedValue()),
+                renderHtmlValue(change.actionTaken()))).collect(Collectors.joining("\n"));
+    }
 
-                  Previous:
-                  %s
-
-                  Proposed:
-                  %s
-
-                  Action taken:
-                  %s""".formatted(change.fieldReferenceName(), change.reason(), renderValue(change.previousValue()),
-                renderValue(change.proposedValue()), change.actionTaken())).collect(Collectors.joining("\n\n"));
+    private String modifierHtml(Identity changedBy)
+    {
+        if (changedBy == null || changedBy.email() == null || changedBy.email().isBlank())
+        {
+            return escapeHtml(displayName(changedBy));
+        }
+        var email = changedBy.email().trim();
+        return "%s <a href=\"mailto:%s\">%s</a>".formatted(escapeHtml(displayName(changedBy)), escapeHtml(email),
+                escapeHtml(email));
     }
 
     private String displayName(Identity identity)
@@ -140,6 +144,20 @@ public class CommentBuilder
         return value == null ? "(null)" : value.toString();
     }
 
+    private String renderHtmlValue(Object value)
+    {
+        return escapeHtml(renderValue(value)).replace("\r\n", "<br/>").replace("\n", "<br/>");
+    }
+
+    private String escapeHtml(String value)
+    {
+        if (value == null)
+        {
+            return "";
+        }
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
     public record ChangedField(String fieldReferenceName, Object previousValue, Object proposedValue)
     {
     }
@@ -149,3 +167,4 @@ public class CommentBuilder
     {
     }
 }
+

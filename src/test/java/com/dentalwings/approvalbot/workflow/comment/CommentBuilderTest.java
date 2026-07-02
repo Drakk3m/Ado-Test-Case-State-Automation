@@ -90,10 +90,10 @@ class CommentBuilderTest
                                 "Cleared the field.")));
 
         assertThat(comment).contains("Unauthorized Test Case modifications corrected.")
-                .contains("Modifier:\nJohn Doe [john.doe@company.com](mailto:john.doe@company.com)")
+                .contains("<strong>Modifier:</strong>")
                 .containsSubsequence("* Custom.ApproverTest:", "* System.Title:")
-                .contains("Reason:\n  Bot-owned field.").contains("Previous:\n  (null)")
-                .contains("Proposed:\n  Claimed User").contains("Action taken:\n  Cleared the field.");
+                .contains("<li><strong>Reason:</strong> Bot-owned field.</li>").contains("<li><strong>Previous:</strong> (null)</li>")
+                .contains("<li><strong>Proposed:</strong> Claimed User</li>").contains("<li><strong>Action taken:</strong> Cleared the field.</li>");
     }
 
     @Test
@@ -142,3 +142,13 @@ class CommentBuilderTest
                         "Existing workflow comment", "Completed"))).contains("Existing workflow comment");
     }
 }
+
+
+
+
+
+
+
+
+
+

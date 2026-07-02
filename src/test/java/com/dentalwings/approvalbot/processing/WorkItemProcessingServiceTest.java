@@ -107,8 +107,8 @@ class WorkItemProcessingServiceTest {
         assertThat(result.result()).isEqualTo(ProcessingResult.COMPLETED);
         assertThat(client.commentCalls).isOne();
         assertThat(client.commentText).contains("Unauthorized Test Case modifications corrected.")
-                .contains("* " + SME_FIELD + ":").contains("Previous:\n  Ana <ana@example.com>")
-                .contains("Proposed:\n  Claimed <claimed@example.com>");
+                .contains("* " + SME_FIELD + ":").contains("<li><strong>Previous:</strong> Ana &lt;ana@example.com&gt;</li>")
+                .contains("<li><strong>Proposed:</strong> Claimed &lt;claimed@example.com&gt;</li>");
     }
 
     @Test
@@ -389,3 +389,8 @@ class WorkItemProcessingServiceTest {
         }
     }
 }
+
+
+
+
+
